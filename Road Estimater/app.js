@@ -71,7 +71,14 @@
     },
   };
 
-  /* ---- CLOUD: Supabase via Netlify Function ---- */
+  /* ---- CLOUD: Supabase via Netlify Function (mirror-first, तेज़) ----
+     IndexedDB को cloud का local "mirror" रखा जाता है:
+       • पेज हमेशा mirror से तुरंत खुलता है (कोई इंतज़ार नहीं)
+       • cloud से मिलान background में — किसी और device से बदलाव मिला
+         तो mirror ताज़ा करके एक बार पेज reload
+       • हर edit पहले mirror में (तुरंत), फिर पीछे-पीछे queue से cloud में */
+  const STAMP_KEY = "est_cloud_stamp";
+
   async function cloudCall(op, args) {
     const res = await fetch(location.origin + "/api/db", {
       method: "POST",
@@ -83,12 +90,49 @@
     return j.result;
   }
 
-  /* पहली बार cloud चालू होने पर — इस browser का पुराना (IndexedDB) डेटा
-     अपने-आप cloud में चढ़ा दो, बशर्ते cloud अभी ख़ाली हो */
-  async function cloudMigrateIfNeeded() {
-    try {
-      const cloudRows = await Promise.all(CLOUD_STORES.map((s) => cloudCall("estAll", { store: s })));
-      if (cloudRows.some((rows) => rows && rows.length)) return;   // cloud में पहले से data है
+  /* cloud writes की serial queue — edits तुरंत local save होते हैं,
+     cloud में पीछे-पीछे जाते हैं */
+  let _cloudQueue = Promise.resolve();
+  let _cloudPending = 0;
+  let _stampTimer = null;
+  function queueCloud(fn) {
+    _cloudPending++;
+    _cloudQueue = _cloudQueue
+      .then(fn)
+      .catch((e) => console.error("cloud sync:", e))
+      .finally(() => { _cloudPending--; _stampSoon(); });
+  }
+  function _stampSoon() {
+    if (_cloudPending > 0) return;
+    clearTimeout(_stampTimer);
+    _stampTimer = setTimeout(async () => {
+      if (_cloudPending > 0) return;
+      try { localStorage.setItem(STAMP_KEY, JSON.stringify(await cloudCall("estStamp"))); } catch (e) {}
+    }, 800);
+  }
+  window.addEventListener("beforeunload", (e) => {
+    if (_cloudMode && _cloudPending > 0) {
+      e.preventDefault();
+      e.returnValue = "डेटा अभी cloud में save हो रहा है — कुछ सेकंड रुकें।";
+    }
+  });
+
+  async function mirrorWriteAll(all) {
+    for (const s of CLOUD_STORES) {
+      await idb.clear(s);
+      for (const row of (all[s] || [])) await idb.put(s, row.data);
+    }
+  }
+
+  /* cloud से मिलान: stamp (गिनती+आख़िरी बदलाव समय) तुलना —
+     बराबर तो कुछ नहीं उतरता; बदला हो तभी पूरा data (एक ही call में) */
+  async function cloudSync(servedFromMirror) {
+    const stamp = await cloudCall("estStamp");
+    const stampStr = JSON.stringify(stamp);
+    const prev = localStorage.getItem(STAMP_KEY);
+    const cloudEmpty = !stamp || Object.keys(stamp).length === 0;
+    if (cloudEmpty && !prev) {
+      /* पहली बार cloud से जुड़े और cloud ख़ाली — इस browser का पुराना डेटा चढ़ाएँ */
       for (const s of CLOUD_STORES) {
         const local = await idb.getAll(s);
         for (let i = 0; i < local.length; i += 20) {
@@ -96,12 +140,19 @@
           if (batch.length) await cloudCall("estBulkPut", { store: s, rows: batch });
         }
       }
-    } catch (e) { console.error("cloud migration:", e); }
+      localStorage.setItem(STAMP_KEY, JSON.stringify(await cloudCall("estStamp")));
+      return false;
+    }
+    if (prev === stampStr) return false;          /* mirror पहले से ताज़ा */
+    const all = await cloudCall("estFetchAll");   /* एक ही call में तीनों stores */
+    await mirrorWriteAll(all);
+    localStorage.setItem(STAMP_KEY, stampStr);
+    return servedFromMirror;   /* true = पेज पुराने mirror से खुल चुका था → reload चाहिए */
   }
 
   const db = {
     async open() {
-      await idb.open();   // हमेशा खोलें — local mode + migration source
+      await idb.open();
       _cloudMode = false;
       try {
         if (location.protocol === "http:" || location.protocol === "https:") {
@@ -112,24 +163,38 @@
           }
         }
       } catch (e) { _cloudMode = false; }
-      if (_cloudMode) await cloudMigrateIfNeeded();
+      if (_cloudMode) {
+        if (localStorage.getItem(STAMP_KEY)) {
+          /* mirror मौजूद — तुरंत खोलो, मिलान background में */
+          cloudSync(true)
+            .then((changed) => { if (changed) location.reload(); })
+            .catch((e) => console.error("cloud sync:", e));
+        } else {
+          /* इस browser में पहली बार — mirror भरना ज़रूरी है */
+          await cloudSync(false);
+        }
+      }
       return _db;
     },
-    getAll(store) {
-      if (!_cloudMode) return idb.getAll(store);
-      return cloudCall("estAll", { store: store }).then((rows) => (rows || []).map((r) => r.data));
-    },
+    /* पढ़ना हमेशा local mirror/IndexedDB से — तुरंत */
+    getAll(store) { return idb.getAll(store); },
     put(store, obj) {
-      if (!_cloudMode) return idb.put(store, obj);
-      return cloudCall("estPut", { store: store, id: String(obj.id), data: obj }).then(() => {});
+      const p = idb.put(store, obj);
+      if (_cloudMode) {
+        const snap = JSON.parse(JSON.stringify(obj));   /* उसी क्षण की copy */
+        queueCloud(() => cloudCall("estPut", { store: store, id: String(obj.id), data: snap }));
+      }
+      return p;
     },
     del(store, id) {
-      if (!_cloudMode) return idb.del(store, id);
-      return cloudCall("estDel", { store: store, id: String(id) }).then(() => {});
+      const p = idb.del(store, id);
+      if (_cloudMode) queueCloud(() => cloudCall("estDel", { store: store, id: String(id) }));
+      return p;
     },
     clear(store) {
-      if (!_cloudMode) return idb.clear(store);
-      return cloudCall("estClear", { store: store }).then(() => {});
+      const p = idb.clear(store);
+      if (_cloudMode) queueCloud(() => cloudCall("estClear", { store: store }));
+      return p;
     },
   };
 
@@ -195,11 +260,30 @@
     return m;
   }
 
+  // तेज़ लोडिंग: engine केवल working शीटों पर बने; ~1000 master library शीटें
+  // formula-graph में भाग नहीं लेतीं (rate-links mref→state.master से जाते हैं),
+  // इसलिए उन्हें engine से बाहर रखो — जैसे-जैसे खोली जाएँ वैसे-वैसे शामिल होती जाएँ।
+  let _engineMasters = new Set();  // engine में शामिल master शीटों के नाम
   function buildEngine() {
     if (typeof HyperFormula === "undefined") { hfReady = false; return; }
     try {
+      const masterByName = {};
+      for (const id of state.order) { const s = state.sheets[id]; if (s.kind === "master") masterByName[s.name] = id; }
+      const included = new Set();
+      for (const id of state.order) { const s = state.sheets[id]; if (s.kind !== "master" || _engineMasters.has(s.name)) included.add(id); }
+      // शामिल शीटों के formula में यदि किसी (बाहर रखी) master शीट का reference हो, उसे भी जोड़ो
+      const reRef = /(?:'([^']+)'|([^\s'!()+\-*/,;:&<>=^%]+))!/g;
+      for (const id of Array.from(included)) {
+        const s = state.sheets[id]; if (!s || !s.cells) continue;
+        for (const a in s.cells) {
+          const f = s.cells[a] && s.cells[a].f;
+          if (!f || f.indexOf("!") < 0) continue;
+          let m; reRef.lastIndex = 0;
+          while ((m = reRef.exec(f))) { const nm = m[1] || m[2]; if (masterByName[nm] != null) included.add(masterByName[nm]); }
+        }
+      }
       const data = {};
-      for (const id of state.order) data[state.sheets[id].name] = sheetMatrix(state.sheets[id]);
+      for (const id of state.order) { if (included.has(id)) data[state.sheets[id].name] = sheetMatrix(state.sheets[id]); }
       if (Object.keys(data).length === 0) data["_empty"] = [[null]];
       hf = HyperFormula.buildFromSheets(data, { licenseKey: "gpl-v3" });
       hfReady = true;
@@ -390,6 +474,12 @@
 
   function openSheet(id) {
     armed = null; clearPointHL();
+    // master शीट पहली बार खुले तो उसे engine में शामिल कर लो (lazy) — ताकि उसके formula सही मान दिखाएँ
+    const _os = state.sheets[id];
+    if (_os && _os.kind === "master" && !_engineMasters.has(_os.name)) {
+      _engineMasters.add(_os.name);
+      buildEngine();
+    }
     state.activeSheetId = id;
     state.activeCell = { r: 0, c: 0 };
     state.selAnchor = null;
@@ -1768,6 +1858,7 @@
     if (data.settings && typeof data.settings === "object") {
       try { for (const k in data.settings) if (k.indexOf("re_") === 0) localStorage.setItem(k, data.settings[k]); } catch (e) {}
       reloadChaptersFromStorage();
+      persistChaptersCloud();   // restore किए chapters cloud में भी भेजो → हर browser में दिखें
       const pv = localStorage.getItem("re_projectSize"); if (isSize(pv)) projectSize = pv;
     }
     state.activeSheetId = state.order[0] || null;
@@ -2623,7 +2714,21 @@
   })();
   function chaptersOf(src) { return CHAPTERS[(src === "mord") ? "mord" : "morth"]; }
   function sortChapters(src) { chaptersOf(src).sort((a, b) => (a.name || "").localeCompare(b.name || "", undefined, { numeric: true, sensitivity: "base" })); }
-  function saveChapters(src) { src = (src === "mord") ? "mord" : "morth"; sortChapters(src); try { localStorage.setItem("re_chapters_" + src, JSON.stringify(CHAPTERS[src])); } catch (e) {} }
+  // Chapters अब cloud (master store) में भी — ताकि हर browser/device पर एक ही दिखें
+  const CHAPTERS_META_ID = "__meta_chapters__";
+  function chaptersRecord() { return { id: CHAPTERS_META_ID, _meta: "chapters", morth: CHAPTERS.morth || [], mord: CHAPTERS.mord || [] }; }
+  function persistChaptersCloud() { try { db.put("master", chaptersRecord()); } catch (e) {} }
+  function applyChaptersRecord(rec) {
+    if (!rec) return false;
+    let any = false;
+    for (const src of ["morth", "mord"]) {
+      const list = rec[src];
+      if (Array.isArray(list) && list.length && list.every((x) => x && x.key && x.name)) { CHAPTERS[src] = list.map((x) => ({ key: x.key, name: x.name })); any = true; }
+    }
+    if (any) { sortChapters("morth"); sortChapters("mord"); try { localStorage.setItem("re_chapters_morth", JSON.stringify(CHAPTERS.morth)); localStorage.setItem("re_chapters_mord", JSON.stringify(CHAPTERS.mord)); } catch (e) {} }
+    return any;
+  }
+  function saveChapters(src) { src = (src === "mord") ? "mord" : "morth"; sortChapters(src); try { localStorage.setItem("re_chapters_" + src, JSON.stringify(CHAPTERS[src])); } catch (e) {} persistChaptersCloud(); }
   sortChapters("morth"); sortChapters("mord");
   function defaultChapterKey(src) { const list = chaptersOf(src); return list.some((g) => g.key === "misc") ? "misc" : (list.length ? list[list.length - 1].key : "misc"); }
   // शीट का chapter-key — उसके source की सूची में न हो (हटाया गया) तो उसी source के default chapter में दिखाओ
@@ -4332,7 +4437,14 @@
       }
     }
     for (const e of estimates) { state.estimates[e.id] = e; state.estOrder.push(e.id); }
-    for (const m of masterRecs) { state.master[m.id] = m; }
+    // Chapters का cloud-record अलग है — उसे state.master में न डालें, CHAPTERS में लागू करें
+    let _chaptersFromCloud = false;
+    for (const m of masterRecs) {
+      if (m && m.id === CHAPTERS_META_ID) { if (applyChaptersRecord(m)) _chaptersFromCloud = true; continue; }
+      state.master[m.id] = m;
+    }
+    // cloud में chapters न हों तो इस browser के localStorage वाले cloud पर seed कर दो
+    if (!_chaptersFromCloud) persistChaptersCloud();
     // पुरानी सभी श्रेणियों की rows को स्थायी id दे दो (slip-proof linking के लिए)
     for (const cat in state.master) {
       const m = state.master[cat]; let fixed = false;

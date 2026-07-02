@@ -194,13 +194,14 @@ export default async (req) => {
         await sb('/rest/v1/est_kv', {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
-          body: JSON.stringify([{ store, id: String(a.id), data: a.data }])
+          body: JSON.stringify([{ store, id: String(a.id), data: a.data, updated_at: new Date().toISOString() }])
         });
         return json({ ok: true, result: true });
       }
       case 'estBulkPut': {
         const store = estStore(a.store);
-        const rows = (a.rows || []).map(r => ({ store, id: String(r.id), data: r.data }));
+        const now = new Date().toISOString();
+        const rows = (a.rows || []).map(r => ({ store, id: String(r.id), data: r.data, updated_at: now }));
         if (rows.length) await sb('/rest/v1/est_kv', {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
@@ -208,6 +209,8 @@ export default async (req) => {
         });
         return json({ ok: true, result: rows.length });
       }
+      case 'estStamp':    return json({ ok: true, result: (await rpc('est_stamp', {})) || {} });
+      case 'estFetchAll': return json({ ok: true, result: (await rpc('est_all', {})) || {} });
       case 'estDel': {
         const store = estStore(a.store);
         await sb('/rest/v1/est_kv?store=eq.' + encodeURIComponent(store) + '&id=eq.' + encodeURIComponent(String(a.id)), { method: 'DELETE' });

@@ -362,6 +362,30 @@ create table if not exists public.est_kv (
 
 alter table public.est_kv enable row level security;
 
+-- Estimator: तेज़ मिलान — गिनती + आख़िरी बदलाव समय (छोटा जवाब)
+create or replace function public.est_stamp()
+returns jsonb
+language sql stable
+as $$
+  select coalesce(jsonb_object_agg(store, jsonb_build_object('n', n, 'ts', ts)), '{}'::jsonb)
+  from (
+    select store, count(*) as n, max(updated_at) as ts
+    from public.est_kv group by store
+  ) t;
+$$;
+
+-- Estimator: तीनों stores का पूरा डेटा एक ही call में
+create or replace function public.est_all()
+returns jsonb
+language sql stable
+as $$
+  select coalesce(jsonb_object_agg(store, rows), '{}'::jsonb)
+  from (
+    select store, jsonb_agg(jsonb_build_object('id', id, 'data', data) order by id) as rows
+    from public.est_kv group by store
+  ) t;
+$$;
+
 -- ── मुख्य वर्कबुक seed ───────────────────────────────────────────
 
 select public.ss_create_spreadsheet('main', 'Road Management System');

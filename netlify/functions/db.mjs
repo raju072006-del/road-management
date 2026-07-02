@@ -17,6 +17,13 @@ export const config = { path: '/api/db' };
 
 const BUCKET = 'rms-files';
 const env = (k) => process.env[k] || '';
+
+// SUPABASE_URL चाहे कैसे भी paste हुआ हो (/rest/v1 आदि सहित) — सिर्फ़ origin लें
+const baseUrl = () => {
+  const raw = env('SUPABASE_URL').trim();
+  try { return new URL(raw).origin; }
+  catch (e) { return raw.replace(/\/+$/, ''); }
+};
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { 'content-type': 'application/json; charset=utf-8' } });
 
@@ -53,7 +60,7 @@ function checkToken(t) {
 
 // ── Supabase helpers ──
 async function sb(pathname, opts = {}) {
-  const res = await fetch(env('SUPABASE_URL').replace(/\/+$/, '') + pathname, {
+  const res = await fetch(baseUrl() + pathname, {
     ...opts,
     headers: {
       'apikey': env('SUPABASE_SERVICE_KEY'),
@@ -72,7 +79,7 @@ const rpc = (fn, params) => sb('/rest/v1/rpc/' + fn, {
   body: JSON.stringify(params || {})
 });
 const encPath = (p) => p.split('/').map(encodeURIComponent).join('/');
-const publicUrl = (p) => env('SUPABASE_URL').replace(/\/+$/, '') + '/storage/v1/object/public/' + BUCKET + '/' + encPath(p);
+const publicUrl = (p) => baseUrl() + '/storage/v1/object/public/' + BUCKET + '/' + encPath(p);
 const fileOut = (r) => r ? ({ id: r.id, name: r.name, mime: r.mime, folder: r.folder, created: r.created_at, url: publicUrl(r.path) }) : null;
 
 export default async (req) => {

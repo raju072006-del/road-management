@@ -2899,17 +2899,23 @@
       if (open) {
         if (inG.length === 0) html += "<div class='ag-empty muted'>इस chapter में अभी कोई MoRD analysis नहीं</div>";
         else {
-          html += "<ul class='ag-list'>";
+          html += "<table class='ag-table'><thead><tr>" +
+            "<th class='c-ref'>क्रम व Analysis का नाम</th>" +
+            "<th class='c-size'>Analysis</th>" +
+            "<th class='c-mod'>अंतिम सुधार</th>" +
+            "<th class='c-act'>Action</th></tr></thead><tbody>";
           for (const s of inG) {
-            html += "<li><span class='agi-main'><span class='agi-nm'>" + (s.serial ? "<span class='agi-sn'>" + escapeHtml(s.serial) + "</span>" : "") + escapeHtml(s.name) + "</span>" + (s.title ? "<span class='agi-tt'>" + escapeHtml(s.title) + "</span>" : "") + "</span><span class='agi-acts'>";
+            html += "<tr><td class='c-ref'><div class='agi-main'><span class='agi-nm'>" + (s.serial ? "<span class='agi-sn'>" + escapeHtml(s.serial) + "</span>" : "") + escapeHtml(s.name) + "</span>" + (s.title ? "<span class='agi-tt'>" + escapeHtml(s.title) + "</span>" : "") + "</div></td>";
+            html += "<td class='c-size'><button class='chip has' data-dedit='" + s.id + "' title='यह Analysis खोलकर संपादित करें'>✎ खोलें</button></td>";
+            html += "<td class='c-mod'>" + fmtDateTime(s.updatedAt) + "</td>";
+            html += "<td class='c-act'><span class='agi-acts'>";
             html += "<button class='btn xs primary' data-dload='" + s.id + "'>📂 Load</button>";
-            html += "<button class='btn xs' data-dedit='" + s.id + "'>✎ Edit</button>";
+            html += "<button class='btn xs' data-dren='" + s.id + "' title='नाम/विवरण/क्रम/Chapter बदलें'>✎ Edit</button>";
             html += "<button class='btn xs' data-dchap='" + s.id + "'>📁 Chapter</button>";
-            html += "<button class='btn xs' data-dren='" + s.id + "'>✏ नाम</button>";
             html += "<button class='btn xs danger' data-ddel='" + s.id + "'>🗑</button>";
-            html += "</span></li>";
+            html += "</span></td></tr>";
           }
-          html += "</ul>";
+          html += "</tbody></table>";
         }
       }
       html += "</div>";
@@ -2929,7 +2935,7 @@
       // item (itemKey) के अनुसार समेटो
       const items = [];
       const byKey = {};
-      for (const s of inG) { if (!byKey[s.itemKey]) { byKey[s.itemKey] = { key: s.itemKey, name: s.itemName || s.name, desc: s.title || "", serial: s.serial || "", variants: {} }; items.push(byKey[s.itemKey]); } byKey[s.itemKey].variants[s.size] = s; if (!byKey[s.itemKey].serial && s.serial) byKey[s.itemKey].serial = s.serial; if (!byKey[s.itemKey].desc && s.title) byKey[s.itemKey].desc = s.title; }
+      for (const s of inG) { if (!byKey[s.itemKey]) { byKey[s.itemKey] = { key: s.itemKey, name: s.itemName || s.name, desc: s.title || "", serial: s.serial || "", upd: 0, variants: {} }; items.push(byKey[s.itemKey]); } byKey[s.itemKey].variants[s.size] = s; if (!byKey[s.itemKey].serial && s.serial) byKey[s.itemKey].serial = s.serial; if (!byKey[s.itemKey].desc && s.title) byKey[s.itemKey].desc = s.title; if ((s.updatedAt || 0) > byKey[s.itemKey].upd) byKey[s.itemKey].upd = s.updatedAt || 0; }
       items.sort((a, b) => cmpSerial(a.serial, b.serial, a.name, b.name));
       if (q && items.length === 0) continue;
       const open = q ? true : morthOpen.has(g.key);   // खोज के समय सब खुले
@@ -2937,25 +2943,32 @@
       if (open) {
         if (items.length === 0) html += "<div class='ag-empty muted'>इस chapter में अभी कोई MoRTH item नहीं</div>";
         else {
-          html += "<ul class='ag-list'>";
+          html += "<table class='ag-table'><thead><tr>" +
+            "<th class='c-ref'>क्रम व Analysis का नाम</th>" +
+            "<th class='c-size'>Large / Medium / Small</th>" +
+            "<th class='c-mod'>अंतिम सुधार</th>" +
+            "<th class='c-act'>Action</th></tr></thead><tbody>";
           for (const it of items) {
-            html += "<li class='morth-item'><span class='agi-main'><span class='agi-nm'>" + (it.serial ? "<span class='agi-sn'>" + escapeHtml(it.serial) + "</span>" : "") + escapeHtml(it.name) + "</span>";
+            html += "<tr class='morth-item'><td class='c-ref'><div class='agi-main'><span class='agi-nm'>" + (it.serial ? "<span class='agi-sn'>" + escapeHtml(it.serial) + "</span>" : "") + escapeHtml(it.name) + "</span>";
             if (it.desc && it.desc !== it.name) html += "<span class='agi-tt'>" + escapeHtml(it.desc) + "</span>";
+            html += "</div></td>";
             // size variants
-            html += "<span class='size-chips'>";
+            html += "<td class='c-size'><span class='size-chips'>";
             for (const sz of SIZES) {
               const v = it.variants[sz.key];
-              if (v) html += "<button class='chip has' data-medit='" + v.id + "' title='" + sz.name + " variant edit करें'>✎ " + sz.name + "</button>";
+              if (v) html += "<button class='chip has' data-medit='" + v.id + "' title='" + sz.name + " variant खोलकर संपादित करें'>✎ " + sz.name + "</button>";
               else html += "<button class='chip add' data-madd='" + it.key + "' data-size='" + sz.key + "' title='" + sz.name + " variant जोड़ें'>+ " + sz.name + "</button>";
             }
-            html += "</span></span><span class='agi-acts'>";
+            html += "</span></td>";
+            html += "<td class='c-mod'>" + fmtDateTime(it.upd) + "</td>";
+            html += "<td class='c-act'><span class='agi-acts'>";
             html += "<button class='btn xs primary' data-mload='" + it.key + "' title='मौजूदा project size (" + sizeName(projectSize) + ") में load करें'>📂 Load</button>";
+            html += "<button class='btn xs' data-mren='" + it.key + "' title='नाम/विवरण/क्रम/Chapter बदलें'>✎ Edit</button>";
             html += "<button class='btn xs' data-mchap='" + it.key + "'>📁 Chapter</button>";
-            html += "<button class='btn xs' data-mren='" + it.key + "'>✏ नाम</button>";
-            html += "<button class='btn xs danger' data-mdel='" + it.key + "'>🗑 item</button>";
-            html += "</span></li>";
+            html += "<button class='btn xs danger' data-mdel='" + it.key + "'>🗑</button>";
+            html += "</span></td></tr>";
           }
-          html += "</ul>";
+          html += "</tbody></table>";
         }
       }
       html += "</div>";
@@ -3020,6 +3033,89 @@
     const nm = raw.trim(); if (!nm) return;
     vs.forEach((s) => { s.itemName = nm; persistSheet(s); });
     renderMorthAnalysis(); status("Item का नाम बदला: " + nm);
+  }
+
+  // updatedAt → "DD/MM/YYYY HH:MM"
+  function fmtDateTime(ts) {
+    if (!ts) return "—";
+    const d = new Date(ts); if (isNaN(d.getTime())) return "—";
+    const p = (n) => String(n).padStart(2, "0");
+    return p(d.getDate()) + "/" + p(d.getMonth() + 1) + "/" + d.getFullYear() + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+  }
+
+  // link-safe rename (grid-UI के बिना) — MoRD "Edit" details में नाम बदलने के लिए
+  function _renameSheetLinkSafe(id, rawName) {
+    const sheet = state.sheets[id]; if (!sheet) return "";
+    const oldName = sheet.name;
+    const nn = uniqueName(safeName(rawName), id);
+    if (nn === oldName) return oldName;
+    const re = new RegExp("(^|[^A-Za-z0-9_'!])" + escapeReg(oldName) + "!", "g");
+    for (const sid of state.order) {
+      const s = state.sheets[sid]; let changed = false;
+      for (const a in s.cells) { const c = s.cells[a]; if (c.f) { const nf = c.f.replace(re, (m, p1) => p1 + nn + "!"); if (nf !== c.f) { c.f = nf; changed = true; } } }
+      if (changed) persistSheet(s);
+    }
+    sheet.name = nn; persistSheet(sheet);
+    if (hfReady) buildEngine();
+    return nn;
+  }
+
+  // "✎ Edit" — नया-Analysis जैसा विवरण-form, पर मौजूदा को संपादित करता है
+  function openAnalysisEditModal(src, key) {
+    const isMorth = src !== "mord";
+    let vs, s0;
+    if (isMorth) { vs = masterSheets().filter((s) => (s.source || "morth") === "morth" && s.itemKey === key); if (!vs.length) return; s0 = vs[0]; }
+    else { s0 = state.sheets[key]; if (!s0) return; }
+    const curGroup = chapterKeyOf(s0);
+    const groupOpts = chaptersOf(src).map((g) => "<option value='" + g.key + "'" + (g.key === curGroup ? " selected" : "") + ">" + escapeHtml(g.name) + "</option>").join("");
+    const nameFld = isMorth
+      ? "<label class='ns-fld'>Analysis (आइटम) का नाम<input id='edName' type='text' autocomplete='off' /></label>"
+      : "<label class='ns-fld'>शीट का नाम (formula-link)<input id='edName' type='text' autocomplete='off' /></label><div class='ns-preview' id='edPreview'></div>";
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.innerHTML =
+      "<div class='modal'>" +
+      "<h3>विवरण संपादित करें — " + (isMorth ? "MoRTH" : "MoRD") + "</h3>" +
+      (isMorth ? "<p class='sub'>बदलाव इस item के सभी size variant पर लागू होगा।</p>"
+               : "<p class='sub'>शीट के नाम में <b>space नहीं</b> — space की जगह अपने-आप <b>_</b> लगेगा; formula-link सुरक्षित रहेगा।</p>") +
+      nameFld +
+      "<label class='ns-fld'>विवरण (Description) <span class='muted'>— print में ऊपर बड़ा आएगा</span><input id='edTitle' type='text' autocomplete='off' /></label>" +
+      "<label class='ns-fld'>क्रम संख्या <span class='muted'>— chapter में इसी क्रम में sort</span><input id='edSerial' type='text' autocomplete='off' /></label>" +
+      "<label class='ns-fld'>Chapter (समूह)<select id='edGroup'>" + groupOpts + "</select></label>" +
+      "<div class='row'><button class='btn' id='edCancel'>रद्द</button><button class='btn primary' id='edOk'>सहेजें</button></div>" +
+      "</div>";
+    document.body.appendChild(overlay);
+    const $ = (sel) => overlay.querySelector(sel);
+    $("#edName").value = isMorth ? (s0.itemName || s0.name || "") : (s0.name || "");
+    $("#edTitle").value = s0.title || "";
+    $("#edSerial").value = s0.serial != null ? String(s0.serial) : "";
+    const prev = $("#edPreview");
+    if (!isMorth && prev) {
+      const rp = () => { const v = $("#edName").value.trim(); prev.textContent = v ? "शीट का नाम बनेगा:  " + safeName(v) : ""; };
+      $("#edName").addEventListener("input", rp); rp();
+    }
+    const close = () => overlay.remove();
+    const submit = () => {
+      const nameVal = $("#edName").value.trim();
+      const title = $("#edTitle").value.trim();
+      const serial = $("#edSerial").value.trim();
+      const group = $("#edGroup").value;
+      if (!nameVal) { $("#edName").style.borderColor = "var(--red)"; $("#edName").focus(); return; }
+      close();
+      if (isMorth) {
+        vs.forEach((s) => { s.itemName = nameVal; s.title = title; s.serial = serial; s.group = group; persistSheet(s); });
+        renderMorthAnalysis(); status("विवरण सहेजा: " + nameVal);
+      } else {
+        if (safeName(nameVal) !== s0.name) _renameSheetLinkSafe(s0.id, nameVal);
+        s0.title = title; s0.serial = serial; s0.group = group; persistSheet(s0);
+        renderMordAnalysis(); status("विवरण सहेजा: " + s0.name);
+      }
+    };
+    $("#edCancel").addEventListener("click", close);
+    $("#edOk").addEventListener("click", submit);
+    overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });
+    overlay.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); close(); } else if (e.key === "Enter") { e.preventDefault(); submit(); } });
+    $("#edName").focus();
   }
 
   // बिना confirm/UI के एक शीट हटाओ (item-delete में बार-बार confirm न पूछे)
@@ -3875,7 +3971,7 @@
       else if (b.dataset.madd) addMorthVariant(b.dataset.madd, b.dataset.size);
       else if (b.dataset.mload) loadMorthItem(b.dataset.mload);
       else if (b.dataset.mchap) changeMorthChapter(b.dataset.mchap);
-      else if (b.dataset.mren) renameMorthItem(b.dataset.mren);
+      else if (b.dataset.mren) openAnalysisEditModal("morth", b.dataset.mren);
       else if (b.dataset.mdel) deleteMorthItem(b.dataset.mdel);
     });
     // MoRD container — per-sheet action बटन (delegation)
@@ -3888,7 +3984,7 @@
       else if (b.dataset.dload) loadAnalysisToWorkspace(b.dataset.dload);
       else if (b.dataset.dedit) editMasterAnalysis(b.dataset.dedit);
       else if (b.dataset.dchap) changeMordChapter(b.dataset.dchap);
-      else if (b.dataset.dren) renameMordSheet(b.dataset.dren);
+      else if (b.dataset.dren) openAnalysisEditModal("mord", b.dataset.dren);
       else if (b.dataset.ddel) deleteMordSheet(b.dataset.ddel);
     });
   }

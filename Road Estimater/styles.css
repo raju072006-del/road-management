@@ -687,6 +687,13 @@ body{
 .lap-srctabs{display:inline-flex; gap:4px; padding:4px; background:#e8ecf5; border-radius:12px}
 .lap-srctabs .mtab{padding:6px 16px; font-size:12.5px}
 .lap-controls .proj-size-bar{margin:0; flex:1; min-width:210px}
+/* RMR चुनाव — sticky (बदलने तक बना रहता है); estimate के सभी RMR यहाँ दिखते हैं */
+.lap-rmrbar{display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:8px 0 2px; padding:7px 10px; background:#eef2fe; border:1px solid #dbe3fb; border-radius:var(--r-md)}
+.lap-rmrbar .psb-label{color:#3d4db4}
+.lap-rmrnote{font-size:11.5px}
+.lap-rmr-btn{background:#fff; border:1px solid #cfd8f5; border-radius:8px; padding:4px 11px; font-family:var(--ui); font-size:11.5px; font-weight:600; color:#3d4db4; cursor:pointer; transition:all .15s var(--ease)}
+.lap-rmr-btn:hover{background:#e2e9ff}
+.lap-rmr-btn.active{background:var(--primary,#4056d6); color:#fff; border-color:var(--primary,#4056d6); box-shadow:0 3px 8px rgba(64,86,214,.3)}
 .lap-list{max-height:52vh; overflow:auto; border:1px solid var(--line); border-radius:var(--r-md); background:#fff; margin-top:10px}
 .lap-group{border-bottom:1px solid var(--line)}
 .lap-group:last-child{border-bottom:none}

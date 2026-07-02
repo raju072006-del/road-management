@@ -3222,22 +3222,15 @@
     const est = state.estimates[state.activeEstimateId];
     const rmrs = (est && est.rmrs) ? est.rmrs : [];
     const groups = est ? estOhGroups(est) : [];
-    // पहले RMR पूछो (हो तो), फिर Overhead group (एक से ज़्यादा हों तो)
-    const pickRmr = rmrs.length
-      ? askChoice("इस Analysis को किस RMR से link करें?\n(Material के carted रेट उसी RMR से आएँगे; RMR का नाम Analysis पर लिखा जाएगा)",
-          rmrs.map((r) => ({ label: "🔗 " + r.name + (r.remark ? " — " + r.remark : ""), value: r.id, cls: "primary" })).concat([{ label: "बिना RMR", value: "__none" }]))
-      : Promise.resolve("__none");
-    pickRmr.then((v) => {
-      if (v == null) return;
-      const rmrId = v === "__none" ? null : v;
-      if (groups.length > 1) {
-        askChoice("Overhead व Contractor Profit किस group (Remark) से जोड़ें?",
-          groups.map((g) => ({ label: "📊 " + (g.remark || "बिना नाम group") + " — " + ohGroupDesc(g), value: g.id, cls: "primary" }))
-        ).then((gid) => { if (gid == null) return; doLoadAnalysis(masterId, rmrId, gid); });
-      } else {
-        doLoadAnalysis(masterId, rmrId, groups[0] ? groups[0].id : null);
-      }
-    });
+    // RMR — sticky चुनाव (_loadRmrId, load picker में तय); मौजूद न हो तो बिना RMR। बार-बार नहीं पूछते।
+    const rmrId = (_loadRmrId && rmrs.some((r) => r.id === _loadRmrId)) ? _loadRmrId : null;
+    if (groups.length > 1) {
+      askChoice("Overhead व Contractor Profit किस group (Remark) से जोड़ें?",
+        groups.map((g) => ({ label: "📊 " + (g.remark || "बिना नाम group") + " — " + ohGroupDesc(g), value: g.id, cls: "primary" }))
+      ).then((gid) => { if (gid == null) return; doLoadAnalysis(masterId, rmrId, gid); });
+    } else {
+      doLoadAnalysis(masterId, rmrId, groups[0] ? groups[0].id : null);
+    }
   }
   function doLoadAnalysis(masterId, rmrId, ohGroupId) {
     const m = state.sheets[masterId]; if (!m) return;
@@ -3279,12 +3272,19 @@
 
   // Rate Analysis का "📂 Load" — पहले source (MoRTH/MoRD), फिर सूची
   let _loadSrc = "morth";   // पिछली बार चुना source (MoRTH/MoRD) याद रखो — दुबारा-दुबारा मत पूछो
+  let _loadRmrId = null;    // पिछली बार चुना RMR — बदलने तक इसी पर बना रहे (null = बिना RMR)
   function openLoadAnalysisPicker() { showAnalysisListPicker(); }
   // एकीकृत सूची modal — MoRTH/MoRD और Project size (Large/Medium/Small) modal के अंदर ही toggle से;
   // बार-बार सवाल नहीं, एक जगह चुनो और जितने चाहे Analysis load करो।
   function showAnalysisListPicker() {
     const overlay = document.createElement("div");
     overlay.className = "modal-overlay";
+    // इस estimate के सभी RMR — validate sticky choice
+    const est0 = state.estimates[state.activeEstimateId];
+    const rmrs0 = (est0 && est0.rmrs) ? est0.rmrs : [];
+    if (_loadRmrId && !rmrs0.some((r) => r.id === _loadRmrId)) _loadRmrId = null;
+    const rmrBtns = "<button class='lap-rmr-btn' data-rmr='__none'>बिना RMR</button>" +
+      rmrs0.map((r) => "<button class='lap-rmr-btn' data-rmr='" + r.id + "' title='" + escapeHtml(r.remark || "") + "'>🔗 " + escapeHtml(r.name) + "</button>").join("");
     overlay.innerHTML =
       "<div class='modal pick'>" +
       "<div class='pk-head'><h3>📂 Analysis लोड करें</h3><button class='pk-x' id='lapClose'>✕</button></div>" +
@@ -3297,6 +3297,10 @@
           "<span class='psb-label'>Project:</span>" +
           SIZES.map((s) => "<button class='psb-btn' data-size='" + s.key + "'>" + s.name + "</button>").join("") +
         "</div>" +
+      "</div>" +
+      "<div class='lap-rmrbar' id='lapRmrBar' title='Material के carted रेट इसी RMR से आएँगे; RMR का नाम Analysis पर लिखा जाएगा'>" +
+        "<span class='psb-label'>RMR:</span>" + rmrBtns +
+        (rmrs0.length ? "" : "<span class='lap-rmrnote muted'>इस estimate में अभी कोई RMR नहीं बना</span>") +
       "</div>" +
       "<p class='sub'>चुना हुआ Analysis यहाँ <b>copy</b> बनकर खुलेगा (Master सुरक्षित)। बदलाव पर पूछा जाएगा कि Master में भी डालें या नहीं।</p>" +
       "<input type='search' id='lapSearch' class='search' placeholder='🔍 खोजें…' />" +
@@ -3311,6 +3315,7 @@
     function renderList() {
       overlay.querySelectorAll(".lap-srctabs .mtab").forEach((t) => t.classList.toggle("active", t.dataset.src === _loadSrc));
       overlay.querySelectorAll("#lapSizeBar .psb-btn").forEach((b) => b.classList.toggle("active", b.dataset.size === projectSize));
+      overlay.querySelectorAll("#lapRmrBar .lap-rmr-btn").forEach((b) => b.classList.toggle("active", (b.dataset.rmr === "__none" ? null : b.dataset.rmr) === _loadRmrId));
       sizeBar.style.display = _loadSrc === "morth" ? "" : "none";   // size सिर्फ़ MoRTH के लिए
       let listHtml = "";
       if (_loadSrc === "mord") {
@@ -3333,6 +3338,7 @@
 
     overlay.querySelectorAll(".lap-srctabs .mtab").forEach((t) => t.addEventListener("click", () => { _loadSrc = t.dataset.src; renderList(); }));
     overlay.querySelectorAll("#lapSizeBar .psb-btn").forEach((b) => b.addEventListener("click", () => { setProjectSize(b.dataset.size); renderList(); }));
+    overlay.querySelectorAll("#lapRmrBar .lap-rmr-btn").forEach((b) => b.addEventListener("click", () => { _loadRmrId = b.dataset.rmr === "__none" ? null : b.dataset.rmr; renderList(); }));
     searchEl.addEventListener("input", renderList);
     overlay.querySelector("#lapClose").addEventListener("click", close);
     overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });

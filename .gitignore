@@ -1,0 +1,6 @@
+# secrets — कभी GitHub पर नहीं जाने चाहिए
+.env.local
+
+# OS/editor junk
+Thumbs.db
+Desktop.ini

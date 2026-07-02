@@ -1,8 +1,19 @@
 # Deploy गाइड — एक command से site update
 
-रोज़ का काम बस इतना: कोड बदलें → **`deploy.bat` double-click** (या VS Code terminal में `.\deploy.bat`) → 1-2 मिनट में site update.
+## रोज़ का workflow (2 commands)
 
-पर उसके लिए पहले यह **one-time setup** करना होगा:
+| Command | काम |
+|---|---|
+| **`test.bat`** | build करके local (PC पर) खोलता है — जितनी बार चाहें; online **कुछ नहीं जाता** |
+| **`push.bat`** | जब सब ठीक लगे — **एक command में सब online**: ① website build ② Supabase database-structure (`supabase_schema.sql`) ③ GitHub push → Netlify auto-deploy |
+
+यानी: कोड बदलें → `test.bat` से देखें → संतुष्ट हों → `push.bat`।
+
+- Supabase-schema push के लिए एक बार `.env.local` बनानी होती है — तरीका `.env.local.example` में लिखा है। न बनाएँ तो schema-step अपने-आप skip होकर सिर्फ़ website push होती है।
+- ध्यान: `test.bat` LOCAL mode में खुलता है (डेटा आपके browser का), जबकि online site CLOUD mode (Supabase का साझा डेटा) में चलती है — design/feature के बदलाव local में हूबहू दिखते हैं।
+- नई sheets/columns जोड़ने के लिए SQL बदलने की ज़रूरत **नहीं** — डेटा-मॉडल generic है; schema फ़ाइल सिर्फ़ tables/functions स्तर के बदलाव पर छूती है।
+
+पहली बार का **one-time setup** (हो चुका है, record के लिए):
 
 ---
 

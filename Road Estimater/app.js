@@ -2672,7 +2672,14 @@
     const sec = document.getElementById("tbSection");
     if (sec) sec.textContent = VIEW_LABELS[name] || name;
     if (name === "load") renderEstimateProjectList();
-    if (name === "master") { renderMasterOverview(); renderMasterAnalysis(); }
+    if (name === "master") {
+      renderMasterOverview();   // Primary Rate कार्ड + loaded date — तुरंत (हल्का)
+      // ~1000 items की भारी Analysis library अगले frame में — पहले Primary Rate paint हो जाए
+      requestAnimationFrame(function () {
+        var mv = document.getElementById("view-master");
+        if (mv && mv.classList.contains("active")) renderMasterAnalysis();
+      });
+    }
     if (name === "master-cat") renderCat();
     if (name === "master-edit") renderMasterEdit();
     if (name === "rmr") renderRMR();

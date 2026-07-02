@@ -2161,13 +2161,20 @@
         ? (isWorkingCopy(s) ? "<span class='sl-tag copy' title='Master से जुड़ी copy'>🔗 copy</span>" : "")
         : "<span class='sl-tag master' title='Master Analysis — सीधा बदलाव'>🗄️ master</span>";
       const rmrTag = (isWork && s.rmrName) ? "<span class='sl-tag rmr' title='इस RMR से linked'>📦 " + escapeHtml(s.rmrName) + "</span>" : "";
-      li.innerHTML = "<span class='dot'></span><span class='nm'>" + escapeHtml(s.name) + "</span>" + tag + rmrTag;
+      const delBtn = isWork ? "<button class='sl-del' title='यहाँ से हटाएँ — Master Data की मूल शीट सुरक्षित रहेगी'>🗑</button>" : "";
+      li.innerHTML = "<span class='dot'></span><span class='nm'>" + escapeHtml(s.name) + "</span>" + tag + rmrTag + delBtn;
       // formula में reference डालते समय focus न छूटे
       li.addEventListener("mousedown", (e) => { if (armed && armed.refExpected()) e.preventDefault(); });
       li.addEventListener("click", () => {
         if (armed && armed.refExpected()) { handoffToBar(id); return; } // दूसरी शीट से link
         if (armed && armed.surface === "bar") { commitArmed("stay"); }   // अधूरा edit पक्का कर दो
         openSheet(id);
+      });
+      const delEl = li.querySelector(".sl-del");
+      if (delEl) delEl.addEventListener("click", (e) => {
+        e.stopPropagation();   // शीट खुलने से रोको — सीधे delete
+        state.activeSheetId = id; renderSheetList(); renderGrid();
+        deleteActiveSheet();   // loaded copy हटेगी; Master पर असर नहीं
       });
       li.addEventListener("contextmenu", (e) => {
         e.preventDefault();
@@ -2182,7 +2189,7 @@
     if (shown === 0) {
       const li = document.createElement("li");
       li.className = "muted-row";
-      li.innerHTML = q ? "कोई मेल नहीं।" : "अभी कोई Analysis load नहीं — ऊपर <b>📂 Load</b> से Master से लाएँ, या <b>+ नई</b> से खाली बनाएँ।";
+      li.innerHTML = q ? "कोई मेल नहीं।" : "अभी कोई Analysis load नहीं — ऊपर <b>📂 Load</b> से Master से लाएँ।";
       list.appendChild(li);
     }
     document.getElementById("sheetCount").textContent = working + " load किए" + (q ? " · " + shown + " मिलीं" : "");
@@ -3222,15 +3229,113 @@
     const est = state.estimates[state.activeEstimateId];
     const rmrs = (est && est.rmrs) ? est.rmrs : [];
     const groups = est ? estOhGroups(est) : [];
-    // RMR — sticky चुनाव (_loadRmrId, load picker में तय); मौजूद न हो तो बिना RMR। बार-बार नहीं पूछते।
+    // RMR व Overhead दोनों sticky (load picker में तय) — बार-बार नहीं पूछते
     const rmrId = (_loadRmrId && rmrs.some((r) => r.id === _loadRmrId)) ? _loadRmrId : null;
-    if (groups.length > 1) {
-      askChoice("Overhead व Contractor Profit किस group (Remark) से जोड़ें?",
-        groups.map((g) => ({ label: "📊 " + (g.remark || "बिना नाम group") + " — " + ohGroupDesc(g), value: g.id, cls: "primary" }))
-      ).then((gid) => { if (gid == null) return; doLoadAnalysis(masterId, rmrId, gid); });
-    } else {
-      doLoadAnalysis(masterId, rmrId, groups[0] ? groups[0].id : null);
+    const ohGroupId = groups.length ? ((groups.some((g) => g.id === _loadOhGroupId) ? _loadOhGroupId : groups[0].id)) : null;
+    maybeLoadWithDeps(masterId, rmrId, ohGroupId);
+  }
+  // दूसरी शीट से डाटा आ रहा हो (formula-link) → पहले पूछो कि उन्हें भी load करें (recursive)
+  function maybeLoadWithDeps(masterId, rmrId, ohGroupId) {
+    const deps = collectMasterDeps(masterId);   // इस Analysis के पीछे जुड़ी master शीटें
+    if (!deps.length) { doLoadAnalysis(masterId, rmrId, ohGroupId); return; }
+    askDepsToLoad(masterId, deps).then((chosen) => {
+      if (chosen == null) return;                          // रद्द
+      if (!chosen.length) { doLoadAnalysis(masterId, rmrId, ohGroupId); return; }  // सिर्फ़ यही शीट
+      doLoadAnalysisChain(masterId, chosen, rmrId, ohGroupId);
+    });
+  }
+  // masterId के formula-references से transitively जुड़ी सभी master शीट ids (खुद को छोड़कर)
+  function collectMasterDeps(masterId) {
+    const masterByName = {};
+    for (const id of state.order) { const s = state.sheets[id]; if (s.kind === "master") masterByName[s.name] = id; }
+    const reRef = /(?:'([^']+)'|([^\s'!()+\-*/,;:&<>=^%]+))!/g;
+    const seen = new Set([masterId]);
+    const order = [];
+    const stack = [masterId];
+    while (stack.length) {
+      const s = state.sheets[stack.pop()]; if (!s || !s.cells) continue;
+      for (const a in s.cells) {
+        const f = s.cells[a] && s.cells[a].f;
+        if (!f || f.indexOf("!") < 0) continue;
+        let m; reRef.lastIndex = 0;
+        while ((m = reRef.exec(f))) { const nm = m[1] || m[2]; const dep = masterByName[nm]; if (dep != null && !seen.has(dep)) { seen.add(dep); order.push(dep); stack.push(dep); } }
+      }
     }
+    return order;
+  }
+  // copy की formulas में जुड़ी शीटों के नाम बदलो (master-नाम → load की गई copy का नाम)
+  function rewriteRefs(sheet, nameMap) {
+    for (const oldName in nameMap) {
+      const newName = nameMap[oldName];
+      if (!newName || oldName === newName) continue;
+      const re = new RegExp("(^|[^A-Za-z0-9_'!])" + escapeReg(oldName) + "!", "g");
+      for (const a in sheet.cells) { const cell = sheet.cells[a]; if (cell.f) cell.f = cell.f.replace(re, (mm, p1) => p1 + newName + "!"); }
+    }
+  }
+  // master m की एक working-copy बनाओ (state में जोड़े बिना object लौटाओ)
+  function buildCopyOf(m, rmrId, ohGroupId) {
+    const rmr = rmrId ? findRmrById(rmrId) : null;
+    const copy = JSON.parse(JSON.stringify(m));
+    copy.id = uid("sht");
+    copy.name = uniqueName(safeName((m.itemName || m.name) + ((m.source || "morth") === "morth" ? "_" + m.size : "") + (rmr ? "_" + rmr.name : "") + "_copy"));
+    copy.kind = "working"; copy.masterId = m.id; copy.syncPref = null; copy.updatedAt = Date.now();
+    copy.rmrId = rmrId || null; copy.rmrName = rmr ? rmr.name : "";
+    copy.ohGroupId = ohGroupId || null;
+    if (rmr) copy.title = (copy.title ? copy.title + "  " : "") + "[RMR: " + rmr.name + "]";
+    if (rmrId) repointMaterialToRmr(copy, rmrId);
+    return copy;
+  }
+  // main + चुनी हुई dependency शीटें एक साथ load; आपस के references copy-नामों पर re-point
+  function doLoadAnalysisChain(mainId, depIds, rmrId, ohGroupId) {
+    const mMain = state.sheets[mainId]; if (!mMain) return;
+    const dupMain = state.order.some((id) => { const s = state.sheets[id]; return s && s.kind === "working" && s.masterId === mainId && (s.rmrId || null) === (rmrId || null) && (s.ohGroupId || null) === (ohGroupId || null); });
+    if (dupMain) { alert("यह Analysis इसी RMR व Overhead group से पहले ही load है।"); return; }
+    const nameMap = {}; const created = [];
+    for (const mid of depIds.concat([mainId])) {         // deps पहले, main आख़िर
+      const m = state.sheets[mid]; if (!m) continue;
+      // पहले से इसी RMR+OH से load है तो दोबारा नहीं — उसी copy-नाम पर link जोड़ो
+      const existing = mid !== mainId && state.order.find((id) => { const s = state.sheets[id]; return s && s.kind === "working" && s.masterId === mid && (s.rmrId || null) === (rmrId || null) && (s.ohGroupId || null) === (ohGroupId || null); });
+      if (existing) { nameMap[m.name] = state.sheets[existing].name; continue; }
+      const copy = buildCopyOf(m, rmrId, ohGroupId);
+      state.sheets[copy.id] = copy; state.order.push(copy.id);   // uniqueName अगली copy के लिए इसे देख ले
+      nameMap[m.name] = copy.name; created.push(copy);
+    }
+    for (const copy of created) rewriteRefs(copy, nameMap);       // आपसी links को copy-नामों पर मोड़ो
+    for (const copy of created) {
+      if (hfReady) { try { hf.addSheet(copy.name); hf.setSheetContent(hfSheetId(copy.name), sheetMatrix(copy)); } catch (e) { } }
+      applyOverheadToSheet(copy); db.put("sheets", copy);
+    }
+    buildEngine();
+    reRateAllAnalyses();
+    const mainCopy = created.find((c) => c.masterId === mainId);
+    if (mainCopy) openSheet(mainCopy.id);
+    setActiveView("rate-analysis");
+    refreshEstimateSheetPicker();
+    status("Analysis + " + created.filter((c) => c.masterId !== mainId).length + " linked शीट load हुईं");
+  }
+  // dependency चुनने का modal — default सब चुनी हुई
+  function askDepsToLoad(mainId, depIds) {
+    return new Promise((resolve) => {
+      const mainNm = (state.sheets[mainId].itemName || state.sheets[mainId].name);
+      const rows = depIds.map((id) => { const s = state.sheets[id]; const nm = (s.itemName || s.name); const src = (s.source || "morth") === "mord" ? "MoRD" : "MoRTH"; return "<label class='dep-row'><input type='checkbox' checked data-dep='" + id + "'><span class='dep-nm'>" + escapeHtml(nm) + "</span><span class='dep-src'>" + src + "</span></label>"; }).join("");
+      const ov = document.createElement("div");
+      ov.className = "modal-overlay";
+      ov.innerHTML =
+        "<div class='modal'><h3>🔗 जुड़ी शीटें भी load करें?</h3>" +
+        "<p class='sub'>“<b>" + escapeHtml(mainNm) + "</b>” नीचे दी शीटों से डाटा लेती है। जिन्हें साथ load करना हो चुनें — तब इस Analysis के links इन load की गई copy से जुड़ जाएँगे।</p>" +
+        "<div class='dep-list'>" + rows + "</div>" +
+        "<div class='row wrap' style='margin-top:12px'>" +
+          "<button class='btn primary' data-act='sel'>✓ चुनी हुई भी load करें</button>" +
+          "<button class='btn' data-act='none'>सिर्फ़ यही शीट</button>" +
+          "<button class='btn' data-act='cancel'>रद्द</button>" +
+        "</div></div>";
+      document.body.appendChild(ov);
+      const done = (val) => { ov.remove(); resolve(val); };
+      ov.querySelector("[data-act='sel']").addEventListener("click", () => { const ids = Array.from(ov.querySelectorAll("[data-dep]")).filter((c) => c.checked).map((c) => c.dataset.dep); done(ids); });
+      ov.querySelector("[data-act='none']").addEventListener("click", () => done([]));
+      ov.querySelector("[data-act='cancel']").addEventListener("click", () => done(null));
+      ov.addEventListener("mousedown", (e) => { if (e.target === ov) done(null); });
+    });
   }
   function doLoadAnalysis(masterId, rmrId, ohGroupId) {
     const m = state.sheets[masterId]; if (!m) return;
@@ -3273,6 +3378,7 @@
   // Rate Analysis का "📂 Load" — पहले source (MoRTH/MoRD), फिर सूची
   let _loadSrc = "morth";   // पिछली बार चुना source (MoRTH/MoRD) याद रखो — दुबारा-दुबारा मत पूछो
   let _loadRmrId = null;    // पिछली बार चुना RMR — बदलने तक इसी पर बना रहे (null = बिना RMR)
+  let _loadOhGroupId = null; // पिछली बार चुना Overhead group — बदलने तक इसी पर (null = पहला group)
   function openLoadAnalysisPicker() { showAnalysisListPicker(); }
   // एकीकृत सूची modal — MoRTH/MoRD और Project size (Large/Medium/Small) modal के अंदर ही toggle से;
   // बार-बार सवाल नहीं, एक जगह चुनो और जितने चाहे Analysis load करो।
@@ -3285,6 +3391,16 @@
     if (_loadRmrId && !rmrs0.some((r) => r.id === _loadRmrId)) _loadRmrId = null;
     const rmrBtns = "<button class='lap-rmr-btn' data-rmr='__none'>बिना RMR</button>" +
       rmrs0.map((r) => "<button class='lap-rmr-btn' data-rmr='" + r.id + "' title='" + escapeHtml(r.remark || "") + "'>🔗 " + escapeHtml(r.name) + "</button>").join("");
+    // Overhead groups — एक से ज़्यादा हों तभी चुनाव दिखाओ; sticky validate
+    const ohGroups0 = est0 ? estOhGroups(est0) : [];
+    if (_loadOhGroupId && !ohGroups0.some((g) => g.id === _loadOhGroupId)) _loadOhGroupId = null;
+    if (!_loadOhGroupId && ohGroups0.length) _loadOhGroupId = ohGroups0[0].id;
+    const ohBar = ohGroups0.length > 1
+      ? "<div class='lap-ohbar' id='lapOhBar' title='Overhead व Contractor Profit इसी group के % से जुड़ेंगे'>" +
+          "<span class='psb-label'>Overhead:</span>" +
+          ohGroups0.map((g) => "<button class='lap-oh-btn' data-oh='" + g.id + "' title='" + escapeHtml(ohGroupDesc(g)) + "'>📊 " + escapeHtml(g.remark || "बिना नाम") + "</button>").join("") +
+        "</div>"
+      : "";
     overlay.innerHTML =
       "<div class='modal pick'>" +
       "<div class='pk-head'><h3>📂 Analysis लोड करें</h3><button class='pk-x' id='lapClose'>✕</button></div>" +
@@ -3302,6 +3418,7 @@
         "<span class='psb-label'>RMR:</span>" + rmrBtns +
         (rmrs0.length ? "" : "<span class='lap-rmrnote muted'>इस estimate में अभी कोई RMR नहीं बना</span>") +
       "</div>" +
+      ohBar +
       "<p class='sub'>चुना हुआ Analysis यहाँ <b>copy</b> बनकर खुलेगा (Master सुरक्षित)। बदलाव पर पूछा जाएगा कि Master में भी डालें या नहीं।</p>" +
       "<input type='search' id='lapSearch' class='search' placeholder='🔍 खोजें…' />" +
       "<div class='lap-list' id='lapList'></div>" +
@@ -3316,6 +3433,7 @@
       overlay.querySelectorAll(".lap-srctabs .mtab").forEach((t) => t.classList.toggle("active", t.dataset.src === _loadSrc));
       overlay.querySelectorAll("#lapSizeBar .psb-btn").forEach((b) => b.classList.toggle("active", b.dataset.size === projectSize));
       overlay.querySelectorAll("#lapRmrBar .lap-rmr-btn").forEach((b) => b.classList.toggle("active", (b.dataset.rmr === "__none" ? null : b.dataset.rmr) === _loadRmrId));
+      overlay.querySelectorAll("#lapOhBar .lap-oh-btn").forEach((b) => b.classList.toggle("active", b.dataset.oh === _loadOhGroupId));
       sizeBar.style.display = _loadSrc === "morth" ? "" : "none";   // size सिर्फ़ MoRTH के लिए
       let listHtml = "";
       if (_loadSrc === "mord") {
@@ -3339,6 +3457,7 @@
     overlay.querySelectorAll(".lap-srctabs .mtab").forEach((t) => t.addEventListener("click", () => { _loadSrc = t.dataset.src; renderList(); }));
     overlay.querySelectorAll("#lapSizeBar .psb-btn").forEach((b) => b.addEventListener("click", () => { setProjectSize(b.dataset.size); renderList(); }));
     overlay.querySelectorAll("#lapRmrBar .lap-rmr-btn").forEach((b) => b.addEventListener("click", () => { _loadRmrId = b.dataset.rmr === "__none" ? null : b.dataset.rmr; renderList(); }));
+    overlay.querySelectorAll("#lapOhBar .lap-oh-btn").forEach((b) => b.addEventListener("click", () => { _loadOhGroupId = b.dataset.oh; renderList(); }));
     searchEl.addEventListener("input", renderList);
     overlay.querySelector("#lapClose").addEventListener("click", close);
     overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });

@@ -308,16 +308,18 @@ $$;
 
 -- ── RPC: files metadata ─────────────────────────────────────────
 
-create or replace function public.ss_register_file(p_path text, p_name text, p_folder text, p_mime text, p_size bigint)
+-- (पुराना 5-parameter version हटाएँ ताकि overload-टकराव न हो)
+drop function if exists public.ss_register_file(text, text, text, text, bigint);
+
+create or replace function public.ss_register_file(p_id uuid, p_path text, p_name text, p_folder text, p_mime text, p_size bigint)
 returns uuid
 language plpgsql
 as $$
-declare v_id uuid;
 begin
-  insert into public.files(path, name, folder, mime, size)
-  values (p_path, p_name, p_folder, p_mime, p_size)
-  returning id into v_id;
-  return v_id;
+  insert into public.files(id, path, name, folder, mime, size)
+  values (p_id, p_path, p_name, p_folder, p_mime, p_size)
+  on conflict (id) do nothing;
+  return p_id;
 end;
 $$;
 

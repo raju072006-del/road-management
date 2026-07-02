@@ -1,7 +1,9 @@
 /* ═══════════════════════════════════════════════════════════════
-   LOCAL PLATFORM — server frame के अंदर चलता है
-   Google Apps Script services के browser-polyfills +
-   localStorage-backed database (SBApp/SBDrive)
+   PLATFORM — server frame के अंदर चलता है
+   Google Apps Script services के browser-polyfills + दो data-modes:
+     • LOCAL mode — localStorage (file:// से खोलने पर, offline)
+     • CLOUD mode — Netlify Function → Supabase (hosted site पर,
+       जब /api/db configured मिले) — सभी users का साझा central डेटा
    ═══════════════════════════════════════════════════════════════ */
 
 var Logger = { log: function () { try { console.log.apply(console, arguments); } catch (e) {} } };
@@ -38,7 +40,7 @@ var HtmlService = {
 };
 
 var UrlFetchApp = {
-  fetch: function () { throw new Error('Local mode में bाहरी network call उपलब्ध नहीं है'); }
+  fetch: function () { throw new Error('इस mode में सीधी network call उपलब्ध नहीं है'); }
 };
 
 var Utilities = {
@@ -108,14 +110,85 @@ var CacheService = (function () {
       if (Date.now() > e.exp) { delete mem[k]; return null; }
       return e.v;
     },
-    put: function (k, v, ttl) { mem[k] = { v: String(v), exp: Date.now() + (ttl || 600) * 1000 }; },
+    put: function (k, v, ttl) {
+      ttl = ttl || 600;
+      /* cloud mode में cache छोटा — ताकि दूसरे users के बदलाव जल्दी दिखें */
+      if (SB_CLOUD && ttl > 60) ttl = 60;
+      mem[k] = { v: String(v), exp: Date.now() + ttl * 1000 };
+    },
     remove: function (k) { delete mem[k]; },
     removeAll: function (keys) { (keys || []).forEach(function (k) { delete mem[k]; }); }
   };
   return { getScriptCache: function () { return api; }, getUserCache: function () { return api; } };
 })();
 
-/* ── LocalDB — localStorage persistence ───────────────────────── */
+/* ── CLOUD detection — boot हमें __BASE__ देता है (http/https origin) ── */
+
+var SB_CLOUD = false;
+var SB_TOKEN = '';
+(function () {
+  try {
+    if (window.__BASE__) {
+      var x = new XMLHttpRequest();
+      x.open('GET', window.__BASE__ + '/api/db', false);
+      x.send(null);
+      if (x.status === 200) {
+        var r = JSON.parse(x.responseText);
+        SB_CLOUD = (r && r.cloud === true);
+      }
+      try { SB_TOKEN = localStorage.getItem('rms_cloud_token') || ''; } catch (e) {}
+    }
+  } catch (e) {}
+})();
+
+function sbCall_(op, args) {
+  var x = new XMLHttpRequest();
+  x.open('POST', window.__BASE__ + '/api/db', false);
+  x.setRequestHeader('Content-Type', 'application/json');
+  x.send(JSON.stringify({ op: op, token: SB_TOKEN, args: args || {} }));
+  var r = null;
+  try { r = JSON.parse(x.responseText); } catch (e) {}
+  if (!r || r.ok !== true) {
+    throw new Error((r && r.error) || ('Server त्रुटि (' + x.status + ')'));
+  }
+  return r.result;
+}
+
+/* ── साझा helpers — दोनों modes ─────────────────────────────── */
+
+function sbVal_(v) {
+  if (v === null || v === undefined) return '';
+  if (v instanceof Date) {
+    var dd = ('0' + v.getDate()).slice(-2), mm = ('0' + (v.getMonth() + 1)).slice(-2);
+    return dd + '/' + mm + '/' + v.getFullYear();
+  }
+  if (typeof v === 'number' || typeof v === 'boolean') return v;
+  return String(v);
+}
+
+/* rows[][] में (row,col) से 2D block लिखना (values पहले से sanitized) */
+function cellsWrite_(rows, row, col, vals) {
+  for (var r = 0; r < vals.length; r++) {
+    var idx = row - 1 + r;
+    while (rows.length <= idx) rows.push([]);
+    var line = rows[idx];
+    for (var c = 0; c < vals[r].length; c++) {
+      while (line.length < col - 1 + c) line.push('');
+      line[col - 1 + c] = vals[r][c];
+    }
+  }
+}
+function cellsClear_(rows, row, col, nrows, ncols) {
+  for (var r = 0; r < nrows; r++) {
+    var line = rows[row - 1 + r];
+    if (!line) continue;
+    for (var c = 0; c < ncols; c++) {
+      if (line.length > col - 1 + c) line[col - 1 + c] = '';
+    }
+  }
+}
+
+/* ── LocalDB — localStorage persistence (LOCAL mode) ──────────── */
 
 var LocalDB = (function () {
   var DB_KEY = 'rms_db', FILE_KEY = 'rms_files';
@@ -153,17 +226,7 @@ var LocalDB = (function () {
   };
 })();
 
-function sbVal_(v) {
-  if (v === null || v === undefined) return '';
-  if (v instanceof Date) {
-    var dd = ('0' + v.getDate()).slice(-2), mm = ('0' + (v.getMonth() + 1)).slice(-2);
-    return dd + '/' + mm + '/' + v.getFullYear();
-  }
-  if (typeof v === 'number' || typeof v === 'boolean') return v;
-  return String(v);
-}
-
-/* ── SBRange / SBSheet / SBSpreadsheet ────────────────────────── */
+/* ── SBRange — दोनों modes का साझा Range (writes sheet को सौंपता है) ── */
 
 function SBRange_(sheet, row, col, nrows, ncols) {
   this.sh = sheet; this.row = row; this.col = col;
@@ -186,30 +249,12 @@ SBRange_.prototype.getDisplayValues = function () {
   return this.getValues().map(function (r) { return r.map(function (v) { return String(v); }); });
 };
 SBRange_.prototype.setValues = function (vals) {
-  var rows = this.sh._rows();
-  for (var r = 0; r < vals.length; r++) {
-    var idx = this.row - 1 + r;
-    while (rows.length <= idx) rows.push([]);
-    var line = rows[idx];
-    for (var c = 0; c < vals[r].length; c++) {
-      while (line.length < this.col - 1 + c) line.push('');
-      line[this.col - 1 + c] = sbVal_(vals[r][c]);
-    }
-  }
-  LocalDB.touch(this.sh.ss.id); LocalDB.save();
+  this.sh._setCells(this.row, this.col, vals.map(function (r) { return r.map(sbVal_); }));
   return this;
 };
 SBRange_.prototype.setValue = function (v) { return this.setValues([[v]]); };
 SBRange_.prototype.clearContent = function () {
-  var rows = this.sh._rows();
-  for (var r = 0; r < this.nrows; r++) {
-    var line = rows[this.row - 1 + r];
-    if (!line) continue;
-    for (var c = 0; c < this.ncols; c++) {
-      if (line.length > this.col - 1 + c) line[this.col - 1 + c] = '';
-    }
-  }
-  LocalDB.touch(this.sh.ss.id); LocalDB.save();
+  this.sh._clearRange(this.row, this.col, this.nrows, this.ncols);
   return this;
 };
 ['setBackground','setFontColor','setFontWeight','setFontSize','setNumberFormat',
@@ -217,11 +262,21 @@ SBRange_.prototype.clearContent = function () {
  'setDataValidation','setFontStyle','setFontFamily','merge','setNote'
 ].forEach(function (m) { SBRange_.prototype[m] = function () { return this; }; });
 
+/* ── SBSheet / SBSpreadsheet — LOCAL mode ─────────────────────── */
+
 function SBSheet_(ss, name) { this.ss = ss; this.name = name; }
 SBSheet_.prototype._rows = function () {
   var s = LocalDB.db().ss[this.ss.id];
   if (!s.sheets[this.name]) s.sheets[this.name] = [];
   return s.sheets[this.name];
+};
+SBSheet_.prototype._setCells = function (row, col, vals) {
+  cellsWrite_(this._rows(), row, col, vals);
+  LocalDB.touch(this.ss.id); LocalDB.save();
+};
+SBSheet_.prototype._clearRange = function (row, col, nrows, ncols) {
+  cellsClear_(this._rows(), row, col, nrows, ncols);
+  LocalDB.touch(this.ss.id); LocalDB.save();
 };
 SBSheet_.prototype.getName = function () { return this.name; };
 SBSheet_.prototype.setName = function (newName) {
@@ -303,19 +358,8 @@ SBSpreadsheet_.prototype.deleteSheet = function (sheet) {
   return this;
 };
 
-var SBApp = {
-  getActiveSpreadsheet: function () { return new SBSpreadsheet_('main'); },
-  openById: function (id) {
-    if (!LocalDB.db().ss[String(id)]) throw new Error('Spreadsheet नहीं मिली: ' + id);
-    return new SBSpreadsheet_(String(id));
-  },
-  create: function (name) {
-    var id = Utilities.getUuid();
-    LocalDB.db().ss[id] = { name: name, updated: new Date().toISOString(), sheets: { 'Sheet1': [] } };
-    LocalDB.save();
-    return new SBSpreadsheet_(id);
-  },
-  flush: function () {},
+/* ── साझा UI stubs ── */
+var SBUi_ = {
   getUi: function () {
     var chain = { addItem: function () { return chain; }, addSeparator: function () { return chain; }, addToUi: function () {} };
     return {
@@ -333,7 +377,24 @@ var SBApp = {
   }
 };
 
-/* ── SBDrive — फ़ाइलें localStorage में (base64) ───────────────── */
+var SBApp = {
+  getActiveSpreadsheet: function () { return new SBSpreadsheet_('main'); },
+  openById: function (id) {
+    if (!LocalDB.db().ss[String(id)]) throw new Error('Spreadsheet नहीं मिली: ' + id);
+    return new SBSpreadsheet_(String(id));
+  },
+  create: function (name) {
+    var id = Utilities.getUuid();
+    LocalDB.db().ss[id] = { name: name, updated: new Date().toISOString(), sheets: { 'Sheet1': [] } };
+    LocalDB.save();
+    return new SBSpreadsheet_(id);
+  },
+  flush: function () {},
+  getUi: SBUi_.getUi,
+  newDataValidation: SBUi_.newDataValidation
+};
+
+/* ── SBDrive — LOCAL mode (फ़ाइलें localStorage में, base64) ───── */
 
 function SBFile_(id) { this.id = id; }
 SBFile_.prototype._rec = function () { return LocalDB.files()[this.id]; };
@@ -456,7 +517,7 @@ var SBDrive = {
   }
 };
 
-/* ── parent (boot) के लिए helpers ─────────────────────────────── */
+/* ── boot के लिए helpers (LOCAL versions) ─────────────────────── */
 
 function localFileRecord(id) {
   var r = LocalDB.files()[String(id)];
@@ -471,13 +532,300 @@ function localFolderList(path) {
     .sort(function (a, b) { return String(b.created).localeCompare(String(a.created)); });
 }
 
-/* पहली बार — sample sheets seed करें */
+/* ═══════════════════════════════════════════════════════════════
+   CLOUD mode — Netlify Function → Supabase (साझा central डेटा)
+   ═══════════════════════════════════════════════════════════════ */
+
+/* workbook cache — TTL के बाद ताज़ा fetch (दूसरे users के बदलाव दिखें) */
+var RS_ = { data: {}, at: {}, list: null, listAt: 0, TTL: 45000 };
+function rsLoad_(ssId) {
+  var now = Date.now();
+  if (RS_.data[ssId] && (now - RS_.at[ssId]) < RS_.TTL) return RS_.data[ssId];
+  RS_.data[ssId] = sbCall_('loadAll', { ss: ssId }) || {};
+  RS_.at[ssId] = now;
+  return RS_.data[ssId];
+}
+function rsList_(force) {
+  var now = Date.now();
+  if (!force && RS_.list && (now - RS_.listAt) < RS_.TTL) return RS_.list;
+  RS_.list = sbCall_('listSS', {}) || [];
+  RS_.listAt = now;
+  return RS_.list;
+}
+function rsHas_(ssId) {
+  var list = rsList_();
+  for (var i = 0; i < list.length; i++) if (list[i].id === ssId) return list[i];
+  return null;
+}
+
+/* RSheet — remote sheet (SBSheet से inherit; सिर्फ़ storage-hooks अलग) */
+function RSheet_(ss, name) { this.ss = ss; this.name = name; }
+RSheet_.prototype = Object.create(SBSheet_.prototype);
+RSheet_.prototype.constructor = RSheet_;
+RSheet_.prototype._rows = function () {
+  var d = rsLoad_(this.ss.id);
+  if (!d[this.name]) d[this.name] = [];
+  return d[this.name];
+};
+RSheet_.prototype._setCells = function (row, col, vals) {
+  sbCall_('setCells', { ss: this.ss.id, sheet: this.name, row: row, col: col, values: vals });
+  cellsWrite_(this._rows(), row, col, vals);
+};
+RSheet_.prototype._clearRange = function (row, col, nrows, ncols) {
+  sbCall_('clearRange', { ss: this.ss.id, sheet: this.name, row: row, col: col, nrows: nrows, ncols: ncols });
+  cellsClear_(this._rows(), row, col, nrows, ncols);
+};
+RSheet_.prototype.setName = function (newName) {
+  sbCall_('renameSheet', { ss: this.ss.id, old: this.name, neu: newName });
+  var d = rsLoad_(this.ss.id);
+  d[newName] = d[this.name] || [];
+  delete d[this.name];
+  this.name = newName;
+  return this;
+};
+RSheet_.prototype.appendRow = function (arr) {
+  var clean = arr.map(sbVal_);
+  sbCall_('appendRow', { ss: this.ss.id, sheet: this.name, cells: clean });
+  this._rows().push(clean);
+  return this;
+};
+RSheet_.prototype.deleteRow = function (rowIdx) {
+  sbCall_('deleteRow', { ss: this.ss.id, sheet: this.name, row: rowIdx });
+  var rows = this._rows();
+  if (rowIdx >= 1 && rowIdx <= rows.length) rows.splice(rowIdx - 1, 1);
+  return this;
+};
+RSheet_.prototype.clearContents = function () {
+  sbCall_('deleteSheet', { ss: this.ss.id, sheet: this.name });
+  sbCall_('ensureSheet', { ss: this.ss.id, sheet: this.name });
+  rsLoad_(this.ss.id)[this.name] = [];
+  return this;
+};
+
+/* RSpreadsheet — remote workbook */
+function RSpreadsheet_(id) { this.id = id; }
+RSpreadsheet_.prototype.getId = function () { return this.id; };
+RSpreadsheet_.prototype.getUrl = function () { return ''; };
+RSpreadsheet_.prototype.getName = function () {
+  var e = rsHas_(this.id);
+  return e ? e.name : this.id;
+};
+RSpreadsheet_.prototype.getSheetByName = function (name) {
+  var d = rsLoad_(this.id);
+  return d.hasOwnProperty(name) ? new RSheet_(this, name) : null;
+};
+RSpreadsheet_.prototype.insertSheet = function (name) {
+  var d = rsLoad_(this.id);
+  name = name || ('Sheet' + (Object.keys(d).length + 1));
+  if (!d.hasOwnProperty(name)) {
+    sbCall_('ensureSheet', { ss: this.id, sheet: name });
+    d[name] = [];
+  }
+  return new RSheet_(this, name);
+};
+RSpreadsheet_.prototype.getSheets = function () {
+  var d = rsLoad_(this.id), self = this;
+  return Object.keys(d).map(function (n) { return new RSheet_(self, n); });
+};
+RSpreadsheet_.prototype.deleteSheet = function (sheet) {
+  sbCall_('deleteSheet', { ss: this.id, sheet: sheet.getName() });
+  delete rsLoad_(this.id)[sheet.getName()];
+  return this;
+};
+
+var RSBApp = {
+  getActiveSpreadsheet: function () { return new RSpreadsheet_('main'); },
+  openById: function (id) {
+    id = String(id);
+    if (!rsHas_(id)) throw new Error('Spreadsheet नहीं मिली: ' + id);
+    return new RSpreadsheet_(id);
+  },
+  create: function (name) {
+    var id = Utilities.getUuid();
+    sbCall_('createSS', { id: id, name: name });
+    sbCall_('ensureSheet', { ss: id, sheet: 'Sheet1' });
+    RS_.data[id] = { 'Sheet1': [] };
+    RS_.at[id] = Date.now();
+    RS_.list = null;
+    return new RSpreadsheet_(id);
+  },
+  flush: function () {},
+  getUi: SBUi_.getUi,
+  newDataValidation: SBUi_.newDataValidation
+};
+
+/* RFile / RSSFile / RFolder — remote फ़ाइलें (Supabase Storage) */
+function RFile_(rec) { this.rec = rec || {}; }
+RFile_.prototype.getId = function () { return this.rec.id; };
+RFile_.prototype.getName = function () { return this.rec.name || ''; };
+RFile_.prototype.getUrl = function () { return this.rec.url || ''; };
+RFile_.prototype.setName = function (name) {
+  sbCall_('renameFile', { id: this.rec.id, name: name });
+  this.rec.name = name;
+  return this;
+};
+RFile_.prototype.setTrashed = function (flag) {
+  if (flag) sbCall_('deleteFile', { id: this.rec.id });
+  return this;
+};
+RFile_.prototype.setSharing = function () { return this; };
+RFile_.prototype.moveTo = function () { return this; };
+RFile_.prototype.makeCopy = function (name, folder) {
+  var r = sbCall_('copyFile', { id: this.rec.id, name: name, folder: folder ? folder.path : undefined });
+  return new RFile_(r);
+};
+RFile_.prototype.getLastUpdated = function () { return new Date(this.rec.created || Date.now()); };
+RFile_.prototype.getBlob = function () { throw new Error('cloud mode में getBlob उपलब्ध नहीं'); };
+
+function RSSFile_(entry) { this.e = entry; }
+RSSFile_.prototype.getId = function () { return this.e.id; };
+RSSFile_.prototype.getName = function () { return this.e.name; };
+RSSFile_.prototype.getUrl = function () { return ''; };
+RSSFile_.prototype.setName = function (name) {
+  sbCall_('renameSS', { id: this.e.id, name: name });
+  this.e.name = name;
+  RS_.list = null;
+  return this;
+};
+RSSFile_.prototype.setTrashed = function (flag) {
+  if (flag) {
+    sbCall_('deleteSS', { id: this.e.id });
+    delete RS_.data[this.e.id];
+    RS_.list = null;
+  }
+  return this;
+};
+RSSFile_.prototype.setSharing = function () { return this; };
+RSSFile_.prototype.moveTo = function () { return this; };
+RSSFile_.prototype.getLastUpdated = function () {
+  return this.e.updated ? new Date(String(this.e.updated).replace(' ', 'T')) : new Date();
+};
+
+function RFolder_(path) { this.path = String(path || ''); }
+RFolder_.prototype = Object.create(SBFolder_.prototype);
+RFolder_.prototype.constructor = RFolder_;
+RFolder_.prototype.createFolder = function (name) {
+  return new RFolder_(this.path ? this.path + '/' + name : String(name));
+};
+RFolder_.prototype.getFoldersByName = function (name) {
+  var f = this.createFolder(name), done = false;
+  return { hasNext: function () { return !done; }, next: function () { done = true; return f; } };
+};
+RFolder_.prototype.createFile = function (blob) {
+  var r = sbCall_('upload', {
+    name: blob.getName() || 'file',
+    mime: blob.getContentType() || 'application/octet-stream',
+    base64: Utilities.base64Encode(blob.getBytes()),
+    folder: this.path
+  });
+  return new RFile_(r);
+};
+RFolder_.prototype.getFilesByType = function () {
+  var list = rsList_(true).filter(function (s) { return s.id !== 'main'; });
+  var i = 0;
+  return { hasNext: function () { return i < list.length; }, next: function () { return new RSSFile_(list[i++]); } };
+};
+RFolder_.prototype.getFilesByName = function (name) {
+  var rows = (sbCall_('listFolder', { folder: this.path }) || []).filter(function (f) { return f.name === name; });
+  var i = 0;
+  return { hasNext: function () { return i < rows.length; }, next: function () { return new RFile_(rows[i++]); } };
+};
+RFolder_.prototype.getFiles = function () {
+  var rows = sbCall_('listFolder', { folder: this.path }) || [];
+  var i = 0;
+  return { hasNext: function () { return i < rows.length; }, next: function () { return new RFile_(rows[i++]); } };
+};
+
+var RSBDrive = {
+  Access: SBDrive.Access,
+  Permission: SBDrive.Permission,
+  getRootFolder: function () { return new RFolder_(''); },
+  getFolderById: function (id) { return new RFolder_(id === 'root' ? '' : String(id || '')); },
+  createFolder: function (name) { return new RFolder_(String(name)); },
+  getFileById: function (id) {
+    id = String(id || '').trim();
+    var e = rsHas_(id);
+    if (e) return new RSSFile_(e);
+    var r = sbCall_('fileRecord', { id: id });
+    if (r && r.id) return new RFile_(r);
+    throw new Error('फ़ाइल नहीं मिली: ' + id);
+  }
+};
+
+function rsFileRecord_(id) {
+  try { return sbCall_('fileRecord', { id: String(id) }); } catch (e) { return null; }
+}
+function rsFolderList_(path) {
+  try { return sbCall_('listFolder', { folder: String(path || '') }) || []; } catch (e) { return []; }
+}
+
+/* ── cloud patch — Code.gs load होने के बाद boot इसे चलाता है ── */
+
+function __cloudPatch() {
+  if (!SB_CLOUD) return;
+
+  SBApp = RSBApp;
+  SBDrive = RSBDrive;
+  localFileRecord = rsFileRecord_;
+  localFolderList = rsFolderList_;
+
+  /* login/session अब server-side (Netlify Function) — passwords code में नहीं */
+  validateLogin = function (username, password) {
+    var x = new XMLHttpRequest();
+    x.open('POST', window.__BASE__ + '/api/db', false);
+    x.setRequestHeader('Content-Type', 'application/json');
+    try { x.send(JSON.stringify({ op: 'login', args: { user: username, pass: password } })); }
+    catch (e) { return { success: false, message: 'Server से संपर्क नहीं हो पाया' }; }
+    var r = null;
+    try { r = JSON.parse(x.responseText); } catch (e) {}
+    if (!r || r.ok !== true) return { success: false, message: (r && r.error) || 'Server त्रुटि' };
+    if (r.result && r.result.success) {
+      SB_TOKEN = r.result.token;
+      try { localStorage.setItem('rms_cloud_token', SB_TOKEN); } catch (e) {}
+      try { __initLocal(); } catch (e) {}
+    }
+    return r.result;
+  };
+
+  validateSession = function (token) {
+    if (!token) return { valid: false };
+    var x = new XMLHttpRequest();
+    x.open('POST', window.__BASE__ + '/api/db', false);
+    x.setRequestHeader('Content-Type', 'application/json');
+    try { x.send(JSON.stringify({ op: 'session', args: { token: token } })); }
+    catch (e) { return { valid: false }; }
+    var r = null;
+    try { r = JSON.parse(x.responseText); } catch (e) {}
+    if (!r || r.ok !== true) return { valid: false };
+    if (r.result && r.result.valid) {
+      SB_TOKEN = token;
+      try { localStorage.setItem('rms_cloud_token', token); } catch (e) {}
+      try { __initLocal(); } catch (e) {}
+    }
+    return r.result;
+  };
+
+  Logger.log('[Cloud] Supabase mode ON');
+}
+
+/* पहली बार — sample sheets seed करें (दोनों modes) */
 function __initLocal() {
   try {
+    if (SB_CLOUD) {
+      /* seed के writes के लिए token चाहिए — login/session के बाद ही चलता है */
+      if (!SB_TOKEN) return;
+      var d = sbCall_('loadAll', { ss: 'main' }) || {};
+      if (Object.keys(d).length === 0 && typeof setupSheets === 'function') {
+        setupSheets();
+        delete RS_.data.main;
+        Logger.log('[Cloud] पहली बार setup — sample data बन गया');
+      }
+      return;
+    }
     var main = LocalDB.db().ss.main;
     if (main && Object.keys(main.sheets).length === 0 && typeof setupSheets === 'function') {
       setupSheets();
       Logger.log('[Local] पहली बार setup — sample data बन गया');
     }
-  } catch (e) { console.error('initLocal:', e); }
+  } catch (e) { console.error('init:', e); }
 }

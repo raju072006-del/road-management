@@ -1,3 +1,7 @@
 # Netlify configuration — site "deploy" फ़ोल्डर से serve होती है
 [build]
   publish = "deploy"
+
+# /api/db — Supabase से जोड़ने वाला server-side function
+[functions]
+  directory = "netlify/functions"

@@ -14,6 +14,8 @@
   document.body.appendChild(frame);
   var SW = frame.contentWindow;
   SW.__PAYMENT_HTML__ = window.__PAYMENT_HTML__;
+  /* hosted site पर cloud-mode probe के लिए origin दें (file:// में ख़ाली) */
+  SW.__BASE__ = (location.protocol === 'http:' || location.protocol === 'https:') ? location.origin : '';
   var doc = frame.contentDocument;
   var SCRIPT_OPEN = '<' + 'script>';
   var SCRIPT_CLOSE = '<' + '/script>';
@@ -22,7 +24,7 @@
     '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>' +
     SCRIPT_OPEN + window.__SRC_PLATFORM__ + SCRIPT_CLOSE +
     SCRIPT_OPEN + window.__SRC_CODEGS__ + SCRIPT_CLOSE +
-    SCRIPT_OPEN + 'try{__initLocal();}catch(e){console.error(e);}' + SCRIPT_CLOSE +
+    SCRIPT_OPEN + 'try{__cloudPatch();}catch(e){console.error(e);}try{__initLocal();}catch(e){console.error(e);}' + SCRIPT_CLOSE +
     '</body></html>'
   );
   doc.close();
@@ -86,7 +88,9 @@
   function folderBlobUrl(path) {
     var list = (SW.localFolderList && SW.localFolderList(path)) || [];
     var rows = list.map(function (f) {
-      return '<a class="fi" href="#" data-id="' + f.id + '"><span class="ic">📄</span><span class="nm">' +
+      /* cloud mode में सीधा https url मिलता है; local mode में data-id से blob बनता है */
+      var href = f.url ? (' href="' + esc(f.url) + '" target="_blank" rel="noopener"') : ' href="#" data-id="' + f.id + '"';
+      return '<a class="fi"' + href + '><span class="ic">📄</span><span class="nm">' +
         esc(f.name) + '</span><span class="dt">' + String(f.created || '').slice(0, 10) + '</span></a>';
     }).join('');
     var html = '<!DOCTYPE html><html lang="hi"><head><meta charset="UTF-8"><title>फ़ाइलें</title>' +

@@ -358,7 +358,7 @@ SBFile_.prototype.makeCopy = function (name, folder) {
   var dstPath = 'f/' + id + '/' + String(name).replace(/[\/\\]/g, '_');
   sbStorageCopy_(this.rec.path, dstPath);
   sbRpc_('ss_register_file', {
-    p_path: dstPath, p_name: name,
+    p_id: id, p_path: dstPath, p_name: name,
     p_folder: folder ? folder.path : this.rec.folder,
     p_mime: this.rec.mime || '', p_size: this.rec.size || 0
   });
@@ -412,7 +412,7 @@ SBFolder_.prototype.createFile = function (blob) {
   var safe  = String(name).replace(/[\/\\#?%]/g, '_');
   var path  = 'f/' + id + '/' + safe;
   sbUpload_([ 'f', id, safe ], bytes, mime);
-  sbRpc_('ss_register_file', { p_path: path, p_name: name, p_folder: this.path, p_mime: mime, p_size: bytes.length });
+  sbRpc_('ss_register_file', { p_id: id, p_path: path, p_name: name, p_folder: this.path, p_mime: mime, p_size: bytes.length });
   return new SBFile_({ id: id, path: path, name: name, folder: this.path, mime: mime, size: bytes.length });
 };
 SBFolder_.prototype.getFilesByType = function () {

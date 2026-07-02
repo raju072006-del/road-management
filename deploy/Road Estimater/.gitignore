@@ -1,0 +1,11 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+
+# dependencies (अगर बाद में npm इस्तेमाल करो)
+node_modules/
+
+# backups (data repo में मत डालो)
+*.json.bak
+RES_backup_*.json

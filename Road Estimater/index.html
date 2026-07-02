@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#131a2e" />
+  <title>Road Estimator — सड़क आकलन प्रणाली</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <!-- External engines (CDN). Internet ज़रूरी है पहली बार load के लिए. -->
+  <script src="https://cdn.jsdelivr.net/npm/hyperformula@2/dist/hyperformula.full.min.js"></script>
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <div class="app-shell">
+
+    <!-- ============ LEFT SIDEBAR (navigation) ============ -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <div class="emblem">RES</div>
+        <div class="brand-text">
+          <h1>Road Estimator</h1>
+          <span class="brand-sub">सड़क आकलन प्रणाली</span>
+        </div>
+      </div>
+
+      <nav class="side-nav" id="sideNav">
+        <button class="nav-item" data-view="load"><span class="ni-ic">📂</span><span class="ni-tx">Load Estimate</span></button>
+        <button class="nav-item" data-view="basic-sheet"><span class="ni-ic">📄</span><span class="ni-tx">Basic Sheet</span></button>
+        <button class="nav-item" data-view="basic-analysis"><span class="ni-ic">🧪</span><span class="ni-tx">Basic Analysis</span></button>
+        <button class="nav-item" data-view="rate-analysis"><span class="ni-ic">📊</span><span class="ni-tx">Rate Analysis</span></button>
+        <button class="nav-item" data-view="dom-boq"><span class="ni-ic">📐</span><span class="ni-tx">DOM &amp; BOQ</span></button>
+        <button class="nav-item" data-view="summary"><span class="ni-ic">📋</span><span class="ni-tx">Summary</span></button>
+        <div class="nav-sep"></div>
+        <button class="nav-item" data-view="master"><span class="ni-ic">🗄️</span><span class="ni-tx">Master Data</span></button>
+      </nav>
+
+      <div class="sidebar-foot">
+        <div class="foot-line">डेटा इसी PC के browser<br>(IndexedDB) में सुरक्षित</div>
+      </div>
+    </aside>
+
+    <!-- ============ MAIN BODY ============ -->
+    <div class="app-body">
+
+      <!-- Topbar -->
+      <header class="topbar">
+        <button class="icon-btn only-mobile" id="btnSidebarToggle" title="मेन्यू">☰</button>
+        <div class="topbar-title">
+          <span class="tb-section" id="tbSection">Rate Analysis</span>
+          <span class="tb-sep">·</span>
+          <span class="tb-estimate" id="currentEstimateName">कोई estimate लोड नहीं</span>
+        </div>
+        <div class="topbar-actions">
+          <span id="engineStatus" class="engine-pill" title="Calculation engine">engine…</span>
+          <button class="btn ghost sm" id="btnRateRefresh" title="Analysis के manually भरे रेट को Primary Rate से (नाम मिलाकर) दोबारा जोड़ें व ताज़ा करें">🔄 दर-refresh</button>
+          <button class="btn ghost sm" id="btnFormatFix" title="पुराने analysis में section-total व Sub Total जोड़कर नए format में लाएँ (एक बार का सुधार)">🛠 Format सुधार</button>
+          <button class="btn ghost sm" id="btnBackup" title="पूरा backup download">⬇ Backup</button>
+          <button class="btn ghost sm" id="btnRestore" title="Backup से restore">↺ Restore</button>
+          <input type="file" id="fileXlsx" accept=".xlsx,.xls" hidden />
+          <input type="file" id="fileJson" accept=".json" hidden />
+        </div>
+      </header>
+
+      <!-- Views -->
+      <main class="views" id="views">
+
+        <!-- ===== 1. LOAD ESTIMATE ===== -->
+        <section class="view scroll-view" id="view-load">
+          <div class="view-head">
+            <h2>Load Estimate</h2>
+            <p class="view-sub">नया estimate बनाएँ, पुराना खोलें/कॉपी करें, या नई दरों पर अपडेट करें।</p>
+          </div>
+
+          <div class="card-grid">
+            <button class="action-card" id="cardNewEstimate">
+              <div class="ac-ic">➕</div><div class="ac-tx"><b>नया Estimate</b><span>कार्य का नाम, लंबाई, मार्ग code डालकर शुरू करें</span></div>
+            </button>
+            <button class="action-card" id="cardEditEstimate">
+              <div class="ac-ic">🗂</div><div class="ac-tx"><b>पुराना Estimate खोलें/सुधारें</b><span>सभी estimate की सूची — चुनकर विवरण सुधारें</span></div>
+            </button>
+            <button class="action-card" data-todo="Template">
+              <div class="ac-ic">🧩</div><div class="ac-tx"><b>Template से</b><span>पहले से बना template चुनकर बनाएँ</span></div>
+            </button>
+            <button class="action-card" data-todo="Copy">
+              <div class="ac-ic">📑</div><div class="ac-tx"><b>पुराने को कॉपी</b><span>किसी पुराने estimate की नकल से नया</span></div>
+            </button>
+            <button class="action-card" data-todo="Update Rates">
+              <div class="ac-ic">🔄</div><div class="ac-tx"><b>नई दर पर Update</b><span>पुराना estimate नई Master दरों पर</span></div>
+            </button>
+          </div>
+
+          <!-- New estimate detail form (hidden until needed) -->
+          <div class="panel-card" id="newEstimateForm" style="display:none">
+            <h3>नए Estimate का विवरण</h3>
+            <div class="form-grid">
+              <label>कार्य का नाम<input type="text" id="neWorkName" placeholder="जैसे: चावला मार्केट से हमीरपुर रोड चौड़ीकरण" /></label>
+              <label>मार्ग का Code<input type="text" id="neRoadCode" placeholder="जैसे: MDR-12" /></label>
+              <label>लंबाई (km)<input type="text" id="neLength" placeholder="जैसे: 8.5" /></label>
+              <label>Earth Work Leading Distance<input type="text" id="neEwLead" value="1.00" placeholder="जैसे: 1.00" /></label>
+              <label>वित्तीय वर्ष<input type="text" id="neYear" placeholder="जैसे: 2026-27" /></label>
+            </div>
+            <div class="oh-block">
+              <div class="lin-head">📦 RMR — Site से Query की दूरी (km) <button type="button" class="btn xs" id="neRmrAdd">+ और RMR जोड़ें</button></div>
+              <div class="lin-rows" id="neRmrRows"></div>
+              <p class="oh-note">हर RMR में loaded <b>Material Query Rate</b> के सभी material अपने-आप आते हैं — यहाँ भरी दूरी सभी material पर लागू होगी। Material-wise दूरी बाद में <b>Basic Analysis › RMR</b> में बदल सकते हैं।</p>
+            </div>
+            <div class="oh-block">
+              <div class="lin-head">📊 Overhead व Contractor Profit — group <button type="button" class="btn xs" id="neOhAdd">+ group जोड़ें</button></div>
+              <div class="lin-rows" id="neOhRows"></div>
+              <p class="oh-note">A (सभी sub-head का योग) पर Overhead, फिर (A + Overhead) पर Contractor Profit; तीनों जुड़कर Total। एक से ज़्यादा group हों तो Rate Analysis में Analysis load करते समय <b>Remark के अनुसार group पूछा जाएगा</b> — उसी % से Overhead/Profit जुड़ेंगे।</p>
+            </div>
+            <div class="form-actions">
+              <button class="btn" id="neCancel">रद्द</button>
+              <button class="btn primary" id="neCreate">Estimate बनाएँ</button>
+            </div>
+          </div>
+
+          <div class="panel-card">
+            <h3>मौजूदा Estimates</h3>
+            <ul class="estimate-list" id="estimateProjectList"><li class="muted-row">अभी कोई estimate नहीं — ऊपर "नया Estimate" से बनाएँ।</li></ul>
+          </div>
+        </section>
+
+        <!-- ===== 2. BASIC SHEET ===== -->
+        <section class="view scroll-view" id="view-basic-sheet">
+          <div class="view-head"><h2>Basic Sheet</h2><p class="view-sub">कवर पेज, चेकलिस्ट, Index, Report व Reference फाइलें।</p></div>
+          <div class="card-grid">
+            <div class="doc-card"><div class="ac-ic">📘</div><b>Cover Page</b><div class="doc-actions"><button class="btn xs" data-todo="Cover बनाएँ">बनाएँ</button><button class="btn xs" data-todo="Cover edit">Edit</button></div></div>
+            <div class="doc-card"><div class="ac-ic">✅</div><b>Checklist</b><div class="doc-actions"><button class="btn xs" data-todo="Checklist">बनाएँ</button><button class="btn xs" data-todo="Checklist edit">Edit</button></div></div>
+            <div class="doc-card"><div class="ac-ic">🔖</div><b>Index</b><div class="doc-actions"><button class="btn xs" data-todo="Index">बनाएँ</button><button class="btn xs" data-todo="Index edit">Edit</button></div></div>
+            <div class="doc-card"><div class="ac-ic">📝</div><b>Report</b><div class="doc-actions"><button class="btn xs" data-todo="Report">बनाएँ</button><button class="btn xs" data-todo="Report edit">Edit</button></div></div>
+            <div class="doc-card"><div class="ac-ic">📎</div><b>Reference फाइलें</b><div class="doc-actions"><button class="btn xs" data-todo="Reference upload">Upload</button></div></div>
+          </div>
+          <p class="hint-box">यह खंड अभी ढाँचा (frame) है — अगली बार इसके अंदर एक-एक करके बनाएँगे।</p>
+        </section>
+
+        <!-- ===== 3. BASIC ANALYSIS ===== -->
+        <section class="view scroll-view" id="view-basic-analysis">
+          <div class="view-head"><h2>Basic Analysis</h2><p class="view-sub">RMR (Carted Rate of Material incl. leading charges) व Bitumen Rate Analysis।</p></div>
+          <div class="card-grid">
+            <div class="doc-card"><div class="ac-ic">🪨</div><b>RMR (Material दर + Cartage)</b><span class="dc-sub">हर estimate के अपने RMR1, RMR2…</span><div class="doc-actions"><button class="btn xs" id="openRMR">खोलें</button></div></div>
+            <div class="doc-card"><div class="ac-ic">🛢️</div><b>Bitumen Rate Analysis</b><div class="doc-actions"><button class="btn xs" data-todo="Bitumen">बनाएँ</button></div></div>
+          </div>
+          <p class="hint-box">RMR में loaded "Material Query Rate" के सभी material अपने-आप आते हैं — आप सिर्फ़ दूरी भरते हैं, Cartage व Total अपने-आप बनते हैं।</p>
+        </section>
+
+        <!-- ===== 3a. BASIC ANALYSIS › RMR ===== -->
+        <section class="view scroll-view" id="view-rmr">
+          <div class="view-head with-back">
+            <button class="btn sm" id="rmrBack">← Basic Analysis</button>
+            <div><h2>RMR — Carted Rate of Material</h2><p class="view-sub" id="rmrSub"></p></div>
+          </div>
+          <div class="master-toolbar" id="rmrToolbar"></div>
+          <div class="data-table-wrap"><table class="data-table" id="rmrTable"></table></div>
+          <p class="hint-box">नया RMR जोड़ने पर loaded <b>Material Query Rate</b> version के सभी material+query अपने-आप आ जाते हैं — आप सिर्फ़ <b>दूरी (km)</b> भरें। <b>Cartage</b> (loaded Cartage Range से) और <b>Total = Material Rate + Cartage</b> अपने-आप।</p>
+        </section>
+
+        <!-- ===== 4. RATE ANALYSIS (कार्यशील ग्रिड यहीं) ===== -->
+        <section class="view" id="view-rate-analysis">
+          <div class="layout">
+            <!-- LEFT: Sheet list -->
+            <aside class="panel sheets-panel">
+              <div class="panel-head">
+                <h2>लोड किए Analysis</h2>
+                <div class="ph-actions">
+                  <button class="btn sm" id="btnNewSheet" title="खाली नई working शीट बनाएँ">+ नई</button>
+                  <button class="btn primary sm" id="btnLoadAnalysis" title="Master Analysis Section से एक Analysis load करें">📂 Load</button>
+                </div>
+              </div>
+              <div class="proj-size-bar" id="projSizeBar" title="MoRTH project size — बदलने पर सभी loaded MoRTH analysis उसी size के variant में बदल जाएँगे">
+                <span class="psb-label">Project:</span>
+                <button class="psb-btn" data-size="large">Large</button>
+                <button class="psb-btn" data-size="medium">Medium</button>
+                <button class="psb-btn" data-size="small">Small</button>
+              </div>
+              <input type="search" id="sheetSearch" class="search" placeholder="लोड किए Analysis खोजें… (नाम से)" />
+              <div class="sheet-count" id="sheetCount">0 शीट</div>
+              <ul class="sheet-list" id="sheetList"></ul>
+            </aside>
+
+            <!-- CENTER: Grid editor (Master edit के समय इसे #masterEditHost में move किया जाता है) -->
+            <section class="panel editor-panel" id="editorPanel">
+              <div id="sheetKindBanner" class="kind-banner" style="display:none"></div>
+              <input type="text" id="sheetTitleInput" class="sheet-title-banner" placeholder="यहाँ Analysis का प्रकार लिखें (जैसे: Analysis of Rate for Brick Work)" disabled />
+              <div class="editor-head">
+                <div class="editor-title">
+                  <input type="text" id="sheetNameInput" class="sheet-name-input" placeholder="शीट का नाम" disabled />
+                  <span class="hint" id="sheetNameHint">नाम में space ना डालें — underscore (_) ताकि formula links साफ़ रहें</span>
+                </div>
+                <div class="editor-tools">
+                  <button class="btn sm" id="btnAddRow" disabled title="चुने हुए cell के ऊपर नई पंक्ति डालें">+ Row</button>
+                  <button class="btn sm" id="btnDelRow" disabled title="चुने हुए cell की पंक्ति हटाएँ">− Row</button>
+                  <button class="btn sm" id="btnAddSubhead" disabled title="नया उपशीर्षक (Labour/Material जैसा) जोड़ें — a,b,c अपने-आप">+ उपशीर्षक</button>
+                  <button class="btn sm" id="btnDelSubhead" disabled title="cursor जिस उपशीर्षक में है उसे पूरा हटाएँ">− उपशीर्षक</button>
+                  <button class="btn sm danger" id="btnDelSheet" disabled>शीट हटाएँ</button>
+                  <button class="btn sm" id="btnSheetExcel" disabled title="Excel अपलोड (import) / नमूना Excel डाउनलोड">⬆ Excel ▾</button>
+                  <button class="btn sm primary" id="btnMasterItem" disabled title="Master से Labour/Machinery/Material जोड़ें (रेट अपने-आप)">🔍 Master जोड़ें</button>
+                </div>
+              </div>
+              <div class="formula-bar">
+                <span class="fx-label" id="activeCellLabel">—</span>
+                <span class="fx-sign">fx</span>
+                <input type="text" id="formulaInput" class="formula-input" placeholder="मान या formula (जैसे =A1*B1  या  =RoadA!C5)" disabled />
+                <button class="btn sm" id="btnLinkRef" title="दूसरी शीट के cell से link जोड़ें" disabled>🔗 लिंक</button>
+              </div>
+              <div class="grid-wrap" id="gridWrap">
+                <div class="empty-state" id="emptyState">
+                  <div class="empty-icon">▦</div>
+                  <p>बाएँ से कोई शीट चुनें या <b>+ नई शीट</b> बनाएँ।</p>
+                  <p class="muted">हर cell में मान या <code>=</code> से formula — दूसरी शीट जोड़ें: <code>=SheetName!A1</code>।</p>
+                </div>
+                <table class="grid" id="grid" style="display:none"></table>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <!-- ===== 4b. MASTER DATA › Analysis Edit (Rate Analysis जैसा, पर अलग) ===== -->
+        <section class="view" id="view-master-edit">
+          <div class="master-edit-head">
+            <button class="btn sm" id="meBack">← Master Data</button>
+            <div class="meh-title" id="meTitle"></div>
+            <div class="me-chips" id="meChips"></div>
+          </div>
+          <div class="master-edit-host" id="masterEditHost">
+            <!-- editor-panel यहाँ runtime में mount होता है -->
+          </div>
+        </section>
+
+        <!-- ===== 5. DOM & BOQ ===== -->
+        <section class="view scroll-view" id="view-dom-boq">
+          <div class="view-head"><h2>DOM &amp; BOQ</h2><p class="view-sub">Detail of Measurement (Excel), Bill of Quantity, और Sub-Estimate के DOM/BOQ।</p></div>
+          <div class="card-grid">
+            <div class="doc-card"><div class="ac-ic">📐</div><b>DOM (Measurement)</b><span class="dc-sub">Excel फॉर्मेट</span><div class="doc-actions"><button class="btn xs" data-todo="DOM">बनाएँ</button></div></div>
+            <div class="doc-card"><div class="ac-ic">🧾</div><b>BOQ (Bill of Quantity)</b><span class="dc-sub">Rate Analysis से linked</span><div class="doc-actions"><button class="btn xs" data-todo="BOQ">बनाएँ</button></div></div>
+            <div class="doc-card"><div class="ac-ic">🗂️</div><b>Sub-Estimate (DOM/BOQ)</b><div class="doc-actions"><button class="btn xs" data-todo="Sub-Estimate">जोड़ें</button></div></div>
+          </div>
+          <p class="hint-box">BOQ की दर Rate Analysis की footer (say) पंक्ति से link होगी — link slip-proof रहेगा।</p>
+        </section>
+
+        <!-- ===== 6. SUMMARY ===== -->
+        <section class="view scroll-view" id="view-summary">
+          <div class="view-head"><h2>Summary</h2><p class="view-sub">पूरे estimate का सार — abstract of cost।</p></div>
+          <div class="panel-card"><p class="muted">Summary यहाँ अपने-आप बनेगा (BOQ/Sub-Estimate से)। अगली बार जोड़ेंगे।</p></div>
+        </section>
+
+        <!-- ===== 7. MASTER DATA ===== -->
+        <section class="view scroll-view" id="view-master">
+          <div class="view-head">
+            <h2>Master Data</h2>
+            <p class="view-sub">सभी दरों का स्रोत — हर श्रेणी के कई version (लागू-दिनांक अनुसार)। जो version Load होगा, उसी से estimate बनेगा।</p>
+          </div>
+
+          <!-- तीन खंड: Primary Rate · MoRTH Analysis · MoRD Analysis -->
+          <div class="master-tabs" id="masterTabs">
+            <button class="mtab active" data-mtab="primary">💱 Primary Rate</button>
+            <button class="mtab" data-mtab="morth">🛣️ MoRTH Analysis</button>
+            <button class="mtab" data-mtab="mord">🏘️ MoRD Analysis</button>
+          </div>
+
+          <!-- खंड 1: Primary Rate (दरों की मूल श्रेणियाँ) -->
+          <div class="mtab-panel active" id="mtab-primary">
+            <div class="card-grid master-grid" id="masterCategories">
+              <div class="doc-card"><div class="ac-ic">⚙️</div><b>Machine Rate (MoRTH)</b><span class="card-badge none" data-badge="machine">कोई version load नहीं</span><div class="doc-actions"><button class="btn xs" data-cat="machine">खोलें</button></div></div>
+              <div class="doc-card"><div class="ac-ic">⚙️</div><b>Machine Rate (MoRD)</b><span class="card-badge none" data-badge="machine_mord">कोई version load नहीं</span><div class="doc-actions"><button class="btn xs" data-cat="machine_mord">खोलें</button></div></div>
+              <div class="doc-card"><div class="ac-ic">👷</div><b>Labour Rate</b><span class="card-badge none" data-badge="labour">कोई version load नहीं</span><div class="doc-actions"><button class="btn xs" data-cat="labour">खोलें</button></div></div>
+              <div class="doc-card"><div class="ac-ic">🚚</div><b>Cartage Rate</b><span class="card-badge none" data-badge="cartage">कोई version load नहीं</span><div class="doc-actions"><button class="btn xs" data-cat="cartage">खोलें</button></div></div>
+              <div class="doc-card"><div class="ac-ic">🧱</div><b>Material Query Rate</b><span class="card-badge none" data-badge="material_query">कोई version load नहीं</span><div class="doc-actions"><button class="btn xs" data-cat="material_query">खोलें</button></div></div>
+              <div class="doc-card"><div class="ac-ic">📒</div><b>Material SOR Rate</b><span class="card-badge none" data-badge="material_sor">कोई version load नहीं</span><div class="doc-actions"><button class="btn xs" data-cat="material_sor">खोलें</button></div></div>
+              <div class="doc-card"><div class="ac-ic">📗</div><b>Item SOR Rate</b><span class="card-badge none" data-badge="item_sor">कोई version load नहीं</span><div class="doc-actions"><button class="btn xs" data-cat="item_sor">खोलें</button></div></div>
+            </div>
+          </div>
+
+          <!-- खंड 2: MoRTH Analysis (हर item के Large/Medium/Small variant — chapterwise) -->
+          <div class="mtab-panel" id="mtab-morth">
+            <div class="analysis-sec-head">
+              <p class="view-sub"><b>MoRTH</b> के Rate Analysis — chapter (समूह) अनुसार। हर item के <b>Large / Medium / Small</b> project के अलग variant। Rate Analysis में <b>📂 Load</b> से copy बनाकर बदलें।</p>
+              <div class="ph-actions">
+                <button class="btn sm" data-newchapter="morth" title="नया MoRTH Chapter जोड़ें">+ Chapter</button>
+                <button class="btn sm primary" id="btnNewMorth">+ नया Analysis</button>
+              </div>
+            </div>
+            <input type="search" id="morthSearch" class="search search-lg" placeholder="🔍 MoRTH Analysis खोजें… (नाम व description से)" />
+            <div id="morthAnalysisGroups" class="analysis-groups"></div>
+          </div>
+
+          <!-- खंड 3: MoRD Analysis (chapterwise) -->
+          <div class="mtab-panel" id="mtab-mord">
+            <div class="analysis-sec-head">
+              <p class="view-sub"><b>MoRD</b> के Rate Analysis — chapter (समूह) अनुसार। (project-size variant की ज़रूरत नहीं)</p>
+              <div class="ph-actions">
+                <button class="btn sm" data-newchapter="mord" title="नया MoRD Chapter जोड़ें">+ Chapter</button>
+                <button class="btn sm primary" id="btnNewMord">+ नया Analysis</button>
+              </div>
+            </div>
+            <input type="search" id="mordSearch" class="search search-lg" placeholder="🔍 MoRD Analysis खोजें… (नाम व description से)" />
+            <div id="mordAnalysisGroups" class="analysis-groups"></div>
+          </div>
+        </section>
+
+        <!-- ===== 7a. MASTER DATA › (कोई भी श्रेणी) ===== -->
+        <section class="view scroll-view" id="view-master-cat">
+          <div class="view-head with-back">
+            <button class="btn sm" id="mrBack">← Master Data</button>
+            <div><h2 id="mrCatTitle">Rate</h2><p class="view-sub" id="mrCatSub"></p></div>
+          </div>
+          <input type="file" id="mrFile" accept=".xlsx,.xls" hidden />
+          <div id="mrToolbar" class="master-toolbar"></div>
+          <div id="mrVersions" class="mr-versions"></div>
+          <div class="mr-searchbar"><input type="search" id="mrSearch" placeholder="🔍 इस श्रेणी में खोजें… (नाम/किसी भी कॉलम से)" /></div>
+          <div class="data-table-wrap">
+            <table class="data-table" id="mrTable"></table>
+          </div>
+          <div id="mrExtra"></div>
+          <p class="hint-box" id="mrHint"></p>
+        </section>
+
+      </main>
+
+      <!-- Status bar -->
+      <footer class="status-bar">
+        <span id="statusMsg">तैयार</span>
+        <span class="status-right">क्रम 2–6 का डेटा Excel (links समेत) में download होगा जब estimate निकालेंगे</span>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Hidden print container -->
+  <div id="printArea" class="print-area"></div>
+
+  <!-- SheetJS (xlsx) — primary official CDN, fallback to cdnjs -->
+  <script>
+    window.__sheetjsReady = new Promise((resolve) => {
+      function load(src, next){
+        const s=document.createElement('script');
+        s.src=src; s.onload=()=>resolve(true);
+        s.onerror=()=>{ if(next) next(); else resolve(false); };
+        document.head.appendChild(s);
+      }
+      load('https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js',
+        ()=>load('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', null));
+    });
+  </script>
+
+  <script src="app.js"></script>
+</body>
+</html>

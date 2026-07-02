@@ -3881,7 +3881,7 @@
     box.querySelectorAll("[data-delver]").forEach((b) => b.addEventListener("click", () => mrDeleteVersion(b.dataset.delver)));
     box.querySelectorAll("[data-load]").forEach((b) => b.addEventListener("click", () => {
       m.loadedVersion = b.dataset.load; m.activeVersion = b.dataset.load; mrEditAll = false; mrRowEdit.clear();
-      saveMachine(); renderMachineRate();
+      saveMachine(); renderMachineRate(); renderMasterOverview();  // overview कार्ड का Effective badge भी तुरंत ताज़ा
       status("Version Load हुआ: " + b.dataset.load + " — Rate Analysis अब इसी की दर लेगा");
     }));
   }
@@ -4578,6 +4578,7 @@
 
     renderSheetList();
     renderEstimateSelect();
+    renderMasterOverview();  // Primary Rate कार्ड (loaded date/version) ब्राउजर लोड होते ही ताज़ा — navigate का इंतज़ार नहीं
     state.activeEstimateId = state.estOrder[0] || null;
     applyOverheadAll();     // active estimate (या default 10/10) के अनुसार Overhead/Profit — पुराने भी अपडेट
     renderEstimate();

@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════
 //  Road Management — single-file app builder
-//  चलाएँ:  node build\build-local.js   (या deploy.bat double-click)
+//  चलाएँ:  node build\build-local.js   (या test.bat / push.bat)
 //
 //  क्या करता है:
 //  1. Dashboard.html + Payment.html + Code.gs + build\*.js को जोड़कर
@@ -61,5 +61,16 @@ const dep = path.join(PROJ, 'deploy');
 fs.mkdirSync(dep, { recursive: true });
 fs.copyFileSync(outFile, path.join(dep, 'index.html'));
 fs.cpSync(path.join(PROJ, 'Road Estimater'), path.join(dep, 'Road Estimater'), { recursive: true });
-console.log('[2/2] deploy\\ ताज़ा — index.html + Road Estimater');
+
+// सुरक्षा: deploy वाले Estimator में login-guard inject करें —
+// सीधा URL खोलने पर बिना login मुख्य पेज पर भेज देता है।
+// (source Road Estimater अछूता रहता है; guard सिर्फ़ deploy-copy में)
+const estIdx = path.join(dep, 'Road Estimater', 'index.html');
+let est = fs.readFileSync(estIdx, 'utf8');
+const guard = SO.replace('>', ' data-guard>') +
+  'try{if(!sessionStorage.getItem("rms_token")){document.documentElement.style.visibility="hidden";location.replace("../");}}catch(e){document.documentElement.style.visibility="hidden";location.replace("../");}' +
+  SC;
+est = est.replace(/<head>/i, '<head>\n' + guard);
+fs.writeFileSync(estIdx, est, 'utf8');
+console.log('[2/2] deploy\\ ताज़ा — index.html + Road Estimater (login-guard सहित)');
 console.log('OK ✔');

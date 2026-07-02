@@ -1,25 +1,17 @@
 // DEPLOY: 2026-06-17T23:12
 /**
  * ═══════════════════════════════════════════════════════════
- *  सड़क परियोजना प्रबंधन प्रणाली — Backend (Code.gs)
- *  डेटा-स्टोरेज: Supabase (PostgreSQL + JSONB + Storage)
+ *  सड़क परियोजना प्रबंधन प्रणाली — Backend Logic (Code.gs)
  * ═══════════════════════════════════════════════════════════
  *
- *  SETUP STEPS (विस्तार से: SETUP_SUPABASE.md):
- *  1. Supabase project बनाएँ → SQL Editor में supabase_schema.sql चलाएँ
- *  2. Storage में 'rms-files' नाम का PUBLIC bucket बनाएँ
- *  3. Apps Script project बनाएँ (script.google.com → New project)
- *     — Code.gs, SupabaseDB.gs, Dashboard.html, Payment.html paste करें
- *  4. Project Settings → Script Properties में जोड़ें:
- *       SUPABASE_URL         = https://xxxx.supabase.co
- *       SUPABASE_SERVICE_KEY = (service_role key)
- *  5. Run → setupSheets()  ← एक बार चलाएँ (सभी tables/sheets बन जाएँगी)
- *  6. Deploy → New Deployment → Web App
- *       Execute as: Me | Who has access: Anyone
- *     → Deploy → URL Copy करें → Browser में खोलें
+ *  यह फ़ाइल build के समय "Road Management.html" में embed होती है
+ *  और browser के छिपे हुए server-frame में चलती है।
+ *  Data-layer (SBApp/SBDrive) build\platform-server.js देता है:
+ *    • LOCAL mode — localStorage (PC पर file से खोलने पर)
+ *    • CLOUD mode — Netlify Function (/api/db) → Supabase
  *
- *  नोट: SpreadsheetApp/DriveApp की जगह SBApp/SBDrive (SupabaseDB.gs)
- *  इस्तेमाल होते हैं — सारा डेटा और फ़ाइलें Supabase cloud में रहती हैं।
+ *  बदलाव के बाद: test.bat (local जाँच) → push.bat (online)
+ *  Cloud setup: CLOUD-SETUP.md देखें।
  * ═══════════════════════════════════════════════════════════
  */
 
@@ -75,15 +67,20 @@ function getPaymentPageHtml() {
 }
 
 // ── Authentication ───────────────────────────────────────────
+// सुरक्षा: passwords code में plaintext नहीं — केवल SHA-256 hash।
+// (यह सिर्फ़ LOCAL/file mode के लिए है; online CLOUD mode में login
+//  Netlify server से होता है और passwords APP_USERS env में रहते हैं।)
 const USERS_ = {
-  'admin': { password: 'Admin@123', role: 'admin', name: 'Administrator' },
-  'user1': { password: 'User1@123', role: 'user',  name: 'User 1' },
-  'user2': { password: 'User2@123', role: 'user',  name: 'User 2' }
+  'admin': { hash: 'e86f78a8a3caf0b60d8e74e5942aa6d86dc150cd3c03338aef25b7d2d7e3acc7', role: 'admin', name: 'Administrator' },
+  'user1': { hash: '1e9a6b9afd56cf274a1b46367cad2ff478fb6f0e29e5766195848b1482d2e2be', role: 'user',  name: 'User 1' },
+  'user2': { hash: 'cd92953692442115e21ca8c5daefaffe2b3d8737769700667cb8ca864ae1e7c4', role: 'user',  name: 'User 2' }
 };
 
 function validateLogin(username, password) {
   var u = USERS_[(username || '').toLowerCase().trim()];
-  if (!u || u.password !== password) {
+  var ok = false;
+  try { ok = !!u && typeof sha256Hex_ === 'function' && sha256Hex_(String(password || '')) === u.hash; } catch (e) { ok = false; }
+  if (!ok) {
     return { success: false, message: 'गलत यूजर ID या पासवर्ड।' };
   }
   var token = Utilities.getUuid();

@@ -8,7 +8,7 @@
 --  2. SQL Editor → New Query → यह पूरी फ़ाइल paste करें → RUN
 --  3. Storage → New bucket → नाम: rms-files → "Public bucket" ON करें
 --  4. Project Settings → API से URL और service_role key कॉपी करें
---     (Apps Script की Script Properties में डालनी है — SETUP_SUPABASE.md देखें)
+--     (Netlify के Environment Variables में डालनी हैं — CLOUD-SETUP.md देखें)
 --
 --  डेटा-मॉडल:
 --    spreadsheets  → हर "वर्कबुक" (मुख्य DB + हर भुगतान-परियोजना)
@@ -17,7 +17,7 @@
 --    files         → अपलोड फ़ाइलों का metadata (असली फ़ाइल Storage bucket में)
 --
 --  सभी read/write नीचे दिए RPC functions से होते हैं जिन्हें
---  Apps Script का Supabase-layer (SupabaseDB.gs) कॉल करता है।
+--  Netlify Function (netlify/functions/db.mjs) कॉल करता है।
 -- ═══════════════════════════════════════════════════════════════
 
 -- ── Tables ──────────────────────────────────────────────────────
@@ -348,11 +348,25 @@ as $$
   update public.files set name = p_name where id = p_id;
 $$;
 
+-- ── Road Estimator का डेटा ──────────────────────────────────────
+-- (हर browser के IndexedDB की जगह central storage —
+--  sheets / estimates / master documents, JSONB में)
+
+create table if not exists public.est_kv (
+  store      text  not null,   -- 'sheets' | 'estimates' | 'master'
+  id         text  not null,
+  data       jsonb not null,
+  updated_at timestamptz not null default now(),
+  primary key (store, id)
+);
+
+alter table public.est_kv enable row level security;
+
 -- ── मुख्य वर्कबुक seed ───────────────────────────────────────────
 
 select public.ss_create_spreadsheet('main', 'Road Management System');
 
 -- ═══════════════════════════════════════════════════════════════
 --  पूर्ण! अब Storage में 'rms-files' नाम का PUBLIC bucket बनाएँ,
---  फिर SETUP_SUPABASE.md के अनुसार Apps Script जोड़ें।
+--  फिर CLOUD-SETUP.md के अनुसार Netlify env variables सेट करें।
 -- ═══════════════════════════════════════════════════════════════

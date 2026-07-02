@@ -79,6 +79,14 @@ const rpc = (fn, params) => sb('/rest/v1/rpc/' + fn, {
   body: JSON.stringify(params || {})
 });
 const encPath = (p) => p.split('/').map(encodeURIComponent).join('/');
+
+// Road Estimator के stores — whitelist
+const EST_STORES = new Set(['sheets', 'estimates', 'master']);
+function estStore(s) {
+  s = String(s || '');
+  if (!EST_STORES.has(s)) throw new Error('अमान्य estimator store: ' + s);
+  return s;
+}
 const publicUrl = (p) => baseUrl() + '/storage/v1/object/public/' + BUCKET + '/' + encPath(p);
 const fileOut = (r) => r ? ({ id: r.id, name: r.name, mime: r.mime, folder: r.folder, created: r.created_at, url: publicUrl(r.path) }) : null;
 
@@ -173,6 +181,42 @@ export default async (req) => {
         });
         await rpc('ss_register_file', { p_id: nid, p_path: dst, p_name: name, p_folder: String(a.folder !== undefined ? a.folder : src.folder), p_mime: src.mime || '', p_size: src.size || 0 });
         return json({ ok: true, result: { id: nid, name, mime: src.mime, folder: String(a.folder !== undefined ? a.folder : src.folder), created: new Date().toISOString(), url: publicUrl(dst) } });
+      }
+
+      // ── Road Estimator data (est_kv: store/id/data) ──────────
+      case 'estAll': {
+        const store = estStore(a.store);
+        const rows = await sb('/rest/v1/est_kv?store=eq.' + encodeURIComponent(store) + '&select=id,data&order=id') || [];
+        return json({ ok: true, result: rows });
+      }
+      case 'estPut': {
+        const store = estStore(a.store);
+        await sb('/rest/v1/est_kv', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
+          body: JSON.stringify([{ store, id: String(a.id), data: a.data }])
+        });
+        return json({ ok: true, result: true });
+      }
+      case 'estBulkPut': {
+        const store = estStore(a.store);
+        const rows = (a.rows || []).map(r => ({ store, id: String(r.id), data: r.data }));
+        if (rows.length) await sb('/rest/v1/est_kv', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
+          body: JSON.stringify(rows)
+        });
+        return json({ ok: true, result: rows.length });
+      }
+      case 'estDel': {
+        const store = estStore(a.store);
+        await sb('/rest/v1/est_kv?store=eq.' + encodeURIComponent(store) + '&id=eq.' + encodeURIComponent(String(a.id)), { method: 'DELETE' });
+        return json({ ok: true, result: true });
+      }
+      case 'estClear': {
+        const store = estStore(a.store);
+        await sb('/rest/v1/est_kv?store=eq.' + encodeURIComponent(store), { method: 'DELETE' });
+        return json({ ok: true, result: true });
       }
 
       default: return json({ ok: false, error: 'अज्ञात op: ' + op }, 400);

@@ -57,7 +57,7 @@ git push -u origin main
 ## रोज़ का workflow (setup के बाद)
 
 1. VS Code में कोड बदलें (Dashboard.html / Payment.html / Code.gs / Road Estimater…)
-2. **`deploy.bat` चलाएँ** — यह अपने-आप:
+2. **`push.bat` चलाएँ** — यह अपने-आप:
    - `Road Management.html` दोबारा build करता है
    - `deploy\` फ़ोल्डर ताज़ा करता है
    - `git add + commit + push` करता है
@@ -74,8 +74,9 @@ git push -u origin main
 | `build\` | builder script + platform (छेड़ें नहीं) |
 | `Road Management.html` | build का नतीजा — local में double-click करके चलाएँ |
 | `deploy\` | hosting पर जाने वाला फ़ोल्डर (build अपने-आप भरता है) |
-| `deploy.bat` | एक-command build + push |
-| `supabase_schema.sql`, `SupabaseDB.gs`, `SETUP_SUPABASE.md` | भविष्य में central/cloud डेटा के लिए |
+| `push.bat` | एक-command build + Supabase schema + push |
+| `test.bat` | build + local जाँच (online कुछ नहीं जाता) |
+| `supabase_schema.sql`, `netlify/functions/db.mjs`, `CLOUD-SETUP.md` | cloud (Supabase) डेटा के लिए |
 
 ## ध्यान रखें
 

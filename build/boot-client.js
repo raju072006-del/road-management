@@ -94,7 +94,7 @@
         esc(f.name) + '</span><span class="dt">' + String(f.created || '').slice(0, 10) + '</span></a>';
     }).join('');
     var html = '<!DOCTYPE html><html lang="hi"><head><meta charset="UTF-8"><title>फ़ाइलें</title>' +
-      '<style>body{margin:0;background:#f2f4fa;font-family:Inter,"Noto Sans Devanagari",sans-serif;color:#222b45;padding:32px 16px}' +
+      '<style>body{margin:0;background:#f2f4fa;font-family:"Noto Sans Devanagari",sans-serif;color:#222b45;padding:32px 16px}' +
       '.wrap{max-width:680px;margin:0 auto}h1{font-size:17px;margin:0 0 14px}' +
       '.card{background:#fff;border:1px solid #e3e8f0;border-radius:14px;overflow:hidden;box-shadow:0 8px 24px -12px rgba(19,26,46,.12)}' +
       '.fi{display:flex;align-items:center;gap:12px;padding:13px 18px;text-decoration:none;color:#222b45;border-bottom:1px solid #eef1f7}' +

@@ -14,12 +14,20 @@
 (function () {
   "use strict";
 
-  /* ============== 1. STORAGE (IndexedDB) ============== */
+  /* ============== 1. STORAGE ============== */
+  /* API वही है (db.open/getAll/put/del/clear) — बाकी app अछूता। दो mode:
+     • LOCAL — IndexedDB (PC पर file से खोलने पर / offline) — पहले जैसा
+     • CLOUD — hosted site पर login के बाद Supabase (/api/db के ज़रिये)
+       → सभी browsers/devices पर एक ही central डेटा                       */
   const DB_NAME = "road_estimate_db";
   const DB_VER = 2;
   let _db = null;
+  let _cloudMode = false;
+  let _cloudToken = "";
+  const CLOUD_STORES = ["sheets", "estimates", "master"];
 
-  const db = {
+  /* ---- LOCAL: IndexedDB (मूल code, जस का तस) ---- */
+  const idb = {
     open() {
       return new Promise((resolve, reject) => {
         const req = indexedDB.open(DB_NAME, DB_VER);
@@ -60,6 +68,68 @@
         tx.onsuccess = () => resolve();
         tx.onerror = () => reject(tx.error);
       });
+    },
+  };
+
+  /* ---- CLOUD: Supabase via Netlify Function ---- */
+  async function cloudCall(op, args) {
+    const res = await fetch(location.origin + "/api/db", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ op: op, token: _cloudToken, args: args || {} }),
+    });
+    const j = await res.json().catch(() => null);
+    if (!j || j.ok !== true) throw new Error((j && j.error) || ("Cloud server त्रुटि (" + res.status + ")"));
+    return j.result;
+  }
+
+  /* पहली बार cloud चालू होने पर — इस browser का पुराना (IndexedDB) डेटा
+     अपने-आप cloud में चढ़ा दो, बशर्ते cloud अभी ख़ाली हो */
+  async function cloudMigrateIfNeeded() {
+    try {
+      const cloudRows = await Promise.all(CLOUD_STORES.map((s) => cloudCall("estAll", { store: s })));
+      if (cloudRows.some((rows) => rows && rows.length)) return;   // cloud में पहले से data है
+      for (const s of CLOUD_STORES) {
+        const local = await idb.getAll(s);
+        for (let i = 0; i < local.length; i += 20) {
+          const batch = local.slice(i, i + 20).map((o) => ({ id: String(o.id), data: o }));
+          if (batch.length) await cloudCall("estBulkPut", { store: s, rows: batch });
+        }
+      }
+    } catch (e) { console.error("cloud migration:", e); }
+  }
+
+  const db = {
+    async open() {
+      await idb.open();   // हमेशा खोलें — local mode + migration source
+      _cloudMode = false;
+      try {
+        if (location.protocol === "http:" || location.protocol === "https:") {
+          _cloudToken = sessionStorage.getItem("rms_token") || "";
+          if (_cloudToken) {
+            const r = await fetch(location.origin + "/api/db").then((x) => x.json()).catch(() => null);
+            _cloudMode = !!(r && r.cloud === true);
+          }
+        }
+      } catch (e) { _cloudMode = false; }
+      if (_cloudMode) await cloudMigrateIfNeeded();
+      return _db;
+    },
+    getAll(store) {
+      if (!_cloudMode) return idb.getAll(store);
+      return cloudCall("estAll", { store: store }).then((rows) => (rows || []).map((r) => r.data));
+    },
+    put(store, obj) {
+      if (!_cloudMode) return idb.put(store, obj);
+      return cloudCall("estPut", { store: store, id: String(obj.id), data: obj }).then(() => {});
+    },
+    del(store, id) {
+      if (!_cloudMode) return idb.del(store, id);
+      return cloudCall("estDel", { store: store, id: String(id) }).then(() => {});
+    },
+    clear(store) {
+      if (!_cloudMode) return idb.clear(store);
+      return cloudCall("estClear", { store: store }).then(() => {});
     },
   };
 

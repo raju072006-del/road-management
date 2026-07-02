@@ -1,0 +1,3 @@
+# Netlify configuration — site "deploy" फ़ोल्डर से serve होती है
+[build]
+  publish = "deploy"

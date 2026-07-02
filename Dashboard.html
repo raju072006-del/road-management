@@ -4277,6 +4277,7 @@ function openPaymentOverlay(projName, details) {
   var ov = document.getElementById('pay-overlay');
   ov.style.display = 'flex';
   document.body.style.overflow = 'hidden';
+  _saveSurface('payment', { proj: projName || '' });   // refresh पर यही surface लौटे
 
   var sv    = document.getElementById('pay-summary-view');
   var fr    = document.getElementById('pay-iframe');
@@ -4649,6 +4650,7 @@ function openRoadProjPayment(pid) {
 function closePaymentOverlay() {
   document.getElementById('pay-overlay').style.display = 'none';
   document.body.style.overflow = '';
+  _clearSurface();
 }
 
 // postMessage bridge — pay-iframe के google.script.run calls relay करता है
@@ -4701,6 +4703,25 @@ function gotoPlanForRoad(rid, year) {
     if (!found) yrEl.value = '';
   }
   applyPlanFilter();
+}
+
+// ── Refresh पर वही surface (Estimator / भुगतान / मुख्य पेज) वापस लाने के लिए ──
+function _saveSurface(type, extra) {
+  try {
+    if (!type) { localStorage.removeItem('rms_surface'); return; }
+    var o = { type: type }; if (extra) for (var k in extra) o[k] = extra[k];
+    localStorage.setItem('rms_surface', JSON.stringify(o));
+  } catch (e) {}
+}
+function _clearSurface() { try { localStorage.removeItem('rms_surface'); } catch (e) {} }
+function restoreSurface() {
+  try {
+    var raw = localStorage.getItem('rms_surface');
+    if (!raw) return;
+    var s = JSON.parse(raw); if (!s || !s.type) return;
+    if (s.type === 'estimator') openEstimator();
+    else if (s.type === 'payment') openPaymentOverlay(s.proj || undefined);
+  } catch (e) {}
 }
 
 function restoreLastPage() {
@@ -4874,6 +4895,7 @@ function loadData() {
           renderRoadTypesList();
           renderRoads();
           restoreLastPage();
+          restoreSurface();   // refresh पर वही surface (Estimator/भुगतान) वापस खोलो
           if (statusEl) {
             statusEl.className = 'status-box success';
             statusEl.textContent = '✅ सभी डेटा लोड — '+D.roads.length+' सड़कें | '+D.projects.length+' परियोजनाएँ | '+D.letters.length+' पत्र | '+D.docs.length+' दस्तावेज़';
@@ -8827,6 +8849,7 @@ function openEstimator() {
   }
   ov.classList.add('open');
   document.body.style.overflow = 'hidden';
+  _saveSurface('estimator');   // refresh पर Estimator ही लौटे
   try { history.pushState({ est: 1 }, '', location.href); _estPushed = true; }
   catch (e) { _estPushed = false; }
 }
@@ -8835,6 +8858,7 @@ function _estHide() {
   var ov = document.getElementById('est-overlay');
   if (ov) ov.classList.remove('open');
   document.body.style.overflow = '';
+  _clearSurface();
 }
 
 function closeEstimator() {

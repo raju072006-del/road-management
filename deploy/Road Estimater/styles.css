@@ -682,6 +682,11 @@ body{
 .kind-banner.copy{background:#eef2ff; border-color:#dfe4ff; color:#3d4db4}
 
 /* Load Analysis picker */
+/* Load picker के अंदर source (MoRTH/MoRD) tabs + Project size — एक बार चुनो, बार-बार सवाल नहीं */
+.lap-controls{display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin:10px 0 4px}
+.lap-srctabs{display:inline-flex; gap:4px; padding:4px; background:#e8ecf5; border-radius:12px}
+.lap-srctabs .mtab{padding:6px 16px; font-size:12.5px}
+.lap-controls .proj-size-bar{margin:0; flex:1; min-width:210px}
 .lap-list{max-height:52vh; overflow:auto; border:1px solid var(--line); border-radius:var(--r-md); background:#fff; margin-top:10px}
 .lap-group{border-bottom:1px solid var(--line)}
 .lap-group:last-child{border-bottom:none}
@@ -744,6 +749,10 @@ body{
 .me-chip.add:hover{background:#fcf5e2; color:#7a5f12}
 .master-edit-host{flex:1; min-height:0; display:flex; overflow:hidden}
 .master-edit-host > .editor-panel{flex:1; min-width:0}
+
+/* Rate Analysis (non-master) में editing tools छिपाओ — यहाँ Analysis सिर्फ़ Master से लोड + RMR से अपडेट होते हैं,
+   ये +Row/−Row/उपशीर्षक/शीट हटाएँ/Excel/Master जोड़ें केवल Master edit mode के लिए रखे गए हैं */
+.editor-panel:not(.master-mode) .editor-tools{display:none}
 
 /* master-mode editor — warm accent ताकि Master edit, Rate Analysis से अलग दिखे */
 .editor-panel.master-mode{background:#fffdf7; box-shadow:inset 0 3px 0 #e3ac0f}

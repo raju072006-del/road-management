@@ -2862,7 +2862,13 @@
   }
   // कौन-से chapter खुले हैं (default: सभी बंद/collapsed) — MoRTH व MoRD अलग-अलग
   const morthOpen = new Set(), mordOpen = new Set();
-  function toggleChapterOpen(setObj, key, reRender) { if (setObj.has(key)) setObj.delete(key); else setObj.add(key); reRender(); }
+  // एक समय में केवल एक ही chapter खुला रहे — नया खोलने पर बाकी अपने आप collapse
+  function toggleChapterOpen(setObj, key, reRender) {
+    const wasOpen = setObj.has(key);
+    setObj.clear();
+    if (!wasOpen) setObj.add(key);   // बंद था तो सिर्फ़ यही खोलो; खुला था तो सब बंद
+    reRender();
+  }
   function renderMasterAnalysis() { renderMorthAnalysis(); renderMordAnalysis(); updateProjectSizeUI(); }
   // Master Data का कोई tab (primary/morth/mord) सक्रिय करो
   function activateMasterTab(which) {
@@ -3272,57 +3278,66 @@
   }
 
   // Rate Analysis का "📂 Load" — पहले source (MoRTH/MoRD), फिर सूची
-  function openLoadAnalysisPicker() {
-    askChoice("कौन-सा Analysis load करना है?", [
-      { label: "🛣️ MoRTH", value: "morth", cls: "primary" },
-      { label: "🏘️ MoRD", value: "mord" },
-    ]).then((src) => {
-      if (!src) return;
-      if (src === "mord") { showAnalysisListPicker("mord", null); return; }
-      // MoRTH → project size पूछो (default वर्तमान)
-      askChoice("कौन-सा project size?", SIZES.map((s) => ({ label: s.name, value: s.key, cls: s.key === projectSize ? "primary" : "" }))).then((sz) => {
-        if (!sz) return;
-        setProjectSize(sz);                 // global size सेट + पहले से loaded MoRTH भी इसी size में
-        showAnalysisListPicker("morth", sz);
-      });
-    });
-  }
-  // source-वार सूची modal — चुनने पर copy load
-  function showAnalysisListPicker(src, size) {
+  let _loadSrc = "morth";   // पिछली बार चुना source (MoRTH/MoRD) याद रखो — दुबारा-दुबारा मत पूछो
+  function openLoadAnalysisPicker() { showAnalysisListPicker(); }
+  // एकीकृत सूची modal — MoRTH/MoRD और Project size (Large/Medium/Small) modal के अंदर ही toggle से;
+  // बार-बार सवाल नहीं, एक जगह चुनो और जितने चाहे Analysis load करो।
+  function showAnalysisListPicker() {
     const overlay = document.createElement("div");
     overlay.className = "modal-overlay";
-    let listHtml = "";
-    if (src === "mord") {
-      const all = sourceMasters("mord");
-      listHtml = buildPickerGroups(all.map((s) => ({ loadId: s.id, name: s.name, sub: s.title, group: chapterKeyOf(s) })), "mord");
-    } else {
-      // MoRTH — हर item का दिए size का variant (न हो तो उपलब्ध)
-      const items = [];
-      const byKey = {};
-      for (const s of sourceMasters("morth")) { if (!byKey[s.itemKey]) { byKey[s.itemKey] = { group: chapterKeyOf(s), name: s.itemName || s.name, variants: {} }; } byKey[s.itemKey].variants[s.size] = s; }
-      for (const k in byKey) { const it = byKey[k]; const v = it.variants[size] || it.variants.large || it.variants.medium || it.variants.small; if (v) items.push({ loadId: v.id, name: it.name, sub: sizeName(v.size) + (v.size !== size ? " (इस item का " + sizeName(size) + " नहीं)" : ""), group: it.group }); }
-      listHtml = buildPickerGroups(items, "morth");
-    }
-    const title = src === "morth" ? "📂 MoRTH Analysis · " + sizeName(size) : "📂 MoRD Analysis";
     overlay.innerHTML =
       "<div class='modal pick'>" +
-      "<div class='pk-head'><h3>" + title + "</h3><button class='pk-x' id='lapClose'>✕</button></div>" +
+      "<div class='pk-head'><h3>📂 Analysis लोड करें</h3><button class='pk-x' id='lapClose'>✕</button></div>" +
+      "<div class='lap-controls'>" +
+        "<div class='lap-srctabs'>" +
+          "<button class='mtab' data-src='morth'>🛣️ MoRTH</button>" +
+          "<button class='mtab' data-src='mord'>🏘️ MoRD</button>" +
+        "</div>" +
+        "<div class='proj-size-bar' id='lapSizeBar' title='MoRTH project size — इसी size के variant load होंगे'>" +
+          "<span class='psb-label'>Project:</span>" +
+          SIZES.map((s) => "<button class='psb-btn' data-size='" + s.key + "'>" + s.name + "</button>").join("") +
+        "</div>" +
+      "</div>" +
       "<p class='sub'>चुना हुआ Analysis यहाँ <b>copy</b> बनकर खुलेगा (Master सुरक्षित)। बदलाव पर पूछा जाएगा कि Master में भी डालें या नहीं।</p>" +
       "<input type='search' id='lapSearch' class='search' placeholder='🔍 खोजें…' />" +
-      "<div class='lap-list' id='lapList'>" + (listHtml || "<div class='ag-empty muted'>अभी कोई master analysis नहीं — Master Data में बनाएँ।</div>") + "</div>" +
+      "<div class='lap-list' id='lapList'></div>" +
       "</div>";
     document.body.appendChild(overlay);
     const close = () => overlay.remove();
     const listEl = overlay.querySelector("#lapList");
     const searchEl = overlay.querySelector("#lapSearch");
-    listEl.querySelectorAll(".lap-item").forEach((b) => b.addEventListener("click", () => { close(); loadAnalysisToWorkspace(b.dataset.load); }));
-    searchEl.addEventListener("input", () => {
+    const sizeBar = overlay.querySelector("#lapSizeBar");
+
+    function renderList() {
+      overlay.querySelectorAll(".lap-srctabs .mtab").forEach((t) => t.classList.toggle("active", t.dataset.src === _loadSrc));
+      overlay.querySelectorAll("#lapSizeBar .psb-btn").forEach((b) => b.classList.toggle("active", b.dataset.size === projectSize));
+      sizeBar.style.display = _loadSrc === "morth" ? "" : "none";   // size सिर्फ़ MoRTH के लिए
+      let listHtml = "";
+      if (_loadSrc === "mord") {
+        const all = sourceMasters("mord");
+        listHtml = buildPickerGroups(all.map((s) => ({ loadId: s.id, name: s.name, sub: s.title, group: chapterKeyOf(s) })), "mord");
+      } else {
+        const byKey = {};
+        for (const s of sourceMasters("morth")) { if (!byKey[s.itemKey]) { byKey[s.itemKey] = { group: chapterKeyOf(s), name: s.itemName || s.name, variants: {} }; } byKey[s.itemKey].variants[s.size] = s; }
+        const items = [];
+        for (const k in byKey) { const it = byKey[k]; const v = it.variants[projectSize] || it.variants.large || it.variants.medium || it.variants.small; if (v) items.push({ loadId: v.id, name: it.name, sub: sizeName(v.size) + (v.size !== projectSize ? " (इस item का " + sizeName(projectSize) + " नहीं)" : ""), group: it.group }); }
+        listHtml = buildPickerGroups(items, "morth");
+      }
+      listEl.innerHTML = listHtml || "<div class='ag-empty muted'>अभी कोई master analysis नहीं — Master Data में बनाएँ।</div>";
       const q = searchEl.value.trim().toLowerCase();
-      listEl.querySelectorAll(".lap-item").forEach((b) => { const nm = b.querySelector(".lap-nm").textContent.toLowerCase(); b.style.display = (!q || nm.includes(q)) ? "" : "none"; });
-    });
+      listEl.querySelectorAll(".lap-item").forEach((b) => {
+        if (q) { const nm = b.querySelector(".lap-nm").textContent.toLowerCase(); if (!nm.includes(q)) b.style.display = "none"; }
+        b.addEventListener("click", () => { close(); loadAnalysisToWorkspace(b.dataset.load); });
+      });
+    }
+
+    overlay.querySelectorAll(".lap-srctabs .mtab").forEach((t) => t.addEventListener("click", () => { _loadSrc = t.dataset.src; renderList(); }));
+    overlay.querySelectorAll("#lapSizeBar .psb-btn").forEach((b) => b.addEventListener("click", () => { setProjectSize(b.dataset.size); renderList(); }));
+    searchEl.addEventListener("input", renderList);
     overlay.querySelector("#lapClose").addEventListener("click", close);
     overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });
     overlay.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); close(); } });
+    renderList();
     searchEl.focus();
   }
   // entries: {loadId, name, sub, group?} — chapterwise समूह में HTML
@@ -4389,7 +4404,8 @@
     wireShell();
     wireMaster();
     wireRMR();
-    document.getElementById("btnNewSheet").addEventListener("click", () => newSheet({ kind: "working" }));
+    const bns = document.getElementById("btnNewSheet");   // Rate Analysis से "+नई" हटा दिया (केवल Master से Load)
+    if (bns) bns.addEventListener("click", () => newSheet({ kind: "working" }));
     const bla = document.getElementById("btnLoadAnalysis");
     if (bla) bla.addEventListener("click", openLoadAnalysisPicker);
     // Project size switcher (Large/Medium/Small) — सभी loaded MoRTH analysis बदलता है

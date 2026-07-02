@@ -90,15 +90,28 @@
     return j.result;
   }
 
-  /* cloud writes की serial queue — edits तुरंत local save होते हैं,
-     cloud में पीछे-पीछे जाते हैं */
+  /* cloud writes की serial queue + localStorage में pending-log —
+     हर edit तुरंत local (IndexedDB) में; cloud में पीछे-पीछे। refresh/बंद पर
+     कोई write बाक़ी रह जाए तो अगली बार boot पर अपने-आप दोबारा भेज दी जाती है
+     → न "Reload site?" dialog, न डेटा हानि। */
+  const PENDING_KEY = "est_pending_ops";
   let _cloudQueue = Promise.resolve();
   let _cloudPending = 0;
   let _stampTimer = null;
-  function queueCloud(fn) {
+  let _opSeq = 0;
+  function _loadPending() { try { return JSON.parse(localStorage.getItem(PENDING_KEY)) || []; } catch (e) { return []; } }
+  function _savePending(a) { try { localStorage.setItem(PENDING_KEY, JSON.stringify(a)); } catch (e) {} }
+  function cloudEnqueue(cloudOp, args, dkey, isClear) {
+    const opId = (++_opSeq) + "_" + Date.now();
+    let pend = _loadPending();
+    if (isClear) { const pre = (args.store || "") + ":"; pend = pend.filter((p) => (p.dkey || "").indexOf(pre) !== 0); }
+    else if (dkey) { pend = pend.filter((p) => p.dkey !== dkey); }   // उसी target की पुरानी हटाओ (नवीनतम ही रखें)
+    pend.push({ id: opId, dkey: dkey || null, cloudOp: cloudOp, args: args });
+    _savePending(pend);
     _cloudPending++;
     _cloudQueue = _cloudQueue
-      .then(fn)
+      .then(() => cloudCall(cloudOp, args))
+      .then(() => { _savePending(_loadPending().filter((p) => p.id !== opId)); })
       .catch((e) => console.error("cloud sync:", e))
       .finally(() => { _cloudPending--; _stampSoon(); });
   }
@@ -110,12 +123,14 @@
       try { localStorage.setItem(STAMP_KEY, JSON.stringify(await cloudCall("estStamp"))); } catch (e) {}
     }, 800);
   }
-  window.addEventListener("beforeunload", (e) => {
-    if (_cloudMode && _cloudPending > 0) {
-      e.preventDefault();
-      e.returnValue = "डेटा अभी cloud में save हो रहा है — कुछ सेकंड रुकें।";
-    }
-  });
+  // boot पर बची हुई (unconfirmed) writes दोबारा भेजो — फिर stamp ताज़ा कर दो
+  async function flushPendingOnBoot() {
+    const pend = _loadPending();
+    if (!pend.length) return;
+    for (const p of pend) { try { await cloudCall(p.cloudOp, p.args); } catch (e) { console.error("replay:", e); } }
+    _savePending([]);
+    try { localStorage.setItem(STAMP_KEY, JSON.stringify(await cloudCall("estStamp"))); } catch (e) {}
+  }
 
   async function mirrorWriteAll(all) {
     for (const s of CLOUD_STORES) {
@@ -164,6 +179,7 @@
         }
       } catch (e) { _cloudMode = false; }
       if (_cloudMode) {
+        await flushPendingOnBoot();   // पिछली बार की बची writes पहले भेजो (डेटा हानि न हो)
         if (localStorage.getItem(STAMP_KEY)) {
           /* mirror मौजूद — तुरंत खोलो, मिलान background में */
           cloudSync(true)
@@ -182,18 +198,18 @@
       const p = idb.put(store, obj);
       if (_cloudMode) {
         const snap = JSON.parse(JSON.stringify(obj));   /* उसी क्षण की copy */
-        queueCloud(() => cloudCall("estPut", { store: store, id: String(obj.id), data: snap }));
+        cloudEnqueue("estPut", { store: store, id: String(obj.id), data: snap }, store + ":" + obj.id, false);
       }
       return p;
     },
     del(store, id) {
       const p = idb.del(store, id);
-      if (_cloudMode) queueCloud(() => cloudCall("estDel", { store: store, id: String(id) }));
+      if (_cloudMode) cloudEnqueue("estDel", { store: store, id: String(id) }, store + ":" + id, false);
       return p;
     },
     clear(store) {
       const p = idb.clear(store);
-      if (_cloudMode) queueCloud(() => cloudCall("estClear", { store: store }));
+      if (_cloudMode) cloudEnqueue("estClear", { store: store }, store + ":*", true);
       return p;
     },
   };

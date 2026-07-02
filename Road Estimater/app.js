@@ -528,8 +528,11 @@
     }
   }
 
-  function persistSheet(sheet) {
-    sheet.updatedAt = Date.now();
+  // silent=true → केवल auto re-rate / auto-link जैसे system बदलाव; "अंतिम सुधार" समय नहीं बदलता
+  // (updatedAt सिर्फ़ तब बदले जब user ने खुद शीट के अंदर कुछ बदला हो)
+  function persistSheet(sheet, silent) {
+    if (!silent) sheet.updatedAt = Date.now();
+    else if (!sheet.updatedAt) sheet.updatedAt = Date.now();  // पुरानी शीट जिसमें कभी stamp नहीं लगा
     db.put("sheets", sheet);
   }
 
@@ -2389,7 +2392,7 @@
           if (mrNum(cell.v) !== num) { cell.v = num; changed = true; }
         }
       }
-      if (changed) { persistSheet(sheet); touched++; }
+      if (changed) { persistSheet(sheet, true); touched++; }   // auto re-rate — "अंतिम सुधार" समय अछूता रहे
     }
     if (touched) { if (hfReady) buildEngine(); if (state.activeSheetId) renderGrid(); }
     return touched;
@@ -2456,7 +2459,7 @@
         if (dcell) dcell.mref = { cat: m.cat, rowId: m.rowId, field: "name" };
         linked++; changed = true;
       }
-      if (changed) persistSheet(sheet);
+      if (changed) persistSheet(sheet, true);   // सिर्फ़ master-link जोड़ा — "अंतिम सुधार" समय अछूता रहे
     }
     return linked;
   }
@@ -3164,23 +3167,38 @@
     if (!isSize(size)) return;
     if (morthVariant(itemKey, size)) { editMasterAnalysis(morthVariant(itemKey, size).id); return; }
     const tpl = morthAnyVariant(itemKey);
-    const base = tpl ? JSON.parse(JSON.stringify(tpl)) : null;
-    const itemName = tpl ? (tpl.itemName || tpl.name) : "Item";
-    const group = tpl ? chapterKeyOf(tpl) : defaultChapterKey("morth");
-    const newName = uniqueName(safeName(itemName + "_" + size));
-    let sheet;
-    if (base) {
-      sheet = base; sheet.id = uid("sht"); sheet.name = newName; sheet.kind = "master";
-      sheet.source = "morth"; sheet.size = size; sheet.itemKey = itemKey; sheet.itemName = itemName; sheet.group = group;
+    // कोई और size का Analysis ही नहीं → सीधे नया (कुछ पूछने को नहीं)
+    if (!tpl) {
+      const nm = "Item";
+      createSheet(uniqueName(safeName(nm + "_" + size)), nm, { kind: "master", source: "morth", size: size, itemKey: itemKey, itemName: nm, group: defaultChapterKey("morth") });
+      return;
+    }
+    // दूसरे size का Analysis मौजूद है → auto-copy मत करो, पहले पूछो
+    const itemName = tpl.itemName || tpl.name;
+    askChoice(
+      "“" + itemName + "” के लिये " + sizeName(size) + " का Analysis अभी नहीं बना है।\nआप क्या करना चाहते हैं?",
+      [
+        { label: "📋 दूसरे size से कॉपी करके एडिट करें", value: "copy", cls: "primary" },
+        { label: "🆕 नया (खाली) Analysis बनाएँ", value: "new" },
+        { label: "रद्द करें", value: "cancel" },
+      ]
+    ).then((choice) => {
+      if (!choice || choice === "cancel") return;
+      if (choice === "new") {
+        createSheet(uniqueName(safeName(itemName + "_" + size)), itemName, { kind: "master", source: "morth", size: size, itemKey: itemKey, itemName: itemName, group: chapterKeyOf(tpl) });
+        return;
+      }
+      // copy → दूसरे size की पूरी शीट कॉपी करके नया variant
+      const sheet = JSON.parse(JSON.stringify(tpl));
+      sheet.id = uid("sht"); sheet.name = uniqueName(safeName(itemName + "_" + size)); sheet.kind = "master";
+      sheet.source = "morth"; sheet.size = size; sheet.itemKey = itemKey; sheet.itemName = itemName; sheet.group = chapterKeyOf(tpl);
       sheet.masterId = null; sheet.syncPref = null; sheet.updatedAt = Date.now();
       state.sheets[sheet.id] = sheet; state.order.push(sheet.id);
       if (hfReady) { try { hf.addSheet(sheet.name); hf.setSheetContent(hfSheetId(sheet.name), sheetMatrix(sheet)); } catch (e) { buildEngine(); } }
       db.put("sheets", sheet);
       renderMorthAnalysis(); openMasterForEdit(sheet.id);
-      status(sizeName(size) + " variant जुड़ा (" + itemName + ") — अब इसमें बदलाव करें");
-    } else {
-      createSheet(newName, itemName, { kind: "master", source: "morth", size: size, itemKey: itemKey, itemName: itemName, group: group });
-    }
+      status(sizeName(size) + " variant कॉपी हुआ (" + itemName + ") — अब इसमें बदलाव करें");
+    });
   }
 
   // Rate Analysis में किसी master variant की working-copy बनाओ और खोलो

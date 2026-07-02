@@ -639,19 +639,25 @@ body{
 }
 .ag-table th.c-size, .ag-table th.c-mod, .ag-table th.c-act{width:1%}
 .ag-table th.c-act, .ag-table td.c-act{text-align:right}
-.ag-table tbody td{padding:9px 16px; border-bottom:1px solid var(--line-soft); vertical-align:middle}
+.ag-table tbody td{padding:6px 16px; border-bottom:1px solid var(--line-soft); vertical-align:middle}
 .ag-table tbody tr:last-child td{border-bottom:none}
 .ag-table tbody tr:hover td{background:#eef2fe}
 .ag-table td.c-ref{min-width:230px}
 .ag-table td.c-ref .agi-main{gap:2px}
-.ag-table td.c-size{white-space:nowrap}
-.ag-table td.c-size .size-chips{margin-top:0}
+.ag-table td.c-size{white-space:nowrap; width:1%}
+/* Large / Medium / Small — default में एक ही लाइन में (nowrap), chip छोटा रखो ताकि row height कम रहे */
+.ag-table td.c-size .size-chips{margin-top:0; flex-wrap:nowrap; gap:4px}
+.ag-table td.c-size .chip{white-space:nowrap; flex:none; padding:2px 8px; line-height:1.35}
 .ag-table td.c-mod{white-space:nowrap; font-size:11px; color:var(--muted); font-family:var(--mono,var(--ui))}
 .ag-table td.c-act{white-space:nowrap}
 .ag-table td.c-act .agi-acts{display:inline-flex; gap:6px; justify-content:flex-end}
 @media (max-width:820px){
   .ag-table td.c-mod, .ag-table th.c-mod{display:none}      /* छोटी screen पर समय-कॉलम छिपाओ */
   .ag-table td.c-ref{min-width:140px}
+}
+@media (max-width:560px){
+  /* बहुत ही कम जगह — तभी Large/Medium/Small ऊपर-नीचे wrap हों */
+  .ag-table td.c-size .size-chips{flex-wrap:wrap}
 }
 
 /* Rate Analysis: list header actions + master/copy चिह्न + kind banner */

@@ -2442,11 +2442,12 @@
           const row = masterRowById(cell.mref.cat, cell.mref.rowId);
           if (!row) continue; // master row मौजूद नहीं → वैसा ही रहने दो
           const nm = masterItemName(cell.mref.cat, row);
-          if (cell.v !== nm) { cell.v = nm; changed = true; }
+          if (cell.f != null || cell.v !== nm) { delete cell.f; cell.v = nm; changed = true; }
         } else if (cell.mref.field === "rate") {
           const num = mrefRateNum(cell.mref);   // single या कई items का औसत (2 दशमलव)
           if (num == null) continue;
-          if (mrNum(cell.v) !== num) { cell.v = num; changed = true; }
+          // बचा हुआ formula हटाओ — नहीं तो grid formula का मान दिखाएगा, linked rate नहीं (इसलिए "हरा पर अपडेट नहीं")
+          if (cell.f != null || mrNum(cell.v) !== num) { delete cell.f; cell.v = num; changed = true; }
         }
       }
       if (changed) { persistSheet(sheet, true); touched++; }   // auto re-rate — "अंतिम सुधार" समय अछूता रहे
@@ -2981,7 +2982,10 @@
             html += "<td class='c-size'><button class='chip has' data-dedit='" + s.id + "' title='यह Analysis खोलकर संपादित करें'>✎ खोलें</button></td>";
             html += "<td class='c-mod'>" + fmtDateTime(s.updatedAt) + "</td>";
             html += "<td class='c-act'><span class='agi-acts'>";
-            html += "<button class='btn xs " + (s.checked ? "ck-on" : "ck-off") + "' data-dcheck='" + s.id + "' title='" + (s.checked ? "Checked है — क्लिक कर हटाएँ" : "Checked (जाँची हुई) मार्क करें") + "'>" + (s.checked ? "✓ Checked" : "✓ Check") + "</button>";
+            if (estIsAdmin())   // Check/Uncheck केवल Admin
+              html += "<button class='btn xs " + (s.checked ? "ck-on" : "ck-off") + "' data-dcheck='" + s.id + "' title='" + (s.checked ? "Checked है — क्लिक कर हटाएँ" : "Checked (जाँची हुई) मार्क करें") + "'>" + (s.checked ? "✓ Checked" : "✓ Check") + "</button>";
+            else if (s.checked)  // non-admin: सिर्फ़ स्थिति दिखे (बटन नहीं)
+              html += "<span class='ck-tag' title='Admin द्वारा Checked'>✓ Checked</span>";
             html += "<button class='btn xs primary' data-dload='" + s.id + "'>📂 Load</button>";
             html += "<button class='btn xs' data-dren='" + s.id + "' title='नाम/विवरण/क्रम/Chapter बदलें'>✎ Edit</button>";
             html += "<button class='btn xs' data-dchap='" + s.id + "'>📁 Chapter</button>";
@@ -3033,9 +3037,12 @@
             for (const sz of SIZES) {
               const v = it.variants[sz.key];
               if (v) {
+                const vckBtn = estIsAdmin()   // Check/Uncheck केवल Admin
+                  ? "<button class='vck' data-mcheck='" + v.id + "' title='" + (v.checked ? sz.name + " Checked है — क्लिक कर हटाएँ" : sz.name + " को Checked मार्क करें") + "'>" + (v.checked ? "✓" : "○") + "</button>"
+                  : (v.checked ? "<span class='vck' title='Admin द्वारा Checked'>✓</span>" : "");
                 html += "<span class='vwrap" + (v.checked ? " checked" : "") + "'>" +
                   "<button class='chip has' data-medit='" + v.id + "' title='" + sz.name + " variant खोलकर संपादित करें'>✎ " + sz.name + "</button>" +
-                  "<button class='vck' data-mcheck='" + v.id + "' title='" + (v.checked ? sz.name + " Checked है — क्लिक कर हटाएँ" : sz.name + " को Checked मार्क करें") + "'>" + (v.checked ? "✓" : "○") + "</button>" +
+                  vckBtn +
                   "</span>";
               } else html += "<button class='chip add' data-madd='" + it.key + "' data-size='" + sz.key + "' title='" + sz.name + " variant जोड़ें'>+ " + sz.name + "</button>";
             }
@@ -3324,8 +3331,13 @@
     const ohGroupId = groups.length ? ((groups.some((g) => g.id === _loadOhGroupId) ? _loadOhGroupId : groups[0].id)) : null;
     maybeLoadWithDeps(masterId, rmrId, ohGroupId);
   }
+  // वर्तमान user की भूमिका — parent (Road Management) के login से sessionStorage में आती है
+  function estUserRole() { try { return (JSON.parse(sessionStorage.getItem("rms_user") || "{}").role) || ""; } catch (e) { return ""; } }
+  function estIsAdmin() { return estUserRole() === "admin"; }   // Analysis "Check" केवल Admin कर सकता है
+
   // Analysis को Checked/Unchecked टॉगल करो (silent persist — "अंतिम सुधार" समय नहीं बदलता)
   function toggleAnalysisChecked(id) {
+    if (!estIsAdmin()) { status("Analysis 'Check' केवल Admin कर सकता है"); return; }   // सुरक्षा — non-admin रोको
     const s = state.sheets[id]; if (!s) return;
     s.checked = !s.checked;
     persistSheet(s, true);

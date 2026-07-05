@@ -468,6 +468,7 @@ body{
 .btn.xs.ck-on:hover{background:#c6efdb}
 .btn.xs.ck-off{color:#7a8397}
 .btn.xs.ck-off:hover{background:#eef7f1; color:#046c4e; border-color:#b5ead6}
+.ck-tag{font-size:10.5px; font-weight:700; color:#046c4e; background:#def7ec; border:1px solid #b5ead6; border-radius:999px; padding:2px 9px; white-space:nowrap}
 /* MoRTH variant chip + छोटा Check टॉगल */
 .vwrap{display:inline-flex; align-items:stretch}
 .vwrap .chip.has{border-top-right-radius:0; border-bottom-right-radius:0}

@@ -8,8 +8,9 @@
 //   SUPABASE_URL          = https://xxxx.supabase.co
 //   SUPABASE_SERVICE_KEY  = (service_role secret key)
 //   APP_SECRET            = कोई भी लम्बा random वाक्य (token-signing के लिए)
-//   APP_USERS             = admin:MeraNayaPass@123:admin:Administrator;user1:Pass1:user:User One
+//   APP_USERS             = admin:MeraNayaPass@123:admin:Administrator;dataentry:DataPass@123:user:Data Entry
 //                           (रूप: user:password:role:नाम — users ';' से अलग करें)
+//                           role=admin → सब कुछ (Analysis 'Check' भी); role=user → Data भर सकता है पर Check नहीं
 // ═══════════════════════════════════════════════════════════════
 import crypto from 'node:crypto';
 

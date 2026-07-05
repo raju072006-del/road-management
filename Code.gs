@@ -73,7 +73,8 @@ function getPaymentPageHtml() {
 const USERS_ = {
   'admin': { hash: 'e86f78a8a3caf0b60d8e74e5942aa6d86dc150cd3c03338aef25b7d2d7e3acc7', role: 'admin', name: 'Administrator' },
   'user1': { hash: '1e9a6b9afd56cf274a1b46367cad2ff478fb6f0e29e5766195848b1482d2e2be', role: 'user',  name: 'User 1' },
-  'user2': { hash: 'cd92953692442115e21ca8c5daefaffe2b3d8737769700667cb8ca864ae1e7c4', role: 'user',  name: 'User 2' }
+  'user2': { hash: 'cd92953692442115e21ca8c5daefaffe2b3d8737769700667cb8ca864ae1e7c4', role: 'user',  name: 'User 2' },
+  'user':  { hash: '3e7c19576488862816f13b512cacf3e4ba97dd97243ea0bd6a2ad1642d86ba72', role: 'user',  name: 'User' }   // User / User@123 — local mode
 };
 
 function validateLogin(username, password) {

@@ -8838,13 +8838,19 @@ function appConfirm(opts) {
 var ESTIMATOR_URL = 'Road Estimater/index.html';
 var _estPushed = false;
 
+function _estUrlWithRole() {
+  // role को Estimator तक भरोसे से पहुँचाओ — URL param सबसे विश्वसनीय (local/online दोनों में)
+  var role = (_currentUser && _currentUser.role) ? _currentUser.role : '';
+  if (!role) { try { role = (JSON.parse(sessionStorage.getItem('rms_user') || '{}').role) || ''; } catch (e) {} }
+  return ESTIMATOR_URL + (role ? ('?role=' + encodeURIComponent(role)) : '');
+}
 function openEstimator() {
   var ov = document.getElementById('est-overlay');
   var fr = document.getElementById('est-frame');
-  if (!ov || !fr) { window.open(ESTIMATOR_URL, '_blank'); return; }
+  if (!ov || !fr) { window.open(_estUrlWithRole(), '_blank'); return; }
   // पहली बार ही load — बाद में बंद/खोलने पर Estimator की स्थिति बनी रहती है
   if (fr.getAttribute('data-loaded') !== '1') {
-    fr.src = ESTIMATOR_URL;
+    fr.src = _estUrlWithRole();
     fr.setAttribute('data-loaded', '1');
   }
   ov.classList.add('open');
@@ -8867,7 +8873,7 @@ function closeEstimator() {
 }
 
 function estOpenNewTab() {
-  window.open(ESTIMATOR_URL, '_blank');
+  window.open(_estUrlWithRole(), '_blank');
   closeEstimator();
 }
 

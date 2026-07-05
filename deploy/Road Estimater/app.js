@@ -3331,8 +3331,16 @@
     const ohGroupId = groups.length ? ((groups.some((g) => g.id === _loadOhGroupId) ? _loadOhGroupId : groups[0].id)) : null;
     maybeLoadWithDeps(masterId, rmrId, ohGroupId);
   }
-  // वर्तमान user की भूमिका — parent (Road Management) के login से sessionStorage में आती है
-  function estUserRole() { try { return (JSON.parse(sessionStorage.getItem("rms_user") || "{}").role) || ""; } catch (e) { return ""; } }
+  // वर्तमान user की भूमिका — कई स्रोतों से (जो पहले मिले): URL ?role= (सबसे विश्वसनीय),
+  // फिर parent window का sessionStorage, फिर इसी frame का session/localStorage
+  function estUserRole() {
+    let role = "";
+    try { role = new URLSearchParams(location.search).get("role") || ""; } catch (e) {}
+    if (!role) { try { role = (JSON.parse(window.parent.sessionStorage.getItem("rms_user") || "{}").role) || ""; } catch (e) {} }
+    if (!role) { try { role = (JSON.parse(sessionStorage.getItem("rms_user") || "{}").role) || ""; } catch (e) {} }
+    if (!role) { try { role = (JSON.parse(localStorage.getItem("rms_user") || "{}").role) || ""; } catch (e) {} }
+    return role;
+  }
   function estIsAdmin() { return estUserRole() === "admin"; }   // Analysis "Check" केवल Admin कर सकता है
 
   // Analysis को Checked/Unchecked टॉगल करो (silent persist — "अंतिम सुधार" समय नहीं बदलता)
@@ -4975,6 +4983,7 @@
       if (fixed) db.put("master", m);
     }
 
+    try { await window.__hfReady; } catch (e) {}  // engine async लोड होता है — build से पहले तैयार होने दो
     buildEngine();
     setEngineStatus();
     autoLinkMasterRates();  // पुराने analyses के correct master-रेट cells को link कर दो (पीला हटे)

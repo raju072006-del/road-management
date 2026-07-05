@@ -111,9 +111,17 @@ body{
   border-bottom:1px solid var(--line); z-index:10;
 }
 .topbar-title{display:flex; align-items:center; gap:8px; font-size:14px; flex:1; min-width:0}
-.tb-section{font-weight:700; color:var(--ink); letter-spacing:-.01em}
-.tb-sep{color:#b6c0d4}
-.tb-estimate{color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.tb-section{font-weight:700; color:var(--ink); letter-spacing:-.01em; flex:none}
+.tb-sep{display:none}
+/* active estimate का नाम — हर पेज के सबसे ऊपर, स्पष्ट pill (टॉपबार की उसी पंक्ति में, अतिरिक्त जगह नहीं) */
+.tb-estimate{
+  display:inline-flex; align-items:center; gap:5px; min-width:0; max-width:44vw;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  font-weight:700; color:var(--primary,#4056d6);
+  background:#eef2fe; border:1px solid #dbe3fb; border-radius:999px;
+  padding:3px 12px; line-height:1.35;
+}
+.tb-estimate::before{content:"📋"; font-size:12px; flex:none}
 .topbar-actions{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
 .icon-btn{
   background:#fff; border:1px solid var(--line); border-radius:var(--r-sm); padding:6px 10px;
@@ -216,6 +224,25 @@ body{
 .data-table input.calc{background:#eef2ff; color:var(--navy-dark); font-weight:700; cursor:default} /* अपने-आप गणना */
 .data-table input[readonly]{cursor:default; color:var(--ink)}
 .data-table input:not([readonly]){background:#fffcf2}
+/* Query Name dropdown (Material Query Rate) — input जैसा दिखे */
+.data-table select.mr-qsel{
+  width:100%; border:none; background:#fffcf2; padding:7px 8px;
+  font-family:var(--ui); font-size:13px; color:var(--ink); cursor:pointer;
+}
+.data-table select.mr-qsel:focus{outline:2px solid var(--sel-border); outline-offset:-2px; background:#fff; border-radius:6px}
+/* Query Names सूची (mrExtra panel) — कम-से-कम ऊँचाई ताकि तालिका को ज़्यादा जगह मिले */
+.qn-panel{margin-top:8px; padding:8px 12px}
+.qn-panel .qn-top{display:flex; align-items:center; gap:9px; flex-wrap:wrap}
+.qn-panel h3{margin:0; font-size:13px; white-space:nowrap}
+.qn-panel #qnNew{flex:1; min-width:150px; padding:6px 10px; border:1.5px solid var(--line); border-radius:8px;
+  font-family:var(--ui); font-size:13px; background:#fffcf2}
+.qn-panel #qnNew:focus{outline:none; border-color:var(--sel-border); box-shadow:0 0 0 3px rgba(76,102,240,.15)}
+.qn-list{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px}
+.qn-item{display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:600; color:#3d4db4;
+  background:#eef2fe; border:1px solid #dbe3fb; border-radius:999px; padding:2px 5px 2px 11px}
+.qn-del{border:none; background:#dbe3fb; color:#4056d6; width:16px; height:16px; border-radius:50%;
+  font-size:12px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .14s var(--ease)}
+.qn-del:hover{background:#c0392b; color:#fff}
 .data-table tr.row-edit td{background:#fffcf2}
 .data-table td.dt-act{text-align:center; white-space:nowrap}
 .data-table td.dt-act .mini{font-size:12px; padding:3px 4px}
@@ -226,6 +253,20 @@ body{
 }
 .rmr-chip:hover{border-color:var(--navy-light); color:var(--navy); box-shadow:var(--shadow)}
 .rmr-chip.active{background:linear-gradient(135deg,var(--navy),var(--navy-light)); color:#fff; border-color:transparent; box-shadow:0 4px 12px rgba(64,86,214,.32)}
+.rmr-chip.locked{border-color:#cfd8f5; background:#f4f7ff}
+.rmr-chip.locked.active{background:linear-gradient(135deg,var(--navy),var(--navy-light)); color:#fff}
+/* Save (lock) बटन — हरा */
+.btn.ok{background:#def7ec; color:#046c4e; border-color:#b5ead6}
+.btn.ok:hover{background:#c6efdb}
+/* Query दूरी modal */
+.qd-modal{width:440px; max-width:94vw}
+.qd-name{margin:6px 0 4px !important}
+.qd-list{max-height:46vh; overflow:auto; border:1px solid var(--line); border-radius:10px; margin-top:8px}
+.qd-row{display:flex !important; align-items:center; gap:10px; margin:0 !important; padding:8px 12px; border-bottom:1px solid var(--line-soft)}
+.qd-row:last-child{border-bottom:none}
+.qd-nm{flex:1; min-width:0; display:flex; flex-direction:column; font-size:13px; font-weight:600; color:var(--ink)}
+.qd-nm small{font-weight:500; color:var(--muted); font-size:10.5px}
+.qd-km{width:88px !important; flex:none; text-align:right; margin:0 !important}
 .mr-calc{margin-top:16px; max-width:520px}
 .mr-calc .calc-row{display:flex; align-items:flex-end; gap:12px}
 .mr-calc .calc-row label{display:flex; flex-direction:column; gap:5px; font-size:12px; font-weight:600; color:#3d4a63}
@@ -367,7 +408,7 @@ body{
 /* ---------- Layout ---------- */
 .layout{
   flex:1; display:grid;
-  grid-template-columns:264px 1fr;
+  grid-template-columns:306px 1fr;
   gap:1px; background:var(--line); overflow:hidden; min-height:0;
 }
 .panel{background:var(--panel); display:flex; flex-direction:column; min-height:0; overflow:hidden}
@@ -385,17 +426,69 @@ body{
 }
 .search:focus{outline:none; border-color:var(--sel-border); background:#fff; box-shadow:0 0 0 3.5px rgba(76,102,240,.16)}
 .sheet-count{padding:4px 16px 8px; font-size:11px; color:var(--muted)}
-.sheet-list{list-style:none; margin:0; padding:0 8px 10px; overflow-y:auto; flex:1}
-.sheet-list li{
-  padding:8px 11px; border-radius:9px; cursor:pointer; font-size:13px;
-  display:flex; align-items:center; gap:8px; margin-bottom:2px;
-  transition:background .14s var(--ease), color .14s var(--ease);
+.sheet-list{list-style:none; margin:0; padding:2px 10px 12px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:6px}
+
+/* लोड किए Analysis — कॉम्पैक्ट कार्ड (theme: indigo), कम ऊँचाई के लिए 2 तंग लाइन */
+.sheet-list li.sl-card{
+  display:flex; align-items:center; gap:7px; cursor:pointer;
+  padding:6px 9px 6px 11px; background:#fff;
+  border:1px solid var(--line); border-radius:11px; margin:0;
+  box-shadow:0 1px 2px rgba(20,28,46,.04);
+  transition:border-color .15s var(--ease), box-shadow .15s var(--ease), background .15s var(--ease);
 }
-.sheet-list li:hover{background:var(--line-soft)}
-.sheet-list li.active{background:var(--sel); color:var(--navy-dark); font-weight:600}
-.sheet-list li .dot{width:7px;height:7px;border-radius:50%;background:var(--saffron);flex:none}
-.sheet-list li.active .dot{background:var(--navy)}
-.sheet-list li .nm{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.sheet-list li.sl-card:hover{border-color:var(--navy-light,#c3ceff); box-shadow:0 2px 8px rgba(20,28,46,.08)}
+.sheet-list li.sl-card.active{background:#f4f7ff; border-color:var(--sel-border,#b9c6ff); box-shadow:0 0 0 2.5px rgba(76,102,240,.10)}
+.sheet-list li.sl-card::before{content:none}
+
+.sl-body{flex:1; min-width:0; display:flex; flex-direction:column; gap:3px}
+.sl-row1{display:flex; align-items:baseline; gap:8px}
+.sl-title{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  font-family:var(--mono,var(--ui)); font-weight:700; font-size:13px; color:#3a4150; line-height:1.2}
+.sl-card.active .sl-title{color:#2c313c}
+.sl-code{flex:none; font-size:10.5px; font-weight:800; letter-spacing:.03em}
+.sl-code.morth{color:#4056d6}
+.sl-code.mord{color:#0e9f6e}
+
+.sl-chips{display:flex; flex-wrap:wrap; gap:4px}
+.sl-chip{font-size:9.5px; font-weight:700; border-radius:999px; padding:1px 8px; border:1px solid transparent; white-space:nowrap; line-height:1.5}
+.sl-chip.size{background:#eef2fe; color:#3d4db4; border-color:#dbe3fb}
+.sl-chip.copy{background:#e7eeff; color:var(--navy-dark); border-color:#d3ddfb}
+.sl-chip.master{background:#fdf3d8; color:#8a6d1a; border-color:#f1dfad}
+.sl-chip.rmr{background:#def7ec; color:#046c4e; border-color:#b5ead6}
+.sl-chip.oh{background:#f3e8ff; color:#6b21a8; border-color:#e4ccfb}
+.sl-chip.none{background:#f2f4f8; color:#8a94a6; border-color:#e3e7ef}
+/* स्रोत की स्थिति — MoRTH/MoRD कोड के आगे (बिना text): Checked हरा ✓, वरना ⚠ चेतावनी */
+.sl-tick{flex:none; color:#0e9f6e; font-weight:900; font-size:12px; line-height:1}
+.sl-warn{flex:none; color:#e67e22; font-size:11.5px; line-height:1}
+
+/* ===== Analysis "Checked" (जाँची हुई) — mark/indicator ===== */
+.ag-ckmark{color:#0e9f6e; font-weight:900}
+.ag-table tr.row-checked td.c-ref{box-shadow:inset 3px 0 0 #27ae60}   /* checked पंक्ति पर बाईं हरी पट्टी */
+.btn.xs.ck-on{background:#def7ec; color:#046c4e; border-color:#b5ead6}
+.btn.xs.ck-on:hover{background:#c6efdb}
+.btn.xs.ck-off{color:#7a8397}
+.btn.xs.ck-off:hover{background:#eef7f1; color:#046c4e; border-color:#b5ead6}
+/* MoRTH variant chip + छोटा Check टॉगल */
+.vwrap{display:inline-flex; align-items:stretch}
+.vwrap .chip.has{border-top-right-radius:0; border-bottom-right-radius:0}
+.vck{border:1px solid var(--line); border-left:none; border-top-right-radius:999px; border-bottom-right-radius:999px;
+  background:#fff; color:#aab2c0; font-size:11px; font-weight:800; padding:0 7px; cursor:pointer; line-height:1;
+  transition:all .14s var(--ease)}
+.vck:hover{background:#eef7f1; color:#046c4e}
+.vwrap.checked .chip.has{background:#def7ec; color:#046c4e; border-color:#b5ead6}
+.vwrap.checked .vck{background:#27ae60; color:#fff; border-color:#27ae60}
+/* Load picker में checked/unchecked badge */
+.lap-ck{margin-left:8px; font-size:9.5px; font-weight:800; border-radius:999px; padding:1px 8px; vertical-align:middle}
+.lap-ck.on{background:#def7ec; color:#046c4e}
+.lap-ck.off{background:#fff5e0; color:#8a5b00}
+
+.sl-x{flex:none; width:22px; height:22px; border-radius:7px; border:1px solid transparent;
+  background:none; color:#9aa3b4; font-size:16px; line-height:1; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; transition:all .14s var(--ease)}
+.sheet-list li.sl-card:hover .sl-x{color:#7a8397}
+.sl-x:hover{background:#fdeaea; color:#c0392b; border-color:#f5c6c6}
+.sheet-list li.muted-row{list-style:none; text-align:center; color:var(--muted); font-size:12.5px; line-height:1.5;
+  padding:16px 14px; background:var(--line-soft); border:1px dashed var(--line); border-radius:12px; cursor:default}
 
 /* ---------- Editor ---------- */
 .editor-panel{position:relative}
@@ -778,6 +871,10 @@ body{
 /* Rate Analysis (non-master) में editing tools छिपाओ — यहाँ Analysis सिर्फ़ Master से लोड + RMR से अपडेट होते हैं,
    ये +Row/−Row/उपशीर्षक/शीट हटाएँ/Excel/Master जोड़ें केवल Master edit mode के लिए रखे गए हैं */
 .editor-panel:not(.master-mode) .editor-tools{display:none}
+/* Rate Analysis में शीट-नाम input + hint और "Loaded copy…" banner भी नहीं — जगह न घेरे
+   (ये सिर्फ़ Master edit mode के लिए रखे गए हैं) */
+.editor-panel:not(.master-mode) .editor-head,
+.editor-panel:not(.master-mode) .kind-banner{display:none}
 
 /* master-mode editor — warm accent ताकि Master edit, Rate Analysis से अलग दिखे */
 .editor-panel.master-mode{background:#fffdf7; box-shadow:inset 0 3px 0 #e3ac0f}
@@ -823,6 +920,13 @@ body{
 /* Rate column — manually भरा (Primary Rate से link नहीं) cell हल्का पीला */
 .grid td.rate-manual{background:#fff8dc}
 .grid td.sel.rate-manual{background:var(--sel)}   /* चुना गया cell selection रंग में ही रहे */
+
+/* Material rate — RMR से linked (हल्का हरा, बाईं ओर पट्टी) ताकि दिखे कि RMR से जुड़ा है */
+.grid td.rate-rmr{background:#e9f7ef; box-shadow:inset 3px 0 0 #27ae60}
+.grid td.sel.rate-rmr{background:var(--sel)}
+/* RMR से link करने की कोशिश हुई पर RMR में वह material नहीं — चेतावनी (हल्का नारंगी) */
+.grid td.rate-rmr-missing{background:#fdecea; box-shadow:inset 3px 0 0 #e67e22}
+.grid td.sel.rate-rmr-missing{background:var(--sel)}
 
 /* multi-cell selection (Shift+Arrow / mouse-drag) */
 .grid td.in-sel{background:#e2eafd}

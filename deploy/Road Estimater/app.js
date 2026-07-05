@@ -227,6 +227,14 @@
     master: {},      // Master Data — category id -> { versions, activeVersion }
   };
 
+  // active estimate रिफ्रेश के बाद भी वही रहे — localStorage में याद रखो
+  const ACTIVE_EST_KEY = "est_active_estimate";
+  function setActiveEstimateId(id) { state.activeEstimateId = id; try { localStorage.setItem(ACTIVE_EST_KEY, id || ""); } catch (e) {} }
+  function restoreActiveEstimateId() {
+    let saved = ""; try { saved = localStorage.getItem(ACTIVE_EST_KEY) || ""; } catch (e) {}
+    state.activeEstimateId = (saved && state.estOrder.indexOf(saved) >= 0) ? saved : (state.estOrder[0] || null);
+  }
+
   let hf = null;       // HyperFormula instance
   let hfReady = false;
   let _suppressEngine = false; // batch (applyOverheadAll) के दौरान बार-बार buildEngine न हो
@@ -1182,17 +1190,26 @@
         const isText = typeof cv.val === "string" && !cv.err;
         if (isText) cls += " text";
         if (sp && sp.cs > 1) cls += " merged";
-        // Rate column (F) में manually भरा (Primary Rate से link नहीं) → हल्का पीला
-        if (c === 5 && r >= sheet.lockTop && cell && !cell.mref && (cell.f != null || (cell.v !== "" && cell.v != null))) {
+        // Rate column (F) की link-स्थिति दिखाओ (पता चले किससे जुड़ा है / नहीं)
+        let titleAttr = "";
+        if (c === 5 && r >= sheet.lockTop && cell) {
           const dcell = sheet.cells[addr(r, 2)];
-          if (!(dcell && dcell.role)) cls += " rate-manual";   // section/total पंक्ति नहीं
+          const isRow = !(dcell && dcell.role);   // section/total पंक्ति नहीं
+          if (cell.mref && cell.mref.rmr && cell.mref.field === "rate") {
+            // Material rate — RMR से linked (या RMR में वह material न हो तो चेतावनी)
+            const resolved = mrefRateNum(cell.mref);
+            if (resolved == null) { cls += " rate-rmr-missing"; titleAttr = " title=\"RMR '" + escapeHtml(sheet.rmrName || "") + "' में यह material नहीं — फ़िलहाल Master की दर दिख रही है; RMR में यह material जोड़ें\""; }
+            else { cls += " rate-rmr"; titleAttr = " title=\"RMR '" + escapeHtml(sheet.rmrName || "") + "' से linked" + (Array.isArray(cell.mref.matIds) ? " · " + cell.mref.matIds.length + " material का औसत" : "") + "\""; }
+          } else if (!cell.mref && isRow && (cell.f != null || (cell.v !== "" && cell.v != null))) {
+            cls += " rate-manual";   // manually भरा — किसी से link नहीं
+          }
         }
         // Lead वाला Quantity cell — computed number की जगह 2-line expression (बिना space)
         let cellHtml = null;
         if (cell && cell.leadText != null) { cls += " lead-cell"; cellHtml = cell.lead ? leadHtml(cell.lead) : escapeHtml(cell.leadText); }
         const styleAttr = cell && cell.s ? " style=\"" + cellStyleCss(cell.s) + "\"" : "";
         const spanAttr = sp ? (sp.cs > 1 ? " colspan='" + sp.cs + "'" : "") + (sp.rs > 1 ? " rowspan='" + sp.rs + "'" : "") : "";
-        html += "<td data-r='" + r + "' data-c='" + c + "' class='" + cls.trim() + "'" + spanAttr + styleAttr + ">" + (cellHtml != null ? cellHtml : escapeHtml(fmtCol(cv.val, c))) + "</td>";
+        html += "<td data-r='" + r + "' data-c='" + c + "' class='" + cls.trim() + "'" + spanAttr + styleAttr + titleAttr + ">" + (cellHtml != null ? cellHtml : escapeHtml(fmtCol(cv.val, c))) + "</td>";
       }
       html += "</tr>";
     }
@@ -1648,7 +1665,7 @@
     const est = { id: uid("est"), name: "नया आकलन", sheetIds: [], createdAt: Date.now() };
     state.estimates[est.id] = est;
     state.estOrder.push(est.id);
-    state.activeEstimateId = est.id;
+    setActiveEstimateId(est.id);
     db.put("estimates", est);
     renderEstimateSelect();
     renderEstimate();
@@ -1727,7 +1744,7 @@
       delete state.estimates[est.id];
       state.estOrder = state.estOrder.filter((x) => x !== est.id);
       db.del("estimates", est.id);
-      state.activeEstimateId = state.estOrder[0] || null;
+      setActiveEstimateId(state.estOrder[0] || null);
       renderEstimateSelect(); renderEstimate();
     });
     document.getElementById("estAddSheet").addEventListener("click", () => {
@@ -1881,7 +1898,7 @@
       const pv = localStorage.getItem("re_projectSize"); if (isSize(pv)) projectSize = pv;
     }
     state.activeSheetId = state.order[0] || null;
-    state.activeEstimateId = state.estOrder[0] || null;
+    setActiveEstimateId(state.estOrder[0] || null);
     buildEngine();
     reRateAllAnalyses(); applyOverheadAll();
     renderSheetList(); renderEstimateSelect(); renderEstimate();
@@ -2156,13 +2173,39 @@
       if (!isWork && id !== state.activeSheetId) continue;   // master सिर्फ़ तभी जब वही खुला हो
       if (q && !s.name.toLowerCase().includes(q)) continue;
       const li = document.createElement("li");
-      li.className = id === state.activeSheetId ? "active" : "";
-      const tag = isWork
-        ? (isWorkingCopy(s) ? "<span class='sl-tag copy' title='Master से जुड़ी copy'>🔗 copy</span>" : "")
-        : "<span class='sl-tag master' title='Master Analysis — सीधा बदलाव'>🗄️ master</span>";
-      const rmrTag = (isWork && s.rmrName) ? "<span class='sl-tag rmr' title='इस RMR से linked'>📦 " + escapeHtml(s.rmrName) + "</span>" : "";
-      const delBtn = isWork ? "<button class='sl-del' title='यहाँ से हटाएँ — Master Data की मूल शीट सुरक्षित रहेगी'>🗑</button>" : "";
-      li.innerHTML = "<span class='dot'></span><span class='nm'>" + escapeHtml(s.name) + "</span>" + tag + rmrTag + delBtn;
+      li.className = "sl-card" + (id === state.activeSheetId ? " active" : "");
+      const srcLabel = (s.source === "mord") ? "MoRD" : "MoRTH";
+      const srcCls = (s.source === "mord") ? "mord" : "morth";
+      // स्रोत Master की स्थिति MoRTH/MoRD के आगे (बिना text): Checked → हरा ✓, वरना → ⚠ चेतावनी
+      let srcTick = "";
+      if (isWork && s.masterId && state.sheets[s.masterId]) {
+        srcTick = state.sheets[s.masterId].checked
+          ? "<span class='sl-tick' title='स्रोत Master Analysis Checked (जाँची हुई) है'>✓</span>"
+          : "<span class='sl-warn' title='स्रोत Master अभी Checked नहीं है'>⚠</span>";
+      }
+      const sizeLabel = (s.source !== "mord" && s.size) ? sizeName(s.size) : "";
+      const desc = (s.title && s.title !== s.name) ? s.title : "";
+      let chips = "";
+      if (sizeLabel) chips += "<span class='sl-chip size'>📐 " + escapeHtml(sizeLabel) + "</span>";
+      // "copy" चिप हटाया — Rate Analysis की हर loaded शीट कॉपी ही होती है, इसलिए बेकार था।
+      // "master" चिप सिर्फ़ तब जब कोई Master सीधे edit के लिए खुली हो (अलग स्थिति)।
+      if (!isWork) chips += "<span class='sl-chip master' title='Master Analysis — सीधा बदलाव'>🗄️ master</span>";
+      if (isWork) chips += s.rmrName
+        ? "<span class='sl-chip rmr' title='इस RMR से linked'>📦 " + escapeHtml(s.rmrName) + "</span>"
+        : "<span class='sl-chip none' title='किसी RMR से linked नहीं'>बिना RMR</span>";
+      // Overhead charges की category (जैसे Road, Setu) — जिससे यह analysis insert हुआ
+      if (isWork && s.ohGroupId) {
+        let ohName = "";
+        for (const eid of state.estOrder) { const g = estOhGroups(state.estimates[eid]).find((x) => x.id === s.ohGroupId); if (g) { ohName = g.remark || ""; break; } }
+        if (ohName) chips += "<span class='sl-chip oh' title='Overhead charges category'>🏷️ " + escapeHtml(ohName) + "</span>";
+      }
+      const xBtn = isWork ? "<button class='sl-x' title='यहाँ से हटाएँ — Master Data की मूल शीट सुरक्षित रहेगी'>×</button>" : "";
+      li.innerHTML =
+        "<div class='sl-body'>" +
+          "<div class='sl-row1'><span class='sl-title'>" + escapeHtml(s.name) + "</span><span class='sl-code " + srcCls + "'>" + srcLabel + "</span>" + srcTick + "</div>" +
+          (chips ? "<div class='sl-chips'>" + chips + "</div>" : "") +
+        "</div>" + xBtn;
+      if (desc) li.title = desc;   // विवरण अब tooltip में — कार्ड की ऊँचाई कम रहे
       // formula में reference डालते समय focus न छूटे
       li.addEventListener("mousedown", (e) => { if (armed && armed.refExpected()) e.preventDefault(); });
       li.addEventListener("click", () => {
@@ -2170,7 +2213,7 @@
         if (armed && armed.surface === "bar") { commitArmed("stay"); }   // अधूरा edit पक्का कर दो
         openSheet(id);
       });
-      const delEl = li.querySelector(".sl-del");
+      const delEl = li.querySelector(".sl-x");
       if (delEl) delEl.addEventListener("click", (e) => {
         e.stopPropagation();   // शीट खुलने से रोको — सीधे delete
         state.activeSheetId = id; renderSheetList(); renderGrid();
@@ -2350,7 +2393,14 @@
   function round2(n) { n = mrNum(n); return Math.round((n + Number.EPSILON) * 100) / 100; } // 2 दशमलव
   // mref का वर्तमान रेट — RMR से जुड़ा हो तो RMR का carted rate; वरना Primary Rate (single/औसत)
   function mrefRateNum(mref) {
-    if (mref.rmr) return rmrRateForMat(mref.rmr, mref.matId);   // RMR (Material + Cartage) से
+    if (mref.rmr) {
+      // RMR (Material + Cartage) से — कई material का औसत हो तो वही materials (matIds) जो Master में चुने थे
+      if (Array.isArray(mref.matIds)) {
+        const rates = mref.matIds.map((id) => rmrRateForMat(mref.rmr, id)).filter((x) => x != null);
+        return rates.length ? round2(rates.reduce((a, b) => a + b, 0) / rates.length) : null;
+      }
+      return rmrRateForMat(mref.rmr, mref.matId);
+    }
     if (Array.isArray(mref.rowIds)) {
       const rates = mref.rowIds.map((id) => { const rr = masterRowById(mref.cat, id); return rr ? mrNum(masterItemRate(mref.cat, rr)) : null; }).filter((x) => x != null);
       if (!rates.length) return null;
@@ -2697,6 +2747,9 @@
     document.querySelectorAll(".nav-item").forEach((n) => n.classList.toggle("active", n.dataset.view === navName));
     const sec = document.getElementById("tbSection");
     if (sec) sec.textContent = VIEW_LABELS[name] || name;
+    // Master Data (library) पर estimate का नाम नहीं दिखाना — वह estimate-निरपेक्ष है
+    const estEl = document.getElementById("currentEstimateName");
+    if (estEl) estEl.style.display = (name === "master" || name === "master-cat" || name === "master-edit") ? "none" : "";
     if (name === "load") renderEstimateProjectList();
     if (name === "master") {
       renderMasterOverview();   // Primary Rate कार्ड + loaded date — तुरंत (हल्का)
@@ -2709,6 +2762,8 @@
     if (name === "master-cat") renderCat();
     if (name === "master-edit") renderMasterEdit();
     if (name === "rmr") renderRMR();
+    if (name === "rate-analysis") reRateAllAnalyses();   // RMR/Primary बदलने के बाद खोलने पर दरें ताज़ा
+    if (name === "summary") reRateAllAnalyses();          // Summary में भी ताज़ा दरें दिखें
   }
   // Master Data कार्डों पर "अभी कौन-सी date का rate effective है" दिखाओ
   function renderMasterOverview() {
@@ -2921,10 +2976,12 @@
             "<th class='c-mod'>अंतिम सुधार</th>" +
             "<th class='c-act'>Action</th></tr></thead><tbody>";
           for (const s of inG) {
-            html += "<tr><td class='c-ref'><div class='agi-main'><span class='agi-nm'>" + (s.serial ? "<span class='agi-sn'>" + escapeHtml(s.serial) + "</span>" : "") + escapeHtml(s.name) + "</span>" + (s.title ? "<span class='agi-tt'>" + escapeHtml(s.title) + "</span>" : "") + "</div></td>";
+            const ck = s.checked ? "<span class='ag-ckmark' title='यह Analysis Checked (जाँची हुई) है'>✓</span> " : "";
+            html += "<tr" + (s.checked ? " class='row-checked'" : "") + "><td class='c-ref'><div class='agi-main'><span class='agi-nm'>" + ck + (s.serial ? "<span class='agi-sn'>" + escapeHtml(s.serial) + "</span>" : "") + escapeHtml(s.name) + "</span>" + (s.title ? "<span class='agi-tt'>" + escapeHtml(s.title) + "</span>" : "") + "</div></td>";
             html += "<td class='c-size'><button class='chip has' data-dedit='" + s.id + "' title='यह Analysis खोलकर संपादित करें'>✎ खोलें</button></td>";
             html += "<td class='c-mod'>" + fmtDateTime(s.updatedAt) + "</td>";
             html += "<td class='c-act'><span class='agi-acts'>";
+            html += "<button class='btn xs " + (s.checked ? "ck-on" : "ck-off") + "' data-dcheck='" + s.id + "' title='" + (s.checked ? "Checked है — क्लिक कर हटाएँ" : "Checked (जाँची हुई) मार्क करें") + "'>" + (s.checked ? "✓ Checked" : "✓ Check") + "</button>";
             html += "<button class='btn xs primary' data-dload='" + s.id + "'>📂 Load</button>";
             html += "<button class='btn xs' data-dren='" + s.id + "' title='नाम/विवरण/क्रम/Chapter बदलें'>✎ Edit</button>";
             html += "<button class='btn xs' data-dchap='" + s.id + "'>📁 Chapter</button>";
@@ -2965,15 +3022,22 @@
             "<th class='c-mod'>अंतिम सुधार</th>" +
             "<th class='c-act'>Action</th></tr></thead><tbody>";
           for (const it of items) {
-            html += "<tr class='morth-item'><td class='c-ref'><div class='agi-main'><span class='agi-nm'>" + (it.serial ? "<span class='agi-sn'>" + escapeHtml(it.serial) + "</span>" : "") + escapeHtml(it.name) + "</span>";
+            const exVars = SIZES.map((sz) => it.variants[sz.key]).filter(Boolean);
+            const allCk = exVars.length && exVars.every((v) => v.checked);
+            const nmCk = allCk ? "<span class='ag-ckmark' title='सभी variant Checked (जाँचे हुए) हैं'>✓</span> " : "";
+            html += "<tr class='morth-item" + (allCk ? " row-checked" : "") + "'><td class='c-ref'><div class='agi-main'><span class='agi-nm'>" + nmCk + (it.serial ? "<span class='agi-sn'>" + escapeHtml(it.serial) + "</span>" : "") + escapeHtml(it.name) + "</span>";
             if (it.desc && it.desc !== it.name) html += "<span class='agi-tt'>" + escapeHtml(it.desc) + "</span>";
             html += "</div></td>";
-            // size variants
+            // size variants — हर existing variant के साथ छोटा Check टॉगल
             html += "<td class='c-size'><span class='size-chips'>";
             for (const sz of SIZES) {
               const v = it.variants[sz.key];
-              if (v) html += "<button class='chip has' data-medit='" + v.id + "' title='" + sz.name + " variant खोलकर संपादित करें'>✎ " + sz.name + "</button>";
-              else html += "<button class='chip add' data-madd='" + it.key + "' data-size='" + sz.key + "' title='" + sz.name + " variant जोड़ें'>+ " + sz.name + "</button>";
+              if (v) {
+                html += "<span class='vwrap" + (v.checked ? " checked" : "") + "'>" +
+                  "<button class='chip has' data-medit='" + v.id + "' title='" + sz.name + " variant खोलकर संपादित करें'>✎ " + sz.name + "</button>" +
+                  "<button class='vck' data-mcheck='" + v.id + "' title='" + (v.checked ? sz.name + " Checked है — क्लिक कर हटाएँ" : sz.name + " को Checked मार्क करें") + "'>" + (v.checked ? "✓" : "○") + "</button>" +
+                  "</span>";
+              } else html += "<button class='chip add' data-madd='" + it.key + "' data-size='" + sz.key + "' title='" + sz.name + " variant जोड़ें'>+ " + sz.name + "</button>";
             }
             html += "</span></td>";
             html += "<td class='c-mod'>" + fmtDateTime(it.upd) + "</td>";
@@ -3217,15 +3281,41 @@
   // Rate Analysis में किसी master variant की working-copy बनाओ और खोलो
   // material (Query) से linked cells को RMR से link कर दो (carted rate उसी RMR से)
   function repointMaterialToRmr(copy, rmrId) {
+    let linked = 0, missing = 0;
     for (const a in copy.cells) {
       const cell = copy.cells[a];
-      if (cell && cell.mref && cell.mref.field === "rate" && cell.mref.cat === "material_query" && !Array.isArray(cell.mref.rowIds)) {
+      if (!(cell && cell.mref && cell.mref.field === "rate" && cell.mref.cat === "material_query")) continue;
+      let ok;
+      if (Array.isArray(cell.mref.rowIds)) {
+        // औसत — वही material जो Master में चुने थे, RMR से जोड़ो
+        cell.mref = { rmr: rmrId, matIds: cell.mref.rowIds.slice(), field: "rate", agg: "avg" };
+        ok = cell.mref.matIds.some((id) => rmrRateForMat(rmrId, id) != null);
+      } else {
         cell.mref = { rmr: rmrId, matId: cell.mref.rowId, field: "rate" };
+        ok = rmrRateForMat(rmrId, cell.mref.matId) != null;
       }
+      if (ok) linked++; else missing++;   // missing = यह material RMR में नहीं है
     }
+    return { linked: linked, missing: missing };
   }
   function loadAnalysisToWorkspace(masterId) {
     const m = state.sheets[masterId]; if (!m) return;
+    // Analysis अभी Checked नहीं है → insert से पहले चेतावनी (फिर भी insert का विकल्प)
+    if (!m.checked) {
+      askConfirm({
+        icon: "⚠️", tone: "info", okCls: "primary",
+        title: "यह Analysis अभी Checked नहीं है",
+        chip: (m.itemName || m.name),
+        body: "यह Master Analysis अभी <b>Checked</b> (जाँची हुई) नहीं है।",
+        note: "Rate Analysis में यह एक <b>copy</b> बनकर आएगा — बाद में Master में सुधार करने पर यहाँ (इस copy में) वह सुधार अपने आप <b>नहीं</b> आएगा। फिर भी insert करना चाहें तो आगे बढ़ें।",
+        noteTone: "warn",
+        cancel: "रद्द", ok: "फिर भी Insert करें",
+      }).then((yes) => { if (yes) _resolveAndLoad(masterId); });
+      return;
+    }
+    _resolveAndLoad(masterId);
+  }
+  function _resolveAndLoad(masterId) {
     const est = state.estimates[state.activeEstimateId];
     const rmrs = (est && est.rmrs) ? est.rmrs : [];
     const groups = est ? estOhGroups(est) : [];
@@ -3233,6 +3323,14 @@
     const rmrId = (_loadRmrId && rmrs.some((r) => r.id === _loadRmrId)) ? _loadRmrId : null;
     const ohGroupId = groups.length ? ((groups.some((g) => g.id === _loadOhGroupId) ? _loadOhGroupId : groups[0].id)) : null;
     maybeLoadWithDeps(masterId, rmrId, ohGroupId);
+  }
+  // Analysis को Checked/Unchecked टॉगल करो (silent persist — "अंतिम सुधार" समय नहीं बदलता)
+  function toggleAnalysisChecked(id) {
+    const s = state.sheets[id]; if (!s) return;
+    s.checked = !s.checked;
+    persistSheet(s, true);
+    renderMorthAnalysis(); renderMordAnalysis();
+    status((s.checked ? "✓ Checked मार्क किया — " : "Checked हटाया — ") + (s.itemName || s.name));
   }
   // दूसरी शीट से डाटा आ रहा हो (formula-link) → पहले पूछो कि उन्हें भी load करें (recursive)
   function maybeLoadWithDeps(masterId, rmrId, ohGroupId) {
@@ -3354,7 +3452,7 @@
     copy.rmrId = rmrId || null; copy.rmrName = rmr ? rmr.name : "";
     copy.ohGroupId = ohGroupId || null;   // Overhead/Profit इसी group के % से
     if (rmr) copy.title = (copy.title ? copy.title + "  " : "") + "[RMR: " + rmr.name + "]";   // RMR नाम analysis पर
-    if (rmrId) repointMaterialToRmr(copy, rmrId);
+    const rl = rmrId ? repointMaterialToRmr(copy, rmrId) : null;
     state.sheets[copy.id] = copy; state.order.push(copy.id);
     if (hfReady) { try { hf.addSheet(copy.name); hf.setSheetContent(hfSheetId(copy.name), sheetMatrix(copy)); } catch (e) { buildEngine(); } }
     db.put("sheets", copy);
@@ -3365,7 +3463,8 @@
     refreshEstimateSheetPicker();
     const est2 = state.estimates[state.activeEstimateId];
     const grp = est2 ? estOhGroups(est2).find((g) => g.id === ohGroupId) : null;
-    status("Analysis load हुआ" + (rmr ? " · RMR: " + rmr.name : "") + (grp && grp.remark ? " · OH group: " + grp.remark : "") + " — " + copy.name);
+    const rmrMsg = rl ? (" · RMR material: " + rl.linked + " linked" + (rl.missing ? ", " + rl.missing + " नहीं मिला ⚠" : " ✓")) : "";
+    status("Analysis load हुआ" + (rmr ? " · RMR: " + rmr.name : "") + (grp && grp.remark ? " · OH group: " + grp.remark : "") + rmrMsg + " — " + copy.name);
   }
   // MoRTH item को मौजूदा project size में load करो (वह size न हो तो उपलब्ध से)
   function loadMorthItem(itemKey) {
@@ -3438,12 +3537,12 @@
       let listHtml = "";
       if (_loadSrc === "mord") {
         const all = sourceMasters("mord");
-        listHtml = buildPickerGroups(all.map((s) => ({ loadId: s.id, name: s.name, sub: s.title, group: chapterKeyOf(s) })), "mord");
+        listHtml = buildPickerGroups(all.map((s) => ({ loadId: s.id, name: s.name, sub: s.title, group: chapterKeyOf(s), checked: !!s.checked })), "mord");
       } else {
         const byKey = {};
         for (const s of sourceMasters("morth")) { if (!byKey[s.itemKey]) { byKey[s.itemKey] = { group: chapterKeyOf(s), name: s.itemName || s.name, variants: {} }; } byKey[s.itemKey].variants[s.size] = s; }
         const items = [];
-        for (const k in byKey) { const it = byKey[k]; const v = it.variants[projectSize] || it.variants.large || it.variants.medium || it.variants.small; if (v) items.push({ loadId: v.id, name: it.name, sub: sizeName(v.size) + (v.size !== projectSize ? " (इस item का " + sizeName(projectSize) + " नहीं)" : ""), group: it.group }); }
+        for (const k in byKey) { const it = byKey[k]; const v = it.variants[projectSize] || it.variants.large || it.variants.medium || it.variants.small; if (v) items.push({ loadId: v.id, name: it.name, sub: sizeName(v.size) + (v.size !== projectSize ? " (इस item का " + sizeName(projectSize) + " नहीं)" : ""), group: it.group, checked: !!v.checked }); }
         listHtml = buildPickerGroups(items, "morth");
       }
       listEl.innerHTML = listHtml || "<div class='ag-empty muted'>अभी कोई master analysis नहीं — Master Data में बनाएँ।</div>";
@@ -3472,8 +3571,12 @@
       const inG = entries.filter((e) => (e.group || defaultChapterKey(src)) === g.key);
       if (inG.length === 0) continue;
       html += "<div class='lap-group'><div class='lap-gname'>" + escapeHtml(g.name) + "</div>";
-      for (const e of inG)
-        html += "<button class='lap-item' data-load='" + e.loadId + "'><span class='lap-nm'>" + escapeHtml(e.name) + "</span>" + (e.sub ? "<span class='lap-tt'>" + escapeHtml(e.sub) + "</span>" : "") + "</button>";
+      for (const e of inG) {
+        const ckBadge = e.checked
+          ? "<span class='lap-ck on' title='Checked (जाँची हुई)'>✓ Checked</span>"
+          : "<span class='lap-ck off' title='अभी Checked नहीं'>⚠ Uncheck</span>";
+        html += "<button class='lap-item' data-load='" + e.loadId + "'><span class='lap-nm'>" + escapeHtml(e.name) + ckBadge + "</span>" + (e.sub ? "<span class='lap-tt'>" + escapeHtml(e.sub) + "</span>" : "") + "</button>";
+      }
       html += "</div>";
     }
     return html;
@@ -3549,7 +3652,7 @@
       li.innerHTML = "<div class='ei-main'><div class='ei-name'>" + escapeHtml(e.name) +
         "</div><div class='ei-meta'>" + escapeHtml(meta || (e.sheetIds.length + " शीट")) + "</div></div><span class='btn xs'>खोलें</span>";
       li.addEventListener("click", () => {
-        state.activeEstimateId = id;
+        setActiveEstimateId(id);
         applyOverheadAll();   // इस estimate के Overhead/Profit % सभी analysis पर
         renderEstimateSelect(); renderEstimate(); updateTopbarEstimate();
         setActiveView("rate-analysis");
@@ -3784,8 +3887,18 @@
           const val = isCalc ? c.calc(r) : (r[c.key] == null ? "" : String(r[c.key]));
           const cls = ((c.num ? "num" : "") + (isCalc ? " calc" : "")).trim();
           const ro = (isCalc || !ed) ? " readonly" : "";
-          html += "<td><input data-i='" + i + "' data-field='" + c.key + "'" + (cls ? " class='" + cls + "'" : "") + ro +
-            " value=\"" + escapeHtml(val) + "\" /></td>";
+          // Material Query Rate का "Query Name" — edit मोड में सूची से Dropdown
+          if (mrCat === "material_query" && c.key === "query_name" && ed) {
+            const names = m.queryNames || [];
+            let opts = "<option value=''>—</option>";
+            let has = false;
+            names.forEach((nm) => { const sel = nm === val ? " selected" : ""; if (nm === val) has = true; opts += "<option value=\"" + escapeHtml(nm) + "\"" + sel + ">" + escapeHtml(nm) + "</option>"; });
+            if (val && !has) opts += "<option value=\"" + escapeHtml(val) + "\" selected>" + escapeHtml(val) + " (सूची में नहीं)</option>";
+            html += "<td><select data-i='" + i + "' data-field='" + c.key + "' class='mr-qsel'>" + opts + "</select></td>";
+          } else {
+            html += "<td><input data-i='" + i + "' data-field='" + c.key + "'" + (cls ? " class='" + cls + "'" : "") + ro +
+              " value=\"" + escapeHtml(val) + "\" /></td>";
+          }
         }
         html += "<td class='dt-act'>" + mrRowActions(r, i) + "</td></tr>";
       });
@@ -3798,9 +3911,10 @@
     buildMrExtra();
   }
 
-  // श्रेणी-विशेष अतिरिक्त UI (अभी: Cartage Calculator)
+  // श्रेणी-विशेष अतिरिक्त UI (Cartage Calculator, Material Query → Query Names सूची)
   function buildMrExtra() {
     const ex = document.getElementById("mrExtra"); if (!ex) return;
+    if (mrCat === "material_query") { buildQueryNamesPanel(ex); return; }
     if (mrCat !== "cartage") { ex.innerHTML = ""; return; }
     ex.innerHTML =
       "<div class='panel-card mr-calc'>" +
@@ -3823,6 +3937,37 @@
     };
     const btn = document.getElementById("cgCalc"); if (btn) btn.addEventListener("click", run);
     const inp = document.getElementById("cgKm"); if (inp) inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); run(); } });
+  }
+
+  // Material Query Rate — Query Names की master सूची (row में Dropdown बनकर आती है)
+  function buildQueryNamesPanel(ex) {
+    const m = ensureCat("material_query");
+    const names = m.queryNames || [];
+    ex.innerHTML =
+      "<div class='panel-card qn-panel'>" +
+      "<div class='qn-top'>" +
+        "<h3>🏷️ Query Names</h3>" +
+        "<input type='text' id='qnNew' placeholder='नया Query Name…' />" +
+        "<button class='btn sm primary' id='qnAdd'>➕ जोड़ें</button>" +
+      "</div>" +
+      "<div id='qnList' class='qn-list'>" +
+        (names.length
+          ? names.map((nm, idx) => "<span class='qn-item'>" + escapeHtml(nm) + "<button class='qn-del' data-qn='" + idx + "' title='हटाएँ'>×</button></span>").join("")
+          : "<span class='muted' style='font-size:12px'>अभी कोई Query Name नहीं।</span>") +
+      "</div></div>";
+    const addName = () => {
+      const inp = document.getElementById("qnNew"); const nm = (inp.value || "").trim();
+      if (!nm) return;
+      if (!m.queryNames) m.queryNames = [];
+      if (m.queryNames.some((x) => x.toLowerCase() === nm.toLowerCase())) { status("यह Query Name पहले से सूची में है"); return; }
+      m.queryNames.push(nm); saveMachine(); renderMachineRate(); status("Query Name जुड़ा: " + nm);
+    };
+    const ab = document.getElementById("qnAdd"); if (ab) ab.addEventListener("click", addName);
+    const ni = document.getElementById("qnNew"); if (ni) ni.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addName(); } });
+    ex.querySelectorAll(".qn-del").forEach((b) => b.addEventListener("click", () => {
+      const idx = +b.dataset.qn; const removed = (m.queryNames || [])[idx];
+      m.queryNames.splice(idx, 1); saveMachine(); renderMachineRate(); status("Query Name हटाया: " + (removed || ""));
+    }));
   }
 
   function mrBtn(act, i, ic, title, cls) {
@@ -3879,6 +4024,15 @@
   }
 
   function wireMrTable(tb) {
+    // Query Name जैसे dropdown (select) — बदलने पर पंक्ति में सेट + save
+    tb.querySelectorAll("select[data-field]").forEach((sel) => {
+      sel.addEventListener("change", () => {
+        const v = mrActiveVersion(); if (!v) return;
+        const row = v.rows[+sel.dataset.i];
+        row[sel.dataset.field] = sel.value;
+        saveMachine();
+      });
+    });
     tb.querySelectorAll("input[data-field]").forEach((inp) => {
       inp.addEventListener("input", () => {
         const v = mrActiveVersion(); if (!v) return;
@@ -4127,6 +4281,7 @@
       else if (b.dataset.chapdel) deleteChapter("morth", b.dataset.chapdel);
       else if (b.dataset.medit) editMasterAnalysis(b.dataset.medit);
       else if (b.dataset.madd) addMorthVariant(b.dataset.madd, b.dataset.size);
+      else if (b.dataset.mcheck) toggleAnalysisChecked(b.dataset.mcheck);
       else if (b.dataset.mload) loadMorthItem(b.dataset.mload);
       else if (b.dataset.mchap) changeMorthChapter(b.dataset.mchap);
       else if (b.dataset.mren) openAnalysisEditModal("morth", b.dataset.mren);
@@ -4139,6 +4294,7 @@
       if (b.dataset.chaptoggle) toggleChapterOpen(mordOpen, b.dataset.chaptoggle, renderMordAnalysis);
       else if (b.dataset.chapedit) renameChapter("mord", b.dataset.chapedit);
       else if (b.dataset.chapdel) deleteChapter("mord", b.dataset.chapdel);
+      else if (b.dataset.dcheck) toggleAnalysisChecked(b.dataset.dcheck);
       else if (b.dataset.dload) loadAnalysisToWorkspace(b.dataset.dload);
       else if (b.dataset.dedit) editMasterAnalysis(b.dataset.dedit);
       else if (b.dataset.dchap) changeMordChapter(b.dataset.dchap);
@@ -4196,24 +4352,78 @@
     }));
   }
 
+  // loaded Material Query Rate से distinct Query नामों की सूची (हर Query में कितने material)
+  function rmrQueryList() {
+    const matRows = loadedVersionRows("material_query") || [];
+    const seen = [], map = {};
+    for (const m of matRows) {
+      const qn = (m.query_name || "").trim(), key = qn || "__noquery__";
+      if (!map[key]) { map[key] = { key: key, name: qn || "(बिना Query नाम)", count: 0 }; seen.push(map[key]); }
+      map[key].count++;
+    }
+    return seen;
+  }
+  // queryDist (Query→km) के अनुसार हर material की row बनाओ — उसकी Query की दूरी उसमें भर जाए
+  function buildRmrRowsWithQueryDist(queryDist) {
+    const matRows = loadedVersionRows("material_query");
+    if (!matRows) return [];
+    return matRows.map((m) => {
+      const key = (m.query_name || "").trim() || "__noquery__";
+      const d = queryDist ? queryDist[key] : "";
+      return {
+        id: uid("rmrrow"), matId: m.id, material: m.desc || "", query: m.query_name || "",
+        matRate: (mrNum(m.query_rate) - mrNum(m.loading)).toFixed(2),
+        royalty: m.royalty != null ? String(m.royalty) : "",
+        distance: (d == null || d === "") ? "" : String(d),
+      };
+    });
+  }
+  // सभी Query की दूरी (km) पूछने का modal — साथ में RMR नाम
+  function askQueryDistances(defName, existing) {
+    return new Promise((resolve) => {
+      const queries = rmrQueryList();
+      if (!queries.length) { alert("पहले Master Data → Material Query Rate में कोई version Load करें (Query नाम वहीं से आएँगे)।"); resolve(null); return; }
+      existing = existing || {};
+      const rowsH = queries.map((qz) =>
+        "<label class='qd-row'><span class='qd-nm'>" + escapeHtml(qz.name) + "<small>" + qz.count + " material</small></span>" +
+        "<input type='text' class='qd-km num' data-qk='" + escapeHtml(qz.key) + "' value=\"" + escapeHtml(existing[qz.key] == null ? "" : String(existing[qz.key])) + "\" placeholder='km' /></label>"
+      ).join("");
+      const ov = document.createElement("div"); ov.className = "modal-overlay";
+      ov.innerHTML =
+        "<div class='modal qd-modal'><h3>📏 साइट से Query की दूरी (km)</h3>" +
+        "<p class='sub'>हर Query (स्रोत/खदान) से साइट की दूरी किमी में भरें — यही दूरी RMR में उस Query के सभी material पर लग जाएगी।</p>" +
+        "<label class='qd-name'>RMR का नाम<input type='text' id='qdName' value=\"" + escapeHtml(defName || "") + "\" /></label>" +
+        "<div class='qd-list'>" + rowsH + "</div>" +
+        "<div class='row' style='margin-top:12px'><button class='btn' id='qdCancel'>रद्द</button><button class='btn primary' id='qdOk'>✓ ठीक है</button></div></div>";
+      document.body.appendChild(ov);
+      const done = (v) => { ov.remove(); resolve(v); };
+      ov.querySelector("#qdCancel").addEventListener("click", () => done(null));
+      ov.addEventListener("mousedown", (e) => { if (e.target === ov) done(null); });
+      ov.querySelector("#qdOk").addEventListener("click", () => {
+        const name = (ov.querySelector("#qdName").value || "").trim() || defName;
+        const queryDist = {};
+        ov.querySelectorAll(".qd-km").forEach((inp) => { queryDist[inp.dataset.qk] = (inp.value || "").trim(); });
+        done({ name: name, queryDist: queryDist });
+      });
+      const f = ov.querySelector(".qd-km"); if (f) f.focus();
+    });
+  }
+
   function createRMR() {
     const est = state.estimates[state.activeEstimateId];
     if (!est) { alert("पहले Load Estimate से कोई estimate खोलें/बनाएँ।"); return; }
     const matRows = loadedVersionRows("material_query");
     if (!matRows || !matRows.length) { alert("पहले Master Data → Material Query Rate में कोई version Load करें (उसी से material आएँगे)।"); return; }
     if (!est.rmrs) est.rmrs = [];
-    const rows = buildRmrRowsFromMaster("");
-    let name = "RMR" + (est.rmrs.length + 1);
-    if (est.rmrs.length >= 1) {   // एक से ज़्यादा → नाम पूछो
-      const nm = prompt("नए RMR का नाम (जैसे किस source/खदान का):", name);
-      if (nm === null) return;
-      name = nm.trim() || name;
-    }
-    const rmr = { id: uid("rmr"), name: name, rows };
-    est.rmrs.push(rmr); rmrActiveId = rmr.id;
-    db.put("estimates", est);
-    renderRMR();
-    status(rmr.name + " बना — " + rows.length + " material; अब दूरी (km) भरें");
+    askQueryDistances("RMR" + (est.rmrs.length + 1), null).then((res) => {
+      if (!res) return;
+      const rmr = { id: uid("rmr"), name: res.name, queryDist: res.queryDist, rows: buildRmrRowsWithQueryDist(res.queryDist), locked: false };
+      est.rmrs.push(rmr); rmrActiveId = rmr.id;
+      db.put("estimates", est);
+      renderRMR();
+      scheduleReRate();
+      status(rmr.name + " बना — Query दूरियों से " + rmr.rows.length + " material की दूरी भर गई; जाँचकर 💾 Save करें");
+    });
   }
 
   function renderRMR() {
@@ -4242,13 +4452,35 @@
     // toolbar — RMR chips + actions
     if (tbar) {
       let h = "<div class='rmr-list'>";
-      est.rmrs.forEach((r) => { h += "<button class='rmr-chip" + (r.id === rmrActiveId ? " active" : "") + "' data-rmr='" + r.id + "' title=\"" + escapeHtml(r.remark || "") + "\">" + escapeHtml(r.name) + "</button>"; });
+      est.rmrs.forEach((r) => { h += "<button class='rmr-chip" + (r.id === rmrActiveId ? " active" : "") + (r.locked ? " locked" : "") + "' data-rmr='" + r.id + "' title=\"" + escapeHtml(r.remark || "") + "\">" + (r.locked ? "🔒 " : "") + escapeHtml(r.name) + "</button>"; });
       h += "<button class='btn sm primary' id='rmrNew'>+ नया RMR</button>";
-      if (rmr) h += "<button class='btn sm' id='rmrRename'>✎ नाम</button><button class='btn sm danger' id='rmrDel'>🗑 हटाएँ</button>";
+      if (rmr) {
+        h += rmr.locked
+          ? "<button class='btn sm' id='rmrEdit' title='दूरी बदलने के लिए edit चालू करें'>✎ Edit</button>"
+          : "<button class='btn sm ok' id='rmrSave' title='दूरी भरने के बाद lock करें'>💾 Save</button>" +
+            "<button class='btn sm' id='rmrQDist' title='सभी Query की साइट-दूरी दोबारा भरें'>📏 Query दूरी</button>";
+        h += "<button class='btn sm' id='rmrRename'>✎ नाम</button><button class='btn sm danger' id='rmrDel'>🗑 हटाएँ</button>";
+      }
       h += "</div>";
       tbar.innerHTML = h;
       tbar.querySelectorAll("[data-rmr]").forEach((b) => b.addEventListener("click", () => { rmrActiveId = b.dataset.rmr; renderRMR(); }));
       const nw = document.getElementById("rmrNew"); if (nw) nw.addEventListener("click", createRMR);
+      const sv = document.getElementById("rmrSave"); if (sv) sv.addEventListener("click", () => { rmr.locked = true; db.put("estimates", est); renderRMR(); status(rmr.name + " Save/lock हुआ — Edit से दोबारा खोल सकते हैं"); });
+      const ed = document.getElementById("rmrEdit"); if (ed) ed.addEventListener("click", () => { rmr.locked = false; db.put("estimates", est); renderRMR(); status(rmr.name + " edit चालू"); });
+      const qd = document.getElementById("rmrQDist"); if (qd) qd.addEventListener("click", () => {
+        askQueryDistances(rmr.name, rmr.queryDist || {}).then((res) => {
+          if (!res) return;
+          rmr.name = res.name; rmr.queryDist = res.queryDist;
+          rmr.rows.forEach((row) => {
+            const mat = rmrMaterial(row);                    // live Query (matId से) — पुरानी rows में भी सही मैच
+            const key = (mat.query || "").trim() || "__noquery__";
+            row.query = mat.query || row.query || "";         // stored query भी ताज़ा कर दो
+            const d = res.queryDist[key];
+            if (d != null && d !== "") row.distance = String(d);
+          });
+          db.put("estimates", est); renderRMR(); scheduleReRate(); status("Query दूरियाँ अपडेट — RMR व linked Rate Analysis ताज़ा");
+        });
+      });
       const rn = document.getElementById("rmrRename"); if (rn) rn.addEventListener("click", () => {
         const nm = prompt("RMR का नाम:", rmr.name); if (nm === null) return;
         rmr.name = nm.trim() || rmr.name; db.put("estimates", est); renderRMR();
@@ -4273,16 +4505,17 @@
     rmr.rows.forEach((row, i) => {
       const mat = rmrMaterial(row);
       const cartage = rmrCartage(row.distance);
-      const total = mat.matRate - mat.royalty + cartage; // Material Rate − Royalty + Cartage
+      // Total बिल्कुल वही जो Rate Analysis को मिलता है (एक ही स्रोत — कभी अलग न हो)
+      const total = rmrRateForMat(rmr.id, row.matId);
       html += "<tr>" +
         "<td><input class='num' readonly value='" + (i + 1) + "' /></td>" +
         "<td><input readonly value=\"" + escapeHtml(mat.material) + "\" /></td>" +
         "<td><input readonly value=\"" + escapeHtml(mat.query) + "\" /></td>" +
-        "<td><input class='num' data-i='" + i + "' value=\"" + escapeHtml(row.distance == null ? "" : String(row.distance)) + "\" /></td>" +
+        "<td><input class='num' " + (rmr.locked ? "readonly " : "") + "data-i='" + i + "' value=\"" + escapeHtml(row.distance == null ? "" : String(row.distance)) + "\" /></td>" +
         "<td><input class='num' readonly value=\"" + nf(mat.matRate) + "\" /></td>" +
         "<td><input class='num calc' readonly value=\"" + (mrNum(row.distance) > 0 ? nf(cartage) : "") + "\" /></td>" +
         "<td><input class='num' readonly value=\"" + (mat.royalty ? nf(mat.royalty) : "") + "\" /></td>" +
-        "<td><input class='num calc' readonly value=\"" + nf(total) + "\" /></td>" +
+        "<td><input class='num calc' readonly value=\"" + (total == null ? "" : nf(total)) + "\" /></td>" +
         "</tr>";
     });
     html += "</tbody>";
@@ -4292,10 +4525,10 @@
       inp.addEventListener("input", () => {
         const i = +inp.dataset.i; rmr.rows[i].distance = inp.value;
         const tr = inp.closest("tr"), cells = tr.querySelectorAll("input.calc");
-        const mat = rmrMaterial(rmr.rows[i]);
-        const cartage = rmrCartage(inp.value), total = mat.matRate - mat.royalty + cartage;
+        const cartage = rmrCartage(inp.value);
+        const total = rmrRateForMat(rmr.id, rmr.rows[i].matId);   // वही रेट जो analysis को जाएगा
         if (cells[0]) cells[0].value = mrNum(inp.value) > 0 ? nf(cartage) : "";
-        if (cells[1]) cells[1].value = nf(total);
+        if (cells[1]) cells[1].value = (total == null ? "" : nf(total));
         db.put("estimates", est);
         scheduleReRate();   // इस RMR से linked analyses की दरें भी ताज़ा
       });
@@ -4491,7 +4724,7 @@
       est = Object.assign({ id: uid("est"), sheetIds: [], createdAt: Date.now() }, fields);
       state.estimates[est.id] = est; state.estOrder.push(est.id); isNew = true;
     }
-    state.activeEstimateId = est.id;
+    setActiveEstimateId(est.id);
     applyNeRmrRows(est);   // form की RMR rows लागू करो
     editingEstimateId = null;
     db.put("estimates", est);
@@ -4563,7 +4796,7 @@
 
     // Estimate panel अभी हटा है (बाद में सेट होगा) — null-safe wiring
     const estSel = document.getElementById("estimateSelect");
-    if (estSel) estSel.addEventListener("change", (e) => { state.activeEstimateId = e.target.value; renderEstimate(); });
+    if (estSel) estSel.addEventListener("change", (e) => { setActiveEstimateId(e.target.value); renderEstimate(); });
     const btnNewEst = document.getElementById("btnNewEstimate");
     if (btnNewEst) btnNewEst.addEventListener("click", newEstimate);
 
@@ -4738,7 +4971,8 @@
     renderSheetList();
     renderEstimateSelect();
     renderMasterOverview();  // Primary Rate कार्ड (loaded date/version) ब्राउजर लोड होते ही ताज़ा — navigate का इंतज़ार नहीं
-    state.activeEstimateId = state.estOrder[0] || null;
+    restoreActiveEstimateId();  // रिफ्रेश के बाद भी वही estimate active रहे (उसके सभी OH groups/RMR दिखें)
+    updateTopbarEstimate();     // हर पेज के सबसे ऊपर active estimate का नाम — रिफ्रेश पर भी सही दिखे
     applyOverheadAll();     // active estimate (या default 10/10) के अनुसार Overhead/Profit — पुराने भी अपडेट
     renderEstimate();
 

@@ -49,11 +49,12 @@ fetch('https://api.supabase.com/v1/projects/' + env.SUPABASE_PROJECT_REF + '/dat
 }).then(async (r) => {
   const t = await r.text();
   if (!r.ok) {
-    console.error('[schema] FAIL (' + r.status + '): ' + t.slice(0, 500));
-    process.exit(1);
+    console.warn('[schema] WARN (' + r.status + '): ' + t.slice(0, 400));
+    console.warn('[schema] database structure update nahin hua - lekin site deploy JAARI rahega.');
+    process.exit(0);   // schema optional/idempotent hai - deploy ko mat roko
   }
   console.log('[schema] Supabase database update OK');
 }).catch((e) => {
-  console.error('[schema] network error: ' + e.message);
-  process.exit(1);
+  console.warn('[schema] network error: ' + e.message + ' - schema SKIP (site deploy JAARI rahega)');
+  process.exit(0);     // network blip par bhi site live hona nahi rukna chahiye
 });

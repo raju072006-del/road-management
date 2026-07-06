@@ -3,35 +3,41 @@ rem ═════════════════════════�
 rem  PUSH - sab kuch ek command mein online:
 rem   1. website build
 rem   2. Supabase database structure (supabase_schema.sql)
-rem   3. GitHub push  ->  Netlify auto-deploy (1-2 minute)
+rem   3. Netlify direct deploy -> site TURANT live (~10-30 sec)
+rem   4-5. GitHub commit + push (backup / version history)
 rem  Pehle test.bat se local check kar lena behtar hai.
 rem ═══════════════════════════════════════════════════════
 cd /d "%~dp0"
 
-echo [1/4] Build...
+echo [1/5] Build...
 node "build\build-local.js"
 if errorlevel 1 goto :err
 
-echo [2/4] Supabase database structure...
+echo [2/5] Supabase database structure...
 node "build\push-schema.js"
+if errorlevel 1 goto :err
+
+echo [3/5] Netlify direct deploy (site turant LIVE)...
+node "build\deploy-netlify.js"
 if errorlevel 1 goto :err
 
 git rev-parse --is-inside-work-tree >nul 2>&1
 if errorlevel 1 (
-  echo Git repo setup nahin hai - README-DEPLOY.md dekhen.
-  goto :end
+  echo Git repo setup nahin hai - site phir bhi LIVE hai; GitHub backup SKIP.
+  goto :done
 )
 
-echo [3/4] Commit...
+echo [4/5] Commit (GitHub backup/history)...
 git add -A
 git commit -m "update: %date% %time%"
 
-echo [4/4] Push...
+echo [5/5] Push...
 git push
 if errorlevel 1 goto :err
 
+:done
 echo.
-echo DONE - 1-2 minute mein site update ho jayegi.
+echo DONE - site LIVE ho gayi.
 goto :end
 
 :err

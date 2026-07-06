@@ -123,6 +123,9 @@ body{
 }
 .tb-estimate::before{content:"📋"; font-size:12px; flex:none}
 .topbar-actions{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+.topbar-master-tools{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+#btnCloseEstimate{color:#b91c1c; border-color:#f6bcbc; background:#fef2f2}
+#btnCloseEstimate:hover{background:#fde4e4}
 .icon-btn{
   background:#fff; border:1px solid var(--line); border-radius:var(--r-sm); padding:6px 10px;
   cursor:pointer; font-size:15px; transition:all .15s var(--ease);
@@ -181,6 +184,48 @@ body{
 .form-grid input:hover{border-color:#cbd4e6}
 .form-grid input:focus{outline:none; border-color:var(--sel-border); background:#fff; box-shadow:0 0 0 3.5px rgba(76,102,240,.16)}
 .form-actions{display:flex; justify-content:flex-end; gap:8px; margin-top:16px}
+
+/* ---------- New Estimate form — बाक़ी panels से अलग, हाइलाइटेड creation-panel ---------- */
+#newEstimateForm{
+  position:relative; overflow:hidden; padding:0;
+  flex:0 0 auto;                          /* flex-column में सिकुड़कर content clip न हो */
+  border:1px solid #d3dcfa; border-radius:var(--r-lg);
+  background:linear-gradient(180deg,#f6f8ff,#ffffff 140px);
+  box-shadow:var(--shadow-lg);
+  animation:neSlideIn .28s var(--ease) both;
+}
+#newEstimateForm::before{                 /* ऊपर रंगीन accent पट्टी */
+  content:""; position:absolute; top:0; left:0; right:0; height:4px;
+  background:linear-gradient(90deg,var(--navy),var(--navy-light),var(--saffron));
+}
+#newEstimateForm h3{                       /* शीर्षक = header band (JS सिर्फ़ text बदलता है) */
+  margin:0; padding:17px 22px 15px; font-size:18px; font-weight:800;
+  color:var(--navy-dark); letter-spacing:-.02em;
+  display:flex; align-items:center; gap:11px;
+  background:linear-gradient(135deg,#eaf0ff,#f5f8ff);
+  border-bottom:1px solid #e3eafc;
+}
+#newEstimateForm h3::before{               /* icon chip */
+  content:"📝"; font-size:19px; flex:none;
+  width:38px; height:38px; border-radius:11px;
+  display:inline-flex; align-items:center; justify-content:center;
+  background:#fff; border:1px solid #d9e0ff; box-shadow:var(--shadow);
+}
+#newEstimateForm > .form-grid{
+  padding:22px 24px 8px; gap:18px;
+  grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+}
+#newEstimateForm .form-grid > label:first-child{grid-column:1 / -1}   /* "कार्य का नाम" पूरी चौड़ाई में */
+#newEstimateForm .form-grid label{font-size:12.5px; gap:6px}
+#newEstimateForm .form-grid input{padding:11px 14px; font-size:14px}
+#newEstimateForm > .oh-block{margin:16px 24px 0}
+#newEstimateForm > .form-actions{
+  margin-top:0; padding:15px 22px 18px; background:#fafbff; border-top:1px solid #eef1f7;
+}
+#newEstimateForm #neCreate{padding:10px 22px; font-weight:700; box-shadow:0 5px 14px rgba(64,86,214,.3)}
+#newEstimateForm #neCreate:hover{transform:translateY(-1px)}
+@keyframes neSlideIn{from{opacity:0; transform:translateY(-10px)} to{opacity:1; transform:translateY(0)}}
+
 .estimate-list{list-style:none; margin:0; padding:0}
 .estimate-list li{
   padding:12px 14px; border:1px solid var(--line); border-radius:var(--r-md); margin-bottom:8px;
@@ -852,7 +897,7 @@ body{
 #view-master-edit{flex:1; min-height:0; flex-direction:column}
 #view-master-edit.active{display:flex}
 .master-edit-head{display:flex; align-items:center; gap:12px; flex-wrap:wrap;
-  padding:10px 14px; background:linear-gradient(135deg,#fff9e9,#fdf2d3); border-bottom:2px solid #e3ac0f}
+  padding:5px 14px; background:linear-gradient(135deg,#fff9e9,#fdf2d3); border-bottom:2px solid #e3ac0f}
 .meh-title{display:flex; align-items:center; gap:9px; min-width:0; flex:1}
 .meh-src{font-size:11px; font-weight:800; color:#fff; background:linear-gradient(135deg,#c08d0e,#a9790a); border-radius:8px; padding:3px 10px; white-space:nowrap; box-shadow:0 2px 6px rgba(169,121,10,.3)}
 .meh-src.mord{background:linear-gradient(135deg,#6a5acd,#5646b8); box-shadow:0 2px 6px rgba(86,70,184,.3)}
@@ -882,6 +927,12 @@ body{
 .editor-panel.master-mode .editor-head{background:#fffaef}
 .editor-panel.master-mode .formula-bar{background:#fffaef; border-color:#f1dfad}
 .editor-panel.master-mode .sheet-title-banner{border-color:#ecdbaa}
+
+/* master edit — ऊपर की पट्टियाँ compact ताकि शीट को ज़्यादा जगह मिले */
+.editor-panel.master-mode .sheet-title-banner{display:none}   /* title पट्टी नहीं दिखानी (नाम ऊपर head में है) */
+.editor-panel.master-mode .editor-head{padding:6px 14px}
+.editor-panel.master-mode .sheet-name-input{font-size:14px; padding:3px 8px}
+.editor-panel.master-mode .formula-bar{padding:4px 14px}
 
 /* Chapter header — rename/delete controls */
 .ag-head-right{display:flex; align-items:center; gap:7px}

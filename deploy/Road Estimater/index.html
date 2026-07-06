@@ -72,11 +72,16 @@
           <span class="tb-estimate" id="currentEstimateName">कोई estimate लोड नहीं</span>
         </div>
         <div class="topbar-actions">
-          <span id="engineStatus" class="engine-pill" title="Calculation engine">engine…</span>
-          <button class="btn ghost sm" id="btnRateRefresh" title="Analysis के manually भरे रेट को Primary Rate से (नाम मिलाकर) दोबारा जोड़ें व ताज़ा करें">🔄 दर-refresh</button>
-          <button class="btn ghost sm" id="btnFormatFix" title="पुराने analysis में section-total व Sub Total जोड़कर नए format में लाएँ (एक बार का सुधार)">🛠 Format सुधार</button>
-          <button class="btn ghost sm" id="btnBackup" title="पूरा backup download">⬇ Backup</button>
-          <button class="btn ghost sm" id="btnRestore" title="Backup से restore">↺ Restore</button>
+          <!-- सिर्फ़ Master Data section में दिखने वाले tools -->
+          <span id="topbarMasterTools" class="topbar-master-tools">
+            <span id="engineStatus" class="engine-pill" title="Calculation engine">engine…</span>
+            <button class="btn ghost sm" id="btnRateRefresh" title="Analysis के manually भरे रेट को Primary Rate से (नाम मिलाकर) दोबारा जोड़ें व ताज़ा करें">🔄 दर-refresh</button>
+            <button class="btn ghost sm" id="btnFormatFix" title="पुराने analysis में section-total व Sub Total जोड़कर नए format में लाएँ (एक बार का सुधार)">🛠 Format सुधार</button>
+            <button class="btn ghost sm" id="btnBackup" title="पूरा backup download">⬇ Backup</button>
+            <button class="btn ghost sm" id="btnRestore" title="Backup से restore">↺ Restore</button>
+          </span>
+          <!-- बाक़ी sections में: खुला estimate बंद करने का बटन -->
+          <button class="btn ghost sm" id="btnCloseEstimate" title="अभी खुला estimate बंद करें" style="display:none">✕ Estimate बंद करें</button>
           <input type="file" id="fileXlsx" accept=".xlsx,.xls" hidden />
           <input type="file" id="fileJson" accept=".json" hidden />
         </div>
@@ -205,7 +210,6 @@
               <div class="editor-head">
                 <div class="editor-title">
                   <input type="text" id="sheetNameInput" class="sheet-name-input" placeholder="शीट का नाम" disabled />
-                  <span class="hint" id="sheetNameHint">नाम में space ना डालें — underscore (_) ताकि formula links साफ़ रहें</span>
                 </div>
                 <div class="editor-tools">
                   <button class="btn sm" id="btnAddRow" disabled title="चुने हुए cell के ऊपर नई पंक्ति डालें">+ Row</button>
@@ -214,7 +218,6 @@
                   <button class="btn sm" id="btnDelSubhead" disabled title="cursor जिस उपशीर्षक में है उसे पूरा हटाएँ">− उपशीर्षक</button>
                   <button class="btn sm danger" id="btnDelSheet" disabled>शीट हटाएँ</button>
                   <button class="btn sm" id="btnSheetExcel" disabled title="Excel अपलोड (import) / नमूना Excel डाउनलोड">⬆ Excel ▾</button>
-                  <button class="btn sm primary" id="btnMasterItem" disabled title="Master से Labour/Machinery/Material जोड़ें (रेट अपने-आप)">🔍 Master जोड़ें</button>
                 </div>
               </div>
               <div class="formula-bar">

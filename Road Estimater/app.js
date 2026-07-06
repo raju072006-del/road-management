@@ -520,9 +520,7 @@
     if (!s) { el.style.display = "none"; return; }
     const tag = (s.source === "mord" ? "MoRD" : "MoRTH") + ((s.source || "morth") === "morth" && isSize(s.size) ? " · " + sizeName(s.size) : "") + (s.rmrName ? " · RMR: " + s.rmrName : "");
     if (s.kind === "master") {
-      el.className = "kind-banner master";
-      el.innerHTML = "🗄️ <b>MASTER Analysis</b> [" + escapeHtml(tag) + "] — बदलाव सीधे master library में होंगे। (Chapter: " + escapeHtml(groupName(s.source, s.group)) + ")";
-      el.style.display = "";
+      el.style.display = "none";   // master banner नहीं दिखाना (आवश्यकता नहीं)
     } else if (isWorkingCopy(s)) {
       const m = state.sheets[s.masterId];
       const pref = s.syncPref === "master" ? " · अभी: हमेशा Master भी" : s.syncPref === "local" ? " · अभी: केवल यह file" : "";
@@ -2749,8 +2747,15 @@
     const sec = document.getElementById("tbSection");
     if (sec) sec.textContent = VIEW_LABELS[name] || name;
     // Master Data (library) पर estimate का नाम नहीं दिखाना — वह estimate-निरपेक्ष है
+    const isMasterView = (name === "master" || name === "master-cat" || name === "master-edit");
     const estEl = document.getElementById("currentEstimateName");
-    if (estEl) estEl.style.display = (name === "master" || name === "master-cat" || name === "master-edit") ? "none" : "";
+    if (estEl) estEl.style.display = isMasterView ? "none" : "";
+    // master tools (calc engine / दर-refresh / Format सुधार / Backup / Restore) सिर्फ़ Master Data में;
+    // बाक़ी sections में उनकी जगह "Estimate बंद करें" (जब कोई estimate खुला हो)
+    const mTools = document.getElementById("topbarMasterTools");
+    if (mTools) mTools.style.display = isMasterView ? "" : "none";
+    const closeBtn = document.getElementById("btnCloseEstimate");
+    if (closeBtn) closeBtn.style.display = (!isMasterView && state.activeEstimateId) ? "" : "none";
     if (name === "load") renderEstimateProjectList();
     if (name === "master") {
       renderMasterOverview();   // Primary Rate कार्ड + loaded date — तुरंत (हल्का)
@@ -3086,16 +3091,8 @@
     const src = (s.source === "mord") ? "MoRD" : "MoRTH";
     const szTxt = ((s.source || "morth") === "morth" && isSize(s.size)) ? " · " + sizeName(s.size) : "";
     titleEl.innerHTML = "<span class='meh-src " + (s.source === "mord" ? "mord" : "morth") + "'>" + src + szTxt + "</span><span class='meh-nm'>" + escapeHtml(s.itemName || s.name) + "</span><span class='meh-chap'>" + escapeHtml(groupName(s.source, s.group)) + "</span>";
-    // MoRTH: इसी item के Large/Medium/Small में स्विच/जोड़ें
-    if ((s.source || "morth") === "morth" && s.itemKey) {
-      let h = "<span class='me-chips-label'>Size:</span>";
-      for (const sz of SIZES) {
-        const v = morthVariant(s.itemKey, sz.key);
-        if (v) h += "<button class='me-chip" + (v.id === s.id ? " active" : "") + "' data-meedit='" + v.id + "'>" + sz.name + "</button>";
-        else h += "<button class='me-chip add' data-meadd='" + s.itemKey + "' data-size='" + sz.key + "'>+ " + sz.name + "</button>";
-      }
-      chipsEl.innerHTML = h; chipsEl.style.display = "";
-    } else { chipsEl.innerHTML = ""; chipsEl.style.display = "none"; }
+    // Size (Large/Medium/Small) chips नहीं दिखाना (आवश्यकता नहीं)
+    chipsEl.innerHTML = ""; chipsEl.style.display = "none";
   }
 
   // chapter (group) बदलो — MoRTH item के लिए सभी variant, MoRD के लिए एक शीट
@@ -3656,6 +3653,22 @@
     if (!el) return;
     const est = state.estimates[state.activeEstimateId];
     el.textContent = est ? est.name : "कोई estimate लोड नहीं";
+    // "Estimate बंद करें" की दृश्यता active estimate बदलने/restore होने पर भी ताज़ा रहे
+    const active = document.querySelector(".view.active");
+    const vid = active ? active.id.replace("view-", "") : "";
+    const isMasterView = (vid === "master" || vid === "master-cat" || vid === "master-edit");
+    const closeBtn = document.getElementById("btnCloseEstimate");
+    if (closeBtn) closeBtn.style.display = (!isMasterView && state.activeEstimateId) ? "" : "none";
+  }
+  // अभी खुला (active) estimate बंद करो — deactivate + Load Estimate पर ले जाओ
+  function closeActiveEstimate() {
+    const est = state.estimates[state.activeEstimateId];
+    if (!est) { status("कोई estimate खुला नहीं है"); return; }
+    setActiveEstimateId(null);
+    applyOverheadAll();
+    renderEstimateSelect(); renderEstimate(); updateTopbarEstimate();
+    setActiveView("load");   // बंद के बाद Load Estimate पर — नया खोलें/बनाएँ
+    status("Estimate बंद हुआ: " + est.name);
   }
   function renderEstimateProjectList() {
     const ul = document.getElementById("estimateProjectList");
@@ -4798,7 +4811,7 @@
 
     document.getElementById("sheetNameInput").addEventListener("change", (e) => renameActiveSheet(e.target.value));
     document.getElementById("btnLinkRef").addEventListener("click", openLinkPicker);
-    document.getElementById("btnMasterItem").addEventListener("click", openMasterPicker);
+    { const b = document.getElementById("btnMasterItem"); if (b) b.addEventListener("click", openMasterPicker); }
     document.getElementById("sheetTitleInput").addEventListener("input", (e) => {
       const s = state.sheets[state.activeSheetId];
       if (s) { s.title = e.target.value; persistSheet(s); }
@@ -4853,6 +4866,8 @@
     if (brf) brf.addEventListener("click", () => { const res = relinkAnalysisRates(); alert("दर-refresh पूरा:\n" + res.linked + " नए रेट Primary Rate से जुड़े।\n" + res.rerated + " शीट की दरें ताज़ा हुईं।"); });
     const bff = document.getElementById("btnFormatFix");
     if (bff) bff.addEventListener("click", runFormatFix);
+    const bce = document.getElementById("btnCloseEstimate");
+    if (bce) bce.addEventListener("click", closeActiveEstimate);
     document.getElementById("fileJson").addEventListener("change", (e) => { if (e.target.files[0]) restoreJson(e.target.files[0]); e.target.value = ""; });
 
     // grid interactions (event delegation)

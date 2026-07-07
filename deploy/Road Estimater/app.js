@@ -449,6 +449,41 @@
     return g.sep === false ? ("एक साथ " + fmtPct(g.combPct) + "%") : ("OH " + fmtPct(g.ohPct) + "% + CP " + fmtPct(g.cpPct) + "%");
   }
   function fmtPct(p) { p = Math.round(mrNum(p) * 100) / 100; return String(p); }
+  // ── कार्य-समूह (work group) — हर समूह = नाम + मुख्य? + अपना RMR + अपने Overhead ──
+  //  storage: est.workGroups = [{id,name,isMain,rmrId,ohGroupId}] (RMR est.rmrs में, OH est.ohGroups में)
+  function estWorkGroups(est) {
+    if (!est) return [];
+    if (Array.isArray(est.workGroups) && est.workGroups.length) return est.workGroups;
+    // पुराने estimate (अलग rmrs + ohGroups) → समूहों में जोड़ो
+    const rmrs = est.rmrs || [];
+    const ohs = estOhGroups(est);
+    const n = Math.max(rmrs.length, ohs.length, 1);
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const r = rmrs[i], o = ohs[i];
+      out.push({
+        id: uid("wg"),
+        name: (r && r.name) || (o && o.remark) || ("समूह " + (i + 1)),
+        isMain: i === 0, rmrId: r ? r.id : null, ohGroupId: o ? o.id : null,
+      });
+    }
+    return out;
+  }
+  // form के लिए हर समूह का पूरा डेटा (RMR की queryDist + OH के %) एक object में
+  function neWgData(est) {
+    const wgs = estWorkGroups(est);
+    const rmrs = est ? (est.rmrs || []) : [];
+    const ohs = est ? estOhGroups(est) : [];
+    return wgs.map((wg) => {
+      const r = rmrs.find((x) => x.id === wg.rmrId);
+      const o = ohs.find((x) => x.id === wg.ohGroupId) || {};
+      return {
+        id: wg.id, name: wg.name, isMain: !!wg.isMain, rmrId: wg.rmrId, ohGroupId: wg.ohGroupId,
+        queryDist: r ? (r.queryDist || {}) : {},
+        sep: o.sep !== false, ohPct: o.ohPct, cpPct: o.cpPct, combPct: o.combPct,
+      };
+    });
+  }
   function buildAnalysisTemplate(sectionNames) {
     const cols = ANALYSIS_COLS.length;
     const cells = {}, merges = [];
@@ -518,6 +553,7 @@
     if (!el) return;
     const s = state.sheets[state.activeSheetId];
     if (!s) { el.style.display = "none"; return; }
+    if (s.kind === "dom" || s.kind === "boq") { el.style.display = "none"; return; }   // DOM/BOQ — कोई banner नहीं
     const tag = (s.source === "mord" ? "MoRD" : "MoRTH") + ((s.source || "morth") === "morth" && isSize(s.size) ? " · " + sizeName(s.size) : "") + (s.rmrName ? " · RMR: " + s.rmrName : "");
     if (s.kind === "master") {
       el.style.display = "none";   // master banner नहीं दिखाना (आवश्यकता नहीं)
@@ -796,7 +832,7 @@
     const savedExtra = [];
     for (const a in sheet.cells) {
       const cell = sheet.cells[a]; const extra = {}; let has = false;
-      for (const k of ["s", "role", "secName", "mref", "lead", "leadText"]) { if (cell[k] != null) { extra[k] = cell[k]; has = true; } }
+      for (const k of ["s", "role", "secName", "mref", "lead", "leadText", "itemId"]) { if (cell[k] != null) { extra[k] = cell[k]; has = true; } }
       if (has) { const p = parseAddr(a); if (p) savedExtra.push({ r: p.r, c: p.c, extra }); }
     }
     try {
@@ -1113,9 +1149,12 @@
   const editorPanel = document.getElementById("editorPanel");
   const rateLayout = document.querySelector("#view-rate-analysis .layout");
   function mountEditor(where) {
-    const host = where === "master" ? document.getElementById("masterEditHost") : rateLayout;
+    const host = where === "master" ? document.getElementById("masterEditHost")
+      : where === "dom" ? document.getElementById("domEditorHost")
+      : where === "boq" ? document.getElementById("boqEditorHost")
+      : rateLayout;
     if (host && editorPanel && editorPanel.parentNode !== host) host.appendChild(editorPanel);
-    if (editorPanel) editorPanel.classList.toggle("master-mode", where === "master");
+    if (editorPanel) { editorPanel.classList.toggle("master-mode", where === "master"); editorPanel.classList.toggle("dom-mode", where === "dom" || where === "boq"); }
   }
 
   function clearGrid() {
@@ -1207,7 +1246,7 @@
         if (cell && cell.leadText != null) { cls += " lead-cell"; cellHtml = cell.lead ? leadHtml(cell.lead) : escapeHtml(cell.leadText); }
         const styleAttr = cell && cell.s ? " style=\"" + cellStyleCss(cell.s) + "\"" : "";
         const spanAttr = sp ? (sp.cs > 1 ? " colspan='" + sp.cs + "'" : "") + (sp.rs > 1 ? " rowspan='" + sp.rs + "'" : "") : "";
-        html += "<td data-r='" + r + "' data-c='" + c + "' class='" + cls.trim() + "'" + spanAttr + styleAttr + titleAttr + ">" + (cellHtml != null ? cellHtml : escapeHtml(fmtCol(cv.val, c))) + "</td>";
+        html += "<td data-r='" + r + "' data-c='" + c + "' class='" + cls.trim() + "'" + spanAttr + styleAttr + titleAttr + ">" + (cellHtml != null ? cellHtml : escapeHtml(fmtCellDisplay(sheet, cv.val, c))) + "</td>";
       }
       html += "</tr>";
     }
@@ -1242,6 +1281,13 @@
   function fmtCol(v, c) {
     if (c === QTY_COL && typeof v === "number" && isFinite(v)) return v.toFixed(3); // Quantity → 3 दशमलव
     return fmt(v);
+  }
+  // accounting format — comma (भारतीय) + 2 दशमलव (जैसे 1,23,456.00)
+  function fmtAccounting(v) { return v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  // sheet-aware display — BOQ के Rate(E)/Amount(F) accounting format में
+  function fmtCellDisplay(sheet, v, c) {
+    if (sheet && sheet.kind === "boq" && (c === 4 || c === 5) && typeof v === "number" && isFinite(v)) return fmtAccounting(v);
+    return fmtCol(v, c);
   }
   function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[m])); }
 
@@ -2159,79 +2205,143 @@
   /* ============== Sidebar render ============== */
   // Rate Analysis की बाईं सूची — सिर्फ़ load किए (working) Analysis; साथ ही, अगर कोई master
   // सीधे edit के लिए खुला है तो वह भी (अलग चिह्न के साथ) दिखे।
+  // एक working/master शीट का card (li) बनाओ — group-wise render में दोबारा इस्तेमाल
+  function makeSheetLi(id, s) {
+    const isWork = s.kind === "working";
+    const li = document.createElement("li");
+    li.className = "sl-card" + (id === state.activeSheetId ? " active" : "");
+    const srcLabel = (s.source === "mord") ? "MoRD" : "MoRTH";
+    const srcCls = (s.source === "mord") ? "mord" : "morth";
+    // स्रोत Master की स्थिति MoRTH/MoRD के आगे (बिना text): Checked → हरा ✓, वरना → ⚠ चेतावनी
+    let srcTick = "";
+    if (isWork && s.masterId && state.sheets[s.masterId]) {
+      srcTick = state.sheets[s.masterId].checked
+        ? "<span class='sl-tick' title='स्रोत Master Analysis Checked (जाँची हुई) है'>✓</span>"
+        : "<span class='sl-warn' title='स्रोत Master अभी Checked नहीं है'>⚠</span>";
+    }
+    const sizeLabel = (s.source !== "mord" && s.size) ? sizeName(s.size) : "";
+    const desc = (s.title && s.title !== s.name) ? s.title : "";
+    let chips = "";
+    if (sizeLabel) chips += "<span class='sl-chip size'>📐 " + escapeHtml(sizeLabel) + "</span>";
+    if (!isWork) chips += "<span class='sl-chip master' title='Master Analysis — सीधा बदलाव'>🗄️ master</span>";
+    // RMR/Overhead अब समूह-header से पता चलते हैं — card पर दोहराना नहीं (साफ़ दिखे)
+    const xBtn = isWork ? "<button class='sl-x' title='यहाँ से हटाएँ — Master Data की मूल शीट सुरक्षित रहेगी'>×</button>" : "";
+    li.innerHTML =
+      "<div class='sl-body'>" +
+        "<div class='sl-row1'><span class='sl-title'>" + escapeHtml(s.name) + "</span><span class='sl-code " + srcCls + "'>" + srcLabel + "</span>" + srcTick + "</div>" +
+        (chips ? "<div class='sl-chips'>" + chips + "</div>" : "") +
+      "</div>" + xBtn;
+    if (desc) li.title = desc;
+    li.addEventListener("mousedown", (e) => { if (armed && armed.refExpected()) e.preventDefault(); });
+    li.addEventListener("click", () => {
+      if (armed && armed.refExpected()) { handoffToBar(id); return; }
+      if (armed && armed.surface === "bar") { commitArmed("stay"); }
+      openSheet(id);
+    });
+    const delEl = li.querySelector(".sl-x");
+    if (delEl) delEl.addEventListener("click", (e) => {
+      e.stopPropagation();
+      state.activeSheetId = id; renderSheetList(); renderGrid();
+      deleteActiveSheet();
+    });
+    li.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      const menu = [];
+      if (isWork) {   // item को समूह में ऊपर/नीचे (DOM व BOQ भी उसी क्रम में)
+        menu.push({ label: "⬆  आइटम ऊपर", action: () => { const est = state.estimates[state.activeEstimateId]; if (est && moveEstimateItem(est, id, -1)) renderSheetList(); } });
+        menu.push({ label: "⬇  आइटम नीचे", action: () => { const est = state.estimates[state.activeEstimateId]; if (est && moveEstimateItem(est, id, 1)) renderSheetList(); } });
+        menu.push({ sep: true });
+      }
+      menu.push({ label: "✎  नाम बदलें", action: () => renameSheetById(id) });
+      menu.push({ label: "🗑  शीट हटाएँ", action: () => { state.activeSheetId = id; renderSheetList(); renderGrid(); deleteActiveSheet(); }, cls: "danger" });
+      showMenu(e.clientX, e.clientY, menu);
+    });
+    return li;
+  }
+
+  // Rate Analysis की बाईं सूची — active estimate के कार्य-समूह-वार; हर समूह में "+ Analysis"
+  let _openWgId;   // accordion — खुला समूह; null = सभी collapsed; undefined = अभी default तय करना है
   function renderSheetList() {
     const list = document.getElementById("sheetList");
     const q = (document.getElementById("sheetSearch").value || "").toLowerCase();
     list.innerHTML = "";
-    let shown = 0, working = 0;
-    for (const id of state.order) {
-      const s = state.sheets[id];
-      const isWork = s.kind === "working";
-      if (isWork) working++;
-      if (!isWork && id !== state.activeSheetId) continue;   // master सिर्फ़ तभी जब वही खुला हो
-      if (q && !s.name.toLowerCase().includes(q)) continue;
-      const li = document.createElement("li");
-      li.className = "sl-card" + (id === state.activeSheetId ? " active" : "");
-      const srcLabel = (s.source === "mord") ? "MoRD" : "MoRTH";
-      const srcCls = (s.source === "mord") ? "mord" : "morth";
-      // स्रोत Master की स्थिति MoRTH/MoRD के आगे (बिना text): Checked → हरा ✓, वरना → ⚠ चेतावनी
-      let srcTick = "";
-      if (isWork && s.masterId && state.sheets[s.masterId]) {
-        srcTick = state.sheets[s.masterId].checked
-          ? "<span class='sl-tick' title='स्रोत Master Analysis Checked (जाँची हुई) है'>✓</span>"
-          : "<span class='sl-warn' title='स्रोत Master अभी Checked नहीं है'>⚠</span>";
+    const matchQ = (s) => !q || s.name.toLowerCase().includes(q);
+    const est = state.estimates[state.activeEstimateId];
+    const groups = est ? estWorkGroups(est) : [];
+    const wgKey = (r, o) => (r || "") + "|" + (o || "");
+
+    const works = [];
+    for (const id of state.order) { const s = state.sheets[id]; if (s.kind === "working") works.push({ id, s }); }
+    const working = works.length;
+    let shown = 0;
+
+    // सीधे edit के लिए खुली Master शीट (यदि कोई) — सबसे ऊपर
+    const activeS = state.sheets[state.activeSheetId];
+    if (activeS && activeS.kind !== "working" && matchQ(activeS)) { list.appendChild(makeSheetLi(state.activeSheetId, activeS)); shown++; }
+
+    if (groups.length) {
+      const assigned = new Set();
+      const otherKeys = new Set();   // दूसरे estimates के group-keys — उनकी शीटें यहाँ न दिखें
+      for (const eid of state.estOrder) {
+        if (eid === state.activeEstimateId) continue;
+        estWorkGroups(state.estimates[eid]).forEach((g) => otherKeys.add(wgKey(g.rmrId, g.ohGroupId)));
       }
-      const sizeLabel = (s.source !== "mord" && s.size) ? sizeName(s.size) : "";
-      const desc = (s.title && s.title !== s.name) ? s.title : "";
-      let chips = "";
-      if (sizeLabel) chips += "<span class='sl-chip size'>📐 " + escapeHtml(sizeLabel) + "</span>";
-      // "copy" चिप हटाया — Rate Analysis की हर loaded शीट कॉपी ही होती है, इसलिए बेकार था।
-      // "master" चिप सिर्फ़ तब जब कोई Master सीधे edit के लिए खुली हो (अलग स्थिति)।
-      if (!isWork) chips += "<span class='sl-chip master' title='Master Analysis — सीधा बदलाव'>🗄️ master</span>";
-      if (isWork) chips += s.rmrName
-        ? "<span class='sl-chip rmr' title='इस RMR से linked'>📦 " + escapeHtml(s.rmrName) + "</span>"
-        : "<span class='sl-chip none' title='किसी RMR से linked नहीं'>बिना RMR</span>";
-      // Overhead charges की category (जैसे Road, Setu) — जिससे यह analysis insert हुआ
-      if (isWork && s.ohGroupId) {
-        let ohName = "";
-        for (const eid of state.estOrder) { const g = estOhGroups(state.estimates[eid]).find((x) => x.id === s.ohGroupId); if (g) { ohName = g.remark || ""; break; } }
-        if (ohName) chips += "<span class='sl-chip oh' title='Overhead charges category'>🏷️ " + escapeHtml(ohName) + "</span>";
+      const expandAll = !!q;   // खोज के समय सभी समूह खुले
+      // accordion — कौन-सा समूह खुला रहे (खोज न हो तो)। null = user ने सब collapse किया → वैसा ही रहने दो;
+      // undefined या पुराना/अमान्य id → default खोलो (active-sheet का, वरना मुख्य/पहला)
+      if (!expandAll && _openWgId !== null && !groups.some((g) => g.id === _openWgId)) {
+        const asGk = (activeS && activeS.kind === "working") ? wgKey(activeS.rmrId, activeS.ohGroupId) : null;
+        const def = (asGk && groups.find((g) => wgKey(g.rmrId, g.ohGroupId) === asGk)) || groups.find((g) => g.isMain) || groups[0];
+        _openWgId = def ? def.id : null;
       }
-      const xBtn = isWork ? "<button class='sl-x' title='यहाँ से हटाएँ — Master Data की मूल शीट सुरक्षित रहेगी'>×</button>" : "";
-      li.innerHTML =
-        "<div class='sl-body'>" +
-          "<div class='sl-row1'><span class='sl-title'>" + escapeHtml(s.name) + "</span><span class='sl-code " + srcCls + "'>" + srcLabel + "</span>" + srcTick + "</div>" +
-          (chips ? "<div class='sl-chips'>" + chips + "</div>" : "") +
-        "</div>" + xBtn;
-      if (desc) li.title = desc;   // विवरण अब tooltip में — कार्ड की ऊँचाई कम रहे
-      // formula में reference डालते समय focus न छूटे
-      li.addEventListener("mousedown", (e) => { if (armed && armed.refExpected()) e.preventDefault(); });
-      li.addEventListener("click", () => {
-        if (armed && armed.refExpected()) { handoffToBar(id); return; } // दूसरी शीट से link
-        if (armed && armed.surface === "bar") { commitArmed("stay"); }   // अधूरा edit पक्का कर दो
-        openSheet(id);
-      });
-      const delEl = li.querySelector(".sl-x");
-      if (delEl) delEl.addEventListener("click", (e) => {
-        e.stopPropagation();   // शीट खुलने से रोको — सीधे delete
-        state.activeSheetId = id; renderSheetList(); renderGrid();
-        deleteActiveSheet();   // loaded copy हटेगी; Master पर असर नहीं
-      });
-      li.addEventListener("contextmenu", (e) => {
-        e.preventDefault();
-        showMenu(e.clientX, e.clientY, [
-          { label: "✎  नाम बदलें", action: () => renameSheetById(id) },
-          { label: "🗑  शीट हटाएँ", action: () => { state.activeSheetId = id; renderSheetList(); renderGrid(); deleteActiveSheet(); }, cls: "danger" },
-        ]);
-      });
-      list.appendChild(li);
-      shown++;
-    }
-    if (shown === 0) {
-      const li = document.createElement("li");
-      li.className = "muted-row";
-      li.innerHTML = q ? "कोई मेल नहीं।" : "अभी कोई Analysis load नहीं — ऊपर <b>📂 Load</b> से Master से लाएँ।";
-      list.appendChild(li);
+      for (const g of groups) {
+        const gk = wgKey(g.rmrId, g.ohGroupId);
+        const mine = works.filter((w) => wgKey(w.s.rmrId, w.s.ohGroupId) === gk);
+        mine.forEach((w) => assigned.add(w.id));
+        const ord = estGroupOrder(est, gk, mine.map((w) => w.id));   // साझा item-क्रम
+        mine.sort((a, b) => ord.indexOf(a.id) - ord.indexOf(b.id));
+        const n = mine.length;
+        const isOpen = expandAll || g.id === _openWgId;
+        const head = document.createElement("li");
+        head.className = "sl-group-head" + (isOpen ? " open" : "");
+        head.innerHTML =
+          "<span class='slg-toggle'>" + (isOpen ? "▾" : "▸") + "</span>" +
+          "<span class='slg-name'>" + (g.isMain ? "★ " : "") + escapeHtml(g.name) + "</span>" +
+          "<span class='slg-count' title='लोड किए Analysis'>" + n + "</span>" +
+          "<span class='slg-actions'>" +
+            (n > 0 ? "<button type='button' class='slg-save' title='इस समूह के सभी Analysis को सेट (template) के रूप में सहेजें — भविष्य में किसी और Estimate में एक साथ लोड करने के लिए'>💾 सेट</button>" : "") +
+            "<button type='button' class='slg-load' title='इस समूह में Analysis लोड करें'>+ Analysis</button>" +
+          "</span>";
+        head.addEventListener("click", () => { _openWgId = (_openWgId === g.id) ? null : g.id; renderSheetList(); });
+        head.querySelector(".slg-load").addEventListener("click", (e) => { e.stopPropagation(); openLoadAnalysisPicker(g.id); });
+        const sv = head.querySelector(".slg-save"); if (sv) sv.addEventListener("click", (e) => { e.stopPropagation(); saveGroupAsSet(g); });
+        list.appendChild(head);
+        if (isOpen) {
+          let vis = 0;
+          for (const { id, s } of mine) { if (!matchQ(s)) continue; list.appendChild(makeSheetLi(id, s)); shown++; vis++; }
+          if (n === 0 || vis === 0) {
+            const em = document.createElement("li"); em.className = "sl-group-empty muted";
+            em.textContent = (n === 0) ? "अभी कोई Analysis नहीं — “+ Analysis” दबाएँ" : "कोई मेल नहीं";
+            list.appendChild(em);
+          }
+        }
+      }
+      // अवर्गीकृत (किसी भी estimate के समूह से मेल नहीं) — विरासत शीटें न खोएँ
+      const orphans = works.filter(({ id, s }) => !assigned.has(id) && !otherKeys.has(wgKey(s.rmrId, s.ohGroupId)) && matchQ(s));
+      if (orphans.length) {
+        const head = document.createElement("li"); head.className = "sl-group-head other";
+        head.innerHTML = "<span class='slg-name'>📄 अन्य (समूह-रहित)</span>";
+        list.appendChild(head);
+        orphans.forEach(({ id, s }) => { list.appendChild(makeSheetLi(id, s)); shown++; });
+      }
+    } else {
+      // कोई active estimate/समूह नहीं → सपाट सूची
+      for (const { id, s } of works) { if (!matchQ(s)) continue; list.appendChild(makeSheetLi(id, s)); shown++; }
+      if (shown === 0) {
+        const li = document.createElement("li"); li.className = "muted-row";
+        li.innerHTML = q ? "कोई मेल नहीं।" : "पहले कोई Estimate खोलें, फिर समूह में <b>+ Analysis</b> से लाएँ।";
+        list.appendChild(li);
+      }
     }
     document.getElementById("sheetCount").textContent = working + " load किए" + (q ? " · " + shown + " मिलीं" : "");
   }
@@ -2287,16 +2397,34 @@
       selectCell(r, c);
       const sheet = state.sheets[state.activeSheetId];
       ensureLock(sheet);
+      const isDomBoq = (sheet.kind === "dom" || sheet.kind === "boq");
       const items = [];
-      items.push({ label: c === 5 ? "🔍  Master से केवल रेट भरें" : "🔍  Master से आइटम (नाम+रेट) जोड़ें", action: () => openMasterPicker() });
-      if (c === 4 && !isLockedRow(sheet, r) && !(sheet.cells[addr(r, 2)] || {}).role) {
-        items.push({ label: ((sheet.cells[addr(r, 4)] || {}).lead ? "🧮  Lead बदलें" : "🧮  Lead जोड़ें") + " (Value1 × Length/4 + Value2)", action: () => openLeadDialog() });
+      // DOM/BOQ — पूरे आइटम को ऊपर/नीचे (तीनों जगह उसी क्रम में)
+      if (isDomBoq) {
+        const est = state.estimates[state.activeEstimateId];
+        let itemId = null;
+        if (sheet.kind === "dom") { for (let rr = r; rr >= 1; rr--) { const cc = sheet.cells[addr(rr, 2)]; if (cc && cc.role === "domhdr") { itemId = cc.itemId; break; } } }
+        else { const mc = sheet.cells[addr(r, 0)]; itemId = (mc && mc.itemId) ? mc.itemId : null; }   // BOQ: पंक्ति के marker से
+        if (itemId) {
+          const isExtra = String(itemId).indexOf("xtr:") === 0;
+          items.push({ label: "⬆  आइटम ऊपर", action: () => domBoqMoveItem(itemId, -1) });
+          items.push({ label: "⬇  आइटम नीचे", action: () => domBoqMoveItem(itemId, 1) });
+          if (_domSubId || isExtra) items.push({ label: isExtra ? "🗑  यह आइटम हटाएँ" : "🗑  यह आइटम हटाएँ (इस Sub-Estimate से)", action: () => domBoqDeleteItem(itemId), cls: "danger" });
+          items.push({ sep: true });
+        }
       }
-      items.push({ sep: true });
+      // "Master से…" व "Lead" सिर्फ़ Analysis शीट पर — DOM/BOQ पर नहीं
+      if (!isDomBoq) {
+        items.push({ label: c === 5 ? "🔍  Master से केवल रेट भरें" : "🔍  Master से आइटम (नाम+रेट) जोड़ें", action: () => openMasterPicker() });
+        if (c === 4 && !isLockedRow(sheet, r) && !(sheet.cells[addr(r, 2)] || {}).role) {
+          items.push({ label: ((sheet.cells[addr(r, 4)] || {}).lead ? "🧮  Lead बदलें" : "🧮  Lead जोड़ें") + " (Value1 × Length/4 + Value2)", action: () => openLeadDialog() });
+        }
+        items.push({ sep: true });
+      }
       if (isLockedRow(sheet, r)) {
         items.push({ label: "🔒 लॉक पंक्ति (header/footer) — insert/delete नहीं", disabled: true });
       } else {
-        if (!isSectionRow(sheet, r)) {
+        if (!isDomBoq && !isSectionRow(sheet, r)) {
           items.push({ label: "⬆  आइटम ऊपर (इसी सेक्शन में)", action: () => moveAnalysisRow(r, -1) });
           items.push({ label: "⬇  आइटम नीचे (इसी सेक्शन में)", action: () => moveAnalysisRow(r, 1) });
           items.push({ sep: true });
@@ -2734,13 +2862,15 @@
     "load": "Load Estimate", "basic-sheet": "Basic Sheet", "basic-analysis": "Basic Analysis",
     "rate-analysis": "Rate Analysis", "dom-boq": "DOM & BOQ", "summary": "Summary",
     "master": "Master Data", "master-cat": "Master Data", "master-edit": "Master Data › Analysis Edit",
-    "rmr": "Basic Analysis › RMR"
+    "rmr": "Basic Analysis › RMR", "dom": "DOM & BOQ › DOM", "boq": "DOM & BOQ › BOQ"
   };
-  const VIEW_PARENT = { "master-cat": "master", "master-edit": "master", "rmr": "basic-analysis" }; // sub-page → कौन-सा nav highlight हो
+  const VIEW_PARENT = { "master-cat": "master", "master-edit": "master", "rmr": "basic-analysis", "dom": "dom-boq", "boq": "dom-boq" }; // sub-page → कौन-सा nav highlight हो
   function setActiveView(name) {
-    // editor-panel को सही जगह mount करो (Rate Analysis बनाम Master edit)
+    // editor-panel को सही जगह mount करो (Rate Analysis / Master edit / DOM)
     if (name === "rate-analysis") mountEditor("rate");
     else if (name === "master-edit") mountEditor("master");
+    else if (name === "dom") mountEditor("dom");
+    else if (name === "boq") mountEditor("boq");
     document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + name));
     const navName = VIEW_PARENT[name] || name;
     document.querySelectorAll(".nav-item").forEach((n) => n.classList.toggle("active", n.dataset.view === navName));
@@ -2757,6 +2887,12 @@
     const closeBtn = document.getElementById("btnCloseEstimate");
     if (closeBtn) closeBtn.style.display = (!isMasterView && state.activeEstimateId) ? "" : "none";
     if (name === "load") renderEstimateProjectList();
+    if (name === "dom-boq") renderSubEstimates();
+    if (name === "rate-analysis") {   // active estimate के समूह-वार सूची ताज़ा
+      const as = state.sheets[state.activeSheetId];
+      if (as && (as.kind === "dom" || as.kind === "boq")) { state.activeSheetId = null; renderGrid(); }   // DOM/BOQ शीट rate-editor में न दिखे
+      renderSheetList();
+    }
     if (name === "master") {
       renderMasterOverview();   // Primary Rate कार्ड + loaded date — तुरंत (हल्का)
       // ~1000 items की भारी Analysis library अगले frame में — पहले Primary Rate paint हो जाए
@@ -2768,8 +2904,10 @@
     if (name === "master-cat") renderCat();
     if (name === "master-edit") renderMasterEdit();
     if (name === "rmr") renderRMR();
+    if (name === "dom") renderDOM();
+    if (name === "boq") renderBOQ();
     if (name === "rate-analysis") reRateAllAnalyses();   // RMR/Primary बदलने के बाद खोलने पर दरें ताज़ा
-    if (name === "summary") reRateAllAnalyses();          // Summary में भी ताज़ा दरें दिखें
+    if (name === "summary") { try { reRateAllAnalyses(); } catch (e) { } renderSummary(); }   // Summary — ताज़ा दरें + गणना
   }
   // Master Data कार्डों पर "अभी कौन-सी date का rate effective है" दिखाओ
   function renderMasterOverview() {
@@ -2812,6 +2950,48 @@
   const CHAPTERS_META_ID = "__meta_chapters__";
   function chaptersRecord() { return { id: CHAPTERS_META_ID, _meta: "chapters", morth: CHAPTERS.morth || [], mord: CHAPTERS.mord || [] }; }
   function persistChaptersCloud() { try { db.put("master", chaptersRecord()); } catch (e) {} }
+
+  // ── Analysis सेट (template) — कई Analysis एक साथ किसी भी estimate के समूह में लोड करने के लिए ──
+  const SETS_META_ID = "__analysis_sets__";
+  let analysisSets = [];   // [{id, name, items:[masterId,...]}]
+  function saveAnalysisSetsCloud() { try { db.put("master", { id: SETS_META_ID, _meta: "sets", sets: analysisSets }); } catch (e) {} }
+  // Summary templates (काम-प्रकार अनुसार) — user-saved (built-in अलग)
+  const SUMTPL_META_ID = "__summary_templates__";
+  let summaryTemplates = [];
+  function saveSummaryTemplatesCloud() { try { db.put("master", { id: SUMTPL_META_ID, _meta: "sumtpl", templates: summaryTemplates }); } catch (e) {} }
+  // किसी समूह की सभी loaded Analysis को एक सेट के रूप में सहेजो
+  function saveGroupAsSet(g) {
+    const items = [];
+    for (const id of state.order) {
+      const s = state.sheets[id];
+      if (s.kind === "working" && (s.rmrId || "") === (g.rmrId || "") && (s.ohGroupId || "") === (g.ohGroupId || "") && s.masterId) items.push(s.masterId);
+    }
+    if (!items.length) { alert("इस समूह में अभी कोई Analysis नहीं — पहले '+ Analysis' से लोड करें।"); return; }
+    const name = prompt("इस सेट का नाम (भविष्य में किसी और Estimate के समूह में एक साथ लोड करने के लिए):", g.name || "");
+    if (name === null) return;
+    const nm = name.trim(); if (!nm) return;
+    const ex = analysisSets.find((x) => x.name.toLowerCase() === nm.toLowerCase());
+    if (ex) { if (!confirm("'" + nm + "' नाम का सेट पहले से है — बदल दें?")) return; ex.items = items; }
+    else analysisSets.push({ id: uid("set"), name: nm, items: items });
+    saveAnalysisSetsCloud();
+    status("सेट सहेजा: " + nm + " (" + items.length + " Analysis)");
+  }
+  // सेट को अभी चुने कार्य-समूह (_loadWgId) में एक साथ लोड करो
+  function loadSetIntoCurrentGroup(setId) {
+    const set = analysisSets.find((x) => x.id === setId); if (!set) return;
+    resolveLoadWg();
+    _openWgId = _loadWgId;   // लोड हुआ समूह खुला दिखे
+    let n = 0, miss = 0;
+    for (const mid of set.items) { if (state.sheets[mid]) { loadAnalysisToWorkspace(mid); n++; } else miss++; }
+    renderSheetList();
+    status("सेट '" + set.name + "' से " + n + " Analysis लोड" + (miss ? (" · " + miss + " master अब नहीं मिले") : ""));
+  }
+  function deleteAnalysisSet(setId) {
+    const i = analysisSets.findIndex((x) => x.id === setId); if (i < 0) return;
+    const nm = analysisSets[i].name;
+    if (!confirm("सेट '" + nm + "' हटाएँ? (Analysis पर असर नहीं)")) return;
+    analysisSets.splice(i, 1); saveAnalysisSetsCloud(); status("सेट हटाया: " + nm);
+  }
   function applyChaptersRecord(rec) {
     if (!rec) return false;
     let any = false;
@@ -3493,28 +3673,41 @@
 
   // Rate Analysis का "📂 Load" — पहले source (MoRTH/MoRD), फिर सूची
   let _loadSrc = "morth";   // पिछली बार चुना source (MoRTH/MoRD) याद रखो — दुबारा-दुबारा मत पूछो
-  let _loadRmrId = null;    // पिछली बार चुना RMR — बदलने तक इसी पर बना रहे (null = बिना RMR)
-  let _loadOhGroupId = null; // पिछली बार चुना Overhead group — बदलने तक इसी पर (null = पहला group)
-  function openLoadAnalysisPicker() { showAnalysisListPicker(); }
+  let _loadWgId = null;     // पिछली बार चुना कार्य-समूह — बदलने तक इसी पर बना रहे
+  let _loadRmrId = null;    // चुने समूह से derived RMR
+  let _loadOhGroupId = null; // चुने समूह से derived Overhead group
+  // चुने कार्य-समूह से RMR + Overhead group निकालो
+  function resolveLoadWg() {
+    const est = state.estimates[state.activeEstimateId];
+    const wgs = est ? estWorkGroups(est) : [];
+    const wg = wgs.find((w) => w.id === _loadWgId) || wgs.find((w) => w.isMain) || wgs[0];
+    _loadRmrId = wg ? (wg.rmrId || null) : null;
+    _loadOhGroupId = wg ? (wg.ohGroupId || null) : null;
+  }
+  function openLoadAnalysisPicker(wgId) { showAnalysisListPicker(wgId); }
   // एकीकृत सूची modal — MoRTH/MoRD और Project size (Large/Medium/Small) modal के अंदर ही toggle से;
   // बार-बार सवाल नहीं, एक जगह चुनो और जितने चाहे Analysis load करो।
-  function showAnalysisListPicker() {
+  //  preWgId दिया हो (किसी समूह के "+ Analysis" से) → वही समूह पहले से चुना रहेगा।
+  function showAnalysisListPicker(preWgId) {
     const overlay = document.createElement("div");
     overlay.className = "modal-overlay";
-    // इस estimate के सभी RMR — validate sticky choice
+    // इस estimate के कार्य-समूह — चुने समूह का RMR + Overhead इस Analysis पर लगेगा
     const est0 = state.estimates[state.activeEstimateId];
-    const rmrs0 = (est0 && est0.rmrs) ? est0.rmrs : [];
-    if (_loadRmrId && !rmrs0.some((r) => r.id === _loadRmrId)) _loadRmrId = null;
-    const rmrBtns = "<button class='lap-rmr-btn' data-rmr='__none'>बिना RMR</button>" +
-      rmrs0.map((r) => "<button class='lap-rmr-btn' data-rmr='" + r.id + "' title='" + escapeHtml(r.remark || "") + "'>🔗 " + escapeHtml(r.name) + "</button>").join("");
-    // Overhead groups — एक से ज़्यादा हों तभी चुनाव दिखाओ; sticky validate
-    const ohGroups0 = est0 ? estOhGroups(est0) : [];
-    if (_loadOhGroupId && !ohGroups0.some((g) => g.id === _loadOhGroupId)) _loadOhGroupId = null;
-    if (!_loadOhGroupId && ohGroups0.length) _loadOhGroupId = ohGroups0[0].id;
-    const ohBar = ohGroups0.length > 1
-      ? "<div class='lap-ohbar' id='lapOhBar' title='Overhead व Contractor Profit इसी group के % से जुड़ेंगे'>" +
-          "<span class='psb-label'>Overhead:</span>" +
-          ohGroups0.map((g) => "<button class='lap-oh-btn' data-oh='" + g.id + "' title='" + escapeHtml(ohGroupDesc(g)) + "'>📊 " + escapeHtml(g.remark || "बिना नाम") + "</button>").join("") +
+    const wgs0 = est0 ? estWorkGroups(est0) : [];
+    if (preWgId && wgs0.some((w) => w.id === preWgId)) _loadWgId = preWgId;   // समूह-विशेष लोड
+    if (_loadWgId && !wgs0.some((w) => w.id === _loadWgId)) _loadWgId = null;
+    if (!_loadWgId && wgs0.length) _loadWgId = (wgs0.find((w) => w.isMain) || wgs0[0]).id;
+    resolveLoadWg();   // _loadRmrId + _loadOhGroupId चुने समूह से
+    const wgBtns = wgs0.map((w) => {
+      const oh = (est0.ohGroups || []).find((g) => g.id === w.ohGroupId);
+      const tt = oh ? ohGroupDesc(oh) : "";
+      return "<button class='lap-wg-btn' data-wg='" + w.id + "' title='" + escapeHtml(tt) + "'>" + (w.isMain ? "★ " : "🗂 ") + escapeHtml(w.name) + "</button>";
+    }).join("");
+    // सहेजे गए सेट (कई Analysis एक साथ) — इसी समूह में लोड करने के लिए
+    const setBar = analysisSets.length
+      ? "<div class='lap-setbar' id='lapSetBar' title='सहेजे गए सेट — एक क्लिक में कई Analysis इस समूह में लोड (right-click: सेट हटाएँ)'>" +
+          "<span class='psb-label'>📋 सेट:</span>" +
+          analysisSets.map((st) => "<button class='lap-set-btn' data-set='" + st.id + "'>" + escapeHtml(st.name) + " <b>" + st.items.length + "</b></button>").join("") +
         "</div>"
       : "";
     overlay.innerHTML =
@@ -3530,26 +3723,36 @@
           SIZES.map((s) => "<button class='psb-btn' data-size='" + s.key + "'>" + s.name + "</button>").join("") +
         "</div>" +
       "</div>" +
-      "<div class='lap-rmrbar' id='lapRmrBar' title='Material के carted रेट इसी RMR से आएँगे; RMR का नाम Analysis पर लिखा जाएगा'>" +
-        "<span class='psb-label'>RMR:</span>" + rmrBtns +
-        (rmrs0.length ? "" : "<span class='lap-rmrnote muted'>इस estimate में अभी कोई RMR नहीं बना</span>") +
+      "<div class='lap-wgbar' id='lapWgBar' title='चुने कार्य-समूह का RMR व Overhead/Profit इस Analysis पर लगेगा (हर समूह का Analysis अलग रहेगा)'>" +
+        "<span class='psb-label'>कार्य-समूह:</span>" + wgBtns +
+        (wgs0.length ? "" : "<span class='lap-rmrnote muted'>इस estimate में अभी कोई कार्य-समूह नहीं</span>") +
       "</div>" +
-      ohBar +
-      "<p class='sub'>चुना हुआ Analysis यहाँ <b>copy</b> बनकर खुलेगा (Master सुरक्षित)। बदलाव पर पूछा जाएगा कि Master में भी डालें या नहीं।</p>" +
+      setBar +
+      "<p class='sub'>एक या कई Analysis चुनें (क्लिक कर टिक करें), फिर नीचे <b>लोड करें</b>। हर Analysis यहाँ <b>copy</b> बनकर खुलेगा (Master सुरक्षित)।</p>" +
       "<input type='search' id='lapSearch' class='search' placeholder='🔍 खोजें…' />" +
       "<div class='lap-list' id='lapList'></div>" +
+      "<div class='lap-foot'><span class='lap-selinfo' id='lapSelInfo'>कोई Analysis नहीं चुना</span>" +
+        "<button class='btn primary' id='lapLoadSel' disabled>✓ चुने लोड करें</button></div>" +
       "</div>";
     document.body.appendChild(overlay);
     const close = () => overlay.remove();
     const listEl = overlay.querySelector("#lapList");
     const searchEl = overlay.querySelector("#lapSearch");
+    const selected = new Set();   // चुने हुए loadId
+    const selInfo = overlay.querySelector("#lapSelInfo");
+    const loadSelBtn = overlay.querySelector("#lapLoadSel");
+    function updateFoot() {
+      const n = selected.size;
+      selInfo.textContent = n ? (n + " Analysis चुने") : "कोई Analysis नहीं चुना";
+      loadSelBtn.disabled = n === 0;
+      loadSelBtn.textContent = n ? ("✓ चुने " + n + " लोड करें") : "✓ चुने लोड करें";
+    }
     const sizeBar = overlay.querySelector("#lapSizeBar");
 
     function renderList() {
       overlay.querySelectorAll(".lap-srctabs .mtab").forEach((t) => t.classList.toggle("active", t.dataset.src === _loadSrc));
       overlay.querySelectorAll("#lapSizeBar .psb-btn").forEach((b) => b.classList.toggle("active", b.dataset.size === projectSize));
-      overlay.querySelectorAll("#lapRmrBar .lap-rmr-btn").forEach((b) => b.classList.toggle("active", (b.dataset.rmr === "__none" ? null : b.dataset.rmr) === _loadRmrId));
-      overlay.querySelectorAll("#lapOhBar .lap-oh-btn").forEach((b) => b.classList.toggle("active", b.dataset.oh === _loadOhGroupId));
+      overlay.querySelectorAll("#lapWgBar .lap-wg-btn").forEach((b) => b.classList.toggle("active", b.dataset.wg === _loadWgId));
       sizeBar.style.display = _loadSrc === "morth" ? "" : "none";   // size सिर्फ़ MoRTH के लिए
       let listHtml = "";
       if (_loadSrc === "mord") {
@@ -3565,15 +3768,35 @@
       listEl.innerHTML = listHtml || "<div class='ag-empty muted'>अभी कोई master analysis नहीं — Master Data में बनाएँ।</div>";
       const q = searchEl.value.trim().toLowerCase();
       listEl.querySelectorAll(".lap-item").forEach((b) => {
+        const lid = b.dataset.load;
         if (q) { const nm = b.querySelector(".lap-nm").textContent.toLowerCase(); if (!nm.includes(q)) b.style.display = "none"; }
-        b.addEventListener("click", () => { close(); loadAnalysisToWorkspace(b.dataset.load); });
+        if (selected.has(lid)) b.classList.add("sel");   // re-render पर चुनाव बरक़रार
+        b.addEventListener("click", () => {
+          if (selected.has(lid)) { selected.delete(lid); b.classList.remove("sel"); }
+          else { selected.add(lid); b.classList.add("sel"); }
+          updateFoot();
+        });
       });
     }
 
     overlay.querySelectorAll(".lap-srctabs .mtab").forEach((t) => t.addEventListener("click", () => { _loadSrc = t.dataset.src; renderList(); }));
     overlay.querySelectorAll("#lapSizeBar .psb-btn").forEach((b) => b.addEventListener("click", () => { setProjectSize(b.dataset.size); renderList(); }));
-    overlay.querySelectorAll("#lapRmrBar .lap-rmr-btn").forEach((b) => b.addEventListener("click", () => { _loadRmrId = b.dataset.rmr === "__none" ? null : b.dataset.rmr; renderList(); }));
-    overlay.querySelectorAll("#lapOhBar .lap-oh-btn").forEach((b) => b.addEventListener("click", () => { _loadOhGroupId = b.dataset.oh; renderList(); }));
+    overlay.querySelectorAll("#lapWgBar .lap-wg-btn").forEach((b) => b.addEventListener("click", () => { _loadWgId = b.dataset.wg; resolveLoadWg(); renderList(); }));
+    // चुने हुए सभी एक साथ लोड करो
+    loadSelBtn.addEventListener("click", () => {
+      if (!selected.size) return;
+      const ids = Array.from(selected);
+      close();
+      _openWgId = _loadWgId;   // जिस समूह में लोड हुआ वही खुला दिखे
+      ids.forEach((lid) => { if (state.sheets[lid]) loadAnalysisToWorkspace(lid); });
+      renderSheetList();
+      status(ids.length + " Analysis लोड हुए");
+    });
+    // सहेजे सेट → इसी समूह में एक साथ लोड (right-click: हटाएँ)
+    overlay.querySelectorAll("#lapSetBar .lap-set-btn").forEach((b) => {
+      b.addEventListener("click", () => { close(); loadSetIntoCurrentGroup(b.dataset.set); });
+      b.addEventListener("contextmenu", (e) => { e.preventDefault(); deleteAnalysisSet(b.dataset.set); if (!analysisSets.some((x) => x.id === b.dataset.set)) b.remove(); });
+    });
     searchEl.addEventListener("input", renderList);
     overlay.querySelector("#lapClose").addEventListener("click", close);
     overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });
@@ -3683,7 +3906,11 @@
       const li = document.createElement("li");
       const meta = [e.roadCode, e.length ? e.length + " km" : "", e.year].filter(Boolean).join(" · ");
       li.innerHTML = "<div class='ei-main'><div class='ei-name'>" + escapeHtml(e.name) +
-        "</div><div class='ei-meta'>" + escapeHtml(meta || (e.sheetIds.length + " शीट")) + "</div></div><span class='btn xs'>खोलें</span>";
+        "</div><div class='ei-meta'>" + escapeHtml(meta || (e.sheetIds.length + " शीट")) + "</div></div>" +
+        "<span class='ei-actions'>" +
+          "<button type='button' class='btn xs ei-detail' title='इस Estimate का विवरण सुधारें'>✎ विवरण</button>" +
+          "<span class='btn xs ei-open'>खोलें</span>" +
+        "</span>";
       li.addEventListener("click", () => {
         setActiveEstimateId(id);
         applyOverheadAll();   // इस estimate के Overhead/Profit % सभी analysis पर
@@ -3691,6 +3918,8 @@
         setActiveView("rate-analysis");
         status("Estimate खुला: " + e.name);
       });
+      // "विवरण" — edit form खोलो (li का open trigger न हो इसलिए stopPropagation)
+      li.querySelector(".ei-detail").addEventListener("click", (ev) => { ev.stopPropagation(); openEstimateForm(id); });
       ul.appendChild(li);
     }
   }
@@ -4372,6 +4601,693 @@
     setActiveView("rmr");
   }
 
+  /* ============== DOM — Detail of Measurement ==============
+     मुख्य कार्य-समूह के हर Analysis का item व दर अपने-आप; N1·N2·L·W·D → Quantity, ×Rate → Amount */
+  let _domWgId = null;    // समूह-मोड में कौन-सा समूह
+  let _domSubId = null;   // कोई sub-estimate खुला हो तो उसका id (वरना null = समूह-मोड)
+  function openDOMView(wgId) { _domSubId = null; if (wgId !== undefined) _domWgId = wgId; setActiveView("dom"); }
+  function openDOMSub(subId) { _domSubId = subId; setActiveView("dom"); }
+  function openBOQSub(subId) { _domSubId = subId; setActiveView("boq"); }
+  // किसी analysis (working sheet) से output दर व unit निकालो — "say" पंक्ति से
+  function analysisRateUnit(sheet) {
+    let rate = "", unit = "";
+    if (!sheet || !sheet.cells) return { rate, unit };
+    const R = sheet.rows || 0, C = sheet.cols || 0;
+    const disp = (r, c) => { const cell = sheet.cells[addr(r, c)]; if (!cell) return ""; const raw = (cell.f != null ? cell.f : cell.v); return raw == null ? "" : String(raw); };
+    const numAt = (r, c) => { const v = computedValue(sheet, r, c).val; return (typeof v === "number" && isFinite(v)) ? v : (isNumeric(v) ? Number(v) : null); };
+    // unit — "Unit = cum" जैसा कहीं भी
+    for (let r = 0; r < R && !unit; r++) for (let c = 0; c < C; c++) { const m = /unit\s*[:=]\s*([A-Za-z%]+)/i.exec(disp(r, c)); if (m) { unit = m[1]; break; } }
+    // rate — "say" पंक्ति का सबसे दायाँ संख्या-मान; न मिले तो "Rate per"; न मिले तो अंतिम संख्या
+    const rowNum = (r) => { for (let c = C - 1; c >= 0; c--) { const n = numAt(r, c); if (n != null && n !== 0) return n; } return null; };
+    const findByText = (re) => { for (let r = R - 1; r >= 0; r--) { for (let c = 0; c < C; c++) { if (re.test(disp(r, c))) { const n = rowNum(r); if (n != null) return n; } } } return null; };
+    let rt = findByText(/\bsay\b/i);
+    if (rt == null) rt = findByText(/rate\s*per/i);
+    if (rt == null) { for (let r = R - 1; r >= 0 && rt == null; r--) rt = rowNum(r); }
+    if (rt != null) rate = Math.round(rt * 100) / 100;
+    return { rate, unit };
+  }
+  // DOM/BOQ views अभी जिस कार्य-समूह के लिए हैं (default: मुख्य)
+  function domActiveWg(est) {
+    const wgs = est ? estWorkGroups(est) : [];
+    return wgs.find((w) => w.id === _domWgId) || wgs.find((w) => w.isMain) || wgs[0] || null;
+  }
+  // किसी कार्य-समूह के सभी loaded (working) analysis
+  function domGroupSheets(est, wg) {
+    const out = [];
+    if (wg) {
+      const key = (wg.rmrId || "") + "|" + (wg.ohGroupId || "");
+      for (const id of state.order) {
+        const s = state.sheets[id];
+        if (s.kind === "working" && ((s.rmrId || "") + "|" + (s.ohGroupId || "")) === key) out.push(s);
+      }
+    }
+    return { main: wg || null, sheets: out };
+  }
+  // पीछे-अनुकूलता: पुराने कॉल active समूह पर काम करें
+  function domMainGroupSheets(est) { return domGroupSheets(est, domActiveWg(est)); }
+
+  /* ---- DOM असली spreadsheet — वही Rate Analysis editor (formula bar, multi-select, सभी Excel फार्मूला) ---- */
+  const DOM_HEADERS = ["SN", "Item Detail", "N1", "N2", "Length", "Width", "Depth", "Quantity", "Unit"];
+  function domColWidths() { return [40, 380, 60, 60, 68, 68, 68, 90, 66]; }
+  // analysis के column C (Description) की Excel Row 2 व Row 3 को " - " से जोड़ो → Item Detail
+  function analysisItemDetail(sheet) {
+    const disp = (r, c) => { const cell = sheet && sheet.cells && sheet.cells[addr(r, c)]; const raw = cell ? (cell.f != null ? cell.f : cell.v) : ""; return raw == null ? "" : String(raw).trim(); };
+    const parts = [disp(1, 2), disp(2, 2)].filter(Boolean);   // C2, C3
+    return parts.join(" - ");
+  }
+  function domSetSheetCell(sheet, r, c, raw) {
+    const a = addr(r, c);
+    raw = (raw == null ? "" : String(raw)).trim();
+    if (raw === "") delete sheet.cells[a];
+    else if (raw[0] === "=") sheet.cells[a] = { f: raw };
+    else if (isNumeric(raw)) sheet.cells[a] = { v: Number(raw) };
+    else sheet.cells[a] = { v: raw };
+    if (r + 1 > sheet.rows) sheet.rows = r + 1;
+  }
+  function domCellRawSheet(sheet, r, c) { const cell = sheet.cells[addr(r, c)]; return cell ? (cell.f != null ? cell.f : (cell.v == null ? "" : String(cell.v))) : ""; }
+  // नई DOM शीट (generic)
+  function newDomSheet(titleName) {
+    const cells = {}; DOM_HEADERS.forEach((h, c) => { cells[addr(0, c)] = { v: h }; });
+    const base = uniqueName(safeName("DOM_" + String(titleName || "").replace(/\s+/g, "_").slice(0, 12)) || "DOM");
+    const sheet = { id: uid("sht"), name: base, rows: 1, cols: DOM_HEADERS.length, cells: cells, merges: [], colWidths: domColWidths(), title: "DOM — " + (titleName || ""), lockTop: 1, lockBottom: 0, updatedAt: Date.now(), kind: "dom", group: "misc", masterId: null, source: "morth", serial: "" };
+    state.sheets[sheet.id] = sheet; state.order.push(sheet.id); db.put("sheets", sheet);
+    return sheet;
+  }
+  // हर कार्य-समूह की अपनी (मुख्य) DOM शीट
+  function domEnsureSheet(est, wg) {
+    wg = wg || domActiveWg(est); if (!wg) return null;
+    if (!est.domSheets) est.domSheets = {};
+    if (est.domSheetId && state.sheets[est.domSheetId]) {   // पुराना single → मुख्य समूह में migrate
+      const m = estWorkGroups(est).find((w) => w.isMain) || estWorkGroups(est)[0];
+      if (m && !est.domSheets[m.id]) est.domSheets[m.id] = est.domSheetId;
+      est.domSheetId = null; db.put("estimates", est);
+    }
+    const ex = est.domSheets[wg.id];
+    if (ex && state.sheets[ex]) return state.sheets[ex];
+    const sheet = newDomSheet(wg.name);
+    est.domSheets[wg.id] = sheet.id; db.put("estimates", est);
+    return sheet;
+  }
+  // ── Sub-Estimate: किसी समूह के अंदर कई नामित उपकार्य; हर का अपना DOM+BOQ (समूह के सभी analysis से भरा, prunable) ──
+  function estSubs(est) { if (!Array.isArray(est.subEstimates)) est.subEstimates = []; return est.subEstimates; }
+  function findSub(est, id) { return estSubs(est).find((x) => x.id === id) || null; }
+  function createSubEstimate(est, wg, name, unit, description) {
+    const items = domGroupSheets(est, wg).sheets.map((s) => s.id);   // शुरू में समूह के सभी analysis
+    const sub = { id: uid("sub"), wgId: wg.id, name: name, unit: unit || "", description: description || "", itemIds: items, domSheetId: null, boqSheetId: null };
+    estSubs(est).push(sub); db.put("estimates", est);
+    return sub;
+  }
+  // sub का पूरा विवरण — "short name - Description"
+  function subFullText(sub) { return sub ? (sub.name + (sub.description ? " - " + sub.description : "")) : "Sub-Estimate"; }
+  function subLinkedInMain(est, subId) { return estMainExtras(est).some((x) => x.type === "sub" && x.subId === subId); }
+  function deleteSubEstimate(est, subId) {
+    const subs = estSubs(est); const i = subs.findIndex((x) => x.id === subId); if (i < 0) return;
+    const sub = subs[i];
+    [sub.domSheetId, sub.boqSheetId].forEach((sid) => { if (sid && state.sheets[sid]) { delete state.sheets[sid]; const k = state.order.indexOf(sid); if (k >= 0) state.order.splice(k, 1); db.del && db.del("sheets", sid); } });
+    est.mainExtras = estMainExtras(est).filter((x) => !(x.type === "sub" && x.subId === subId));   // मुख्य DOM/BOQ से भी हटाओ
+    subs.splice(i, 1); db.put("estimates", est);
+  }
+  function subDomSheet(est, sub) {
+    if (sub.domSheetId && state.sheets[sub.domSheetId]) return state.sheets[sub.domSheetId];
+    const sheet = newDomSheet(sub.name); sub.domSheetId = sheet.id; db.put("estimates", est); return sheet;
+  }
+  function domStyle(sheet, r, c, st) { const a = addr(r, c); if (!sheet.cells[a]) sheet.cells[a] = { v: "" }; sheet.cells[a].s = Object.assign({}, st); }
+  function domMarkRole(sheet, r, role) { const a = addr(r, 2); if (!sheet.cells[a]) sheet.cells[a] = { v: "" }; sheet.cells[a].role = role; }
+  function domFindRole(sheet, role) { for (let r = 1; r < sheet.rows; r++) { const c = sheet.cells[addr(r, 2)]; if (c && c.role === role) return r; } return -1; }
+  // ── समूह-वार item क्रम (Rate Analysis · DOM · BOQ तीनों साझा) ──
+  function domGroupKey(s) { return (s.rmrId || "") + "|" + (s.ohGroupId || ""); }
+  function estGroupOrder(est, gk, sheetIds) {
+    if (!est.groupOrders) est.groupOrders = {};
+    let order = Array.isArray(est.groupOrders[gk]) ? est.groupOrders[gk].filter((id) => sheetIds.indexOf(id) >= 0) : [];
+    sheetIds.forEach((id) => { if (order.indexOf(id) < 0) order.push(id); });   // नई items अंत में
+    est.groupOrders[gk] = order;
+    return order;
+  }
+  // मुख्य समूह के items canonical क्रम में (DOM/BOQ इससे)
+  function estItemSheets(est) {
+    const gi = domMainGroupSheets(est);
+    if (!gi.main) return [];
+    const gk = domGroupKey({ rmrId: gi.main.rmrId, ohGroupId: gi.main.ohGroupId });
+    const ids = gi.sheets.map((s) => s.id);
+    return estGroupOrder(est, gk, ids).map((id) => state.sheets[id]).filter(Boolean);
+  }
+  // किसी item को उसके समूह में ऊपर/नीचे (तीनों जगह असर)
+  function moveEstimateItem(est, itemId, dir) {
+    const s = state.sheets[itemId]; if (!s) return false;
+    const gk = domGroupKey(s);
+    const ids = state.order.filter((id) => { const x = state.sheets[id]; return x && x.kind === "working" && domGroupKey(x) === gk; });
+    const order = estGroupOrder(est, gk, ids);
+    const i = order.indexOf(itemId), j = i + dir;
+    if (i < 0 || j < 0 || j >= order.length) return false;
+    const t = order[i]; order[i] = order[j]; order[j] = t;
+    est.groupOrders[gk] = order; db.put("estimates", est);
+    return true;
+  }
+  // DOM sheet से हर item की माप-पंक्तियाँ — itemId व नाम (detail) दोनों से key (rebuild/reorder पर सुरक्षित)
+  function domParseItems(sheet) {
+    const byId = {}, byDetail = {};
+    for (let r = 1; r < sheet.rows; r++) {
+      const hc = sheet.cells[addr(r, 2)];
+      if (hc && hc.role === "domhdr") {
+        let sr = -1;
+        for (let rr = r + 1; rr < sheet.rows; rr++) { const c = sheet.cells[addr(rr, 2)]; if (c && c.role === "domsub") { sr = rr; break; } if (c && c.role === "domhdr") break; }
+        const end = sr > 0 ? sr : r + 1, meas = [];
+        let any = false;
+        for (let rr = r + 1; rr < end; rr++) { const vals = []; for (let cc = 0; cc < 5; cc++) { const v = domCellRawSheet(sheet, rr, 2 + cc); vals.push(v); if (v !== "") any = true; } meas.push(vals); }
+        if (hc.itemId) byId[hc.itemId] = meas;
+        const det = domCellRawSheet(sheet, r, 1); if (det) byDetail[det] = meas;   // नाम से भी (fallback)
+      }
+    }
+    return { byId, byDetail };
+  }
+  // एक item का block: header + N माप-पंक्तियाँ (सुरक्षित मान) + Quantity sub-total; अगली block-start लौटाता है
+  function domSeedItemBlock(sheet, r, itemNo, s, savedMeas) {
+    const info = analysisRateUnit(s);
+    const detail = analysisItemDetail(s) || s.itemName || s.name;   // C2 - C3
+    const meas = (Array.isArray(savedMeas) && savedMeas.length) ? savedMeas : [null, null];   // डिफ़ॉल्ट 2 माप-पंक्तियाँ
+    const hr = r, firstMeas = r + 1, lastMeas = firstMeas + meas.length - 1, sub = lastMeas + 1;
+    const e = (x) => x + 1;
+    // header — सिर्फ़ नाम (bold नहीं); itemId marker (reorder/link के लिए)
+    domSetSheetCell(sheet, hr, 0, itemNo);
+    domSetSheetCell(sheet, hr, 1, detail); domStyle(sheet, hr, 1, { bg: "EAF1F8", al: "left" });
+    domMarkRole(sheet, hr, "domhdr");
+    sheet.cells[addr(hr, 2)].itemId = s.id;
+    // माप-पंक्तियाँ (सुरक्षित मान भरो) — हर की Quantity = N1·N2·L·W·D
+    meas.forEach((vals, k) => {
+      const mr = firstMeas + k;
+      if (Array.isArray(vals)) for (let cc = 0; cc < 5; cc++) { if (vals[cc] != null && vals[cc] !== "") domSetSheetCell(sheet, mr, 2 + cc, vals[cc]); }
+      domSetSheetCell(sheet, mr, 7, "=IF(COUNT(C" + e(mr) + ":G" + e(mr) + ")=0,\"\",PRODUCT(C" + e(mr) + ":G" + e(mr) + "))");
+    });
+    // Sub Total — label Depth में; Quantity योग + Unit
+    domSetSheetCell(sheet, sub, 6, "Sub Total"); domStyle(sheet, sub, 6, SECTOT_STYLE);
+    domSetSheetCell(sheet, sub, 7, "=ROUND(SUM(H" + e(firstMeas) + ":H" + e(lastMeas) + "),3)"); domStyle(sheet, sub, 7, SECTOT_STYLE);
+    domSetSheetCell(sheet, sub, 8, info.unit || ""); domStyle(sheet, sub, 8, SECTOT_STYLE);
+    domMarkRole(sheet, sub, "domsub");
+    return sub + 1;
+  }
+  // DOM को canonical क्रम में फिर से बनाओ — माप-मान सुरक्षित (add/remove/reorder सब यहीं)
+  //  extras (सिर्फ़ मुख्य कार्य): main analyses के बाद separator + Sub-Estimate/Item SOR items
+  function domSyncSheet(est, sheet, items, extras) {
+    if (!items) items = estItemSheets(est);  // default: मुख्य समूह canonical क्रम
+    const saved = domParseItems(sheet);      // पुराने से माप सुरक्षित (itemId व नाम दोनों से)
+    // extra items का user-edited नाम (भाषा) x.desc में सुरक्षित — rebuild पर बना रहे, BOQ भी दिखाए
+    if (extras && extras.length) {
+      for (let r = 1; r < sheet.rows; r++) {
+        const c = sheet.cells[addr(r, 2)];
+        if (c && c.role === "domhdr" && c.itemId && String(c.itemId).indexOf("xtr:") === 0) {
+          const x = extras.find((e) => e.id === String(c.itemId).slice(4));
+          const txt = domCellRawSheet(sheet, r, 1);
+          if (x && txt) x.desc = txt;
+        }
+      }
+      db.put("estimates", est);
+    }
+    sheet.cols = DOM_HEADERS.length; sheet.colWidths = sheet.colWidths && sheet.colWidths.length === DOM_HEADERS.length ? sheet.colWidths : domColWidths();
+    sheet.cells = {}; DOM_HEADERS.forEach((h, c) => { sheet.cells[addr(0, c)] = { v: h }; });
+    sheet.rows = 1;
+    let r = 1, no = 1;
+    items.forEach((s) => {
+      const det = analysisItemDetail(s) || s.itemName || s.name;
+      const meas = saved.byId[s.id] || saved.byDetail[det];   // पहले id, फिर नाम से
+      r = domSeedItemBlock(sheet, r, no++, s, meas);
+    });
+    if (extras && extras.length) {
+      EXTRA_CATS.forEach((cat) => {
+        const catItems = extras.filter((x) => x.type === cat.type);
+        if (!catItems.length) return;
+        domSetSheetCell(sheet, r, 1, cat.label); domStyle(sheet, r, 1, { bg: "F3E8FF", al: "center", b: 1 }); domMarkRole(sheet, r, "domsep"); r++;
+        catItems.forEach((x) => { r = domSeedExtraBlock(sheet, r, no++, est, x, saved); });
+      });
+    }
+    sheet._domSeeded = true; sheet._domV = 5;
+    ensureLock(sheet); persistSheet(sheet, true); if (hfReady) buildEngine();
+  }
+  // अभी DOM/BOQ किस लक्ष्य के लिए — sub-estimate या समूह
+  function domCurrentItems(est) {
+    if (_domSubId) { const sub = findSub(est, _domSubId); return sub ? (sub.itemIds || []).map((id) => state.sheets[id]).filter((s) => s && s.kind === "working") : []; }
+    return estItemSheets(est);
+  }
+  function domCurrentTitle(est) {
+    if (_domSubId) { const sub = findSub(est, _domSubId); return sub ? ("उपकार्य: " + sub.name) : ""; }
+    const wg = domActiveWg(est); return wg ? wg.name : "";
+  }
+  function renderDOM() {
+    const est = state.estimates[state.activeEstimateId];
+    const ttl = document.querySelector("#view-dom .dom-head-title");
+    if (ttl) ttl.textContent = "DOM — Detail of Measurement" + (est ? " · " + domCurrentTitle(est) : "");
+    const mainCtx = est && domIsMainCtx(est);
+    const addBtns = document.getElementById("domAddBtns");
+    if (addBtns) addBtns.style.display = mainCtx ? "" : "none";   // Sub-Estimate/Item SOR जोड़ना सिर्फ़ मुख्य DOM में
+    let sheet = null;
+    if (est) { if (_domSubId) { const sub = findSub(est, _domSubId); if (sub) sheet = subDomSheet(est, sub); } else if (domActiveWg(est)) sheet = domEnsureSheet(est, domActiveWg(est)); }
+    if (!sheet) { state.activeSheetId = null; renderGrid(); return; }
+    domSyncSheet(est, sheet, domCurrentItems(est), mainCtx ? estMainExtras(est) : null);
+    openSheet(sheet.id);
+  }
+
+  /* ============== BOQ — Bill of Quantity (DOM से item+Quantity linked; Rate व Amount यहाँ) ============== */
+  const BOQ_HEADERS = ["SN", "Item Detail", "Quantity", "Unit", "Rate", "Amount"];
+  function boqColWidths() { return [40, 380, 96, 66, 96, 112]; }
+  function openBOQView(wgId) { _domSubId = null; if (wgId !== undefined) _domWgId = wgId; setActiveView("boq"); }
+  function newBoqSheet(titleName) {
+    const cells = {}; BOQ_HEADERS.forEach((h, c) => { cells[addr(0, c)] = { v: h }; });
+    const base = uniqueName(safeName("BOQ_" + String(titleName || "").replace(/\s+/g, "_").slice(0, 12)) || "BOQ");
+    const sheet = { id: uid("sht"), name: base, rows: 1, cols: BOQ_HEADERS.length, cells: cells, merges: [], colWidths: boqColWidths(), title: "BOQ — " + (titleName || ""), lockTop: 1, lockBottom: 0, updatedAt: Date.now(), kind: "boq", group: "misc", masterId: null, source: "morth", serial: "" };
+    state.sheets[sheet.id] = sheet; state.order.push(sheet.id); db.put("sheets", sheet);
+    return sheet;
+  }
+  function boqEnsureSheet(est, wg) {
+    wg = wg || domActiveWg(est); if (!wg) return null;
+    if (!est.boqSheets) est.boqSheets = {};
+    if (est.boqSheetId && state.sheets[est.boqSheetId]) {
+      const m = estWorkGroups(est).find((w) => w.isMain) || estWorkGroups(est)[0];
+      if (m && !est.boqSheets[m.id]) est.boqSheets[m.id] = est.boqSheetId;
+      est.boqSheetId = null; db.put("estimates", est);
+    }
+    const ex = est.boqSheets[wg.id];
+    if (ex && state.sheets[ex]) return state.sheets[ex];
+    const sheet = newBoqSheet(wg.name);
+    est.boqSheets[wg.id] = sheet.id; db.put("estimates", est);
+    return sheet;
+  }
+  // BOQ को DOM से बनाओ — Item Detail व Quantity DOM से linked; Rate analysis से; Amount = Qty×Rate
+  //  forceRate=true → दरें analysis से फिर से (🔄); वरना user का बदला Rate सुरक्षित
+  function subBoqSheet(est, sub) {
+    if (sub.boqSheetId && state.sheets[sub.boqSheetId]) return state.sheets[sub.boqSheetId];
+    const sheet = newBoqSheet(sub.name); sub.boqSheetId = sheet.id; db.put("estimates", est); return sheet;
+  }
+  function boqSync(est, boq, dom, forceRate, srcItems, extrasById) {
+    const domName = dom.name;
+    const rateBy = {};
+    (srcItems || estItemSheets(est)).forEach((s) => { rateBy[analysisItemDetail(s) || s.itemName || s.name] = analysisRateUnit(s).rate; });
+    // कोई separator है? (मुख्य कार्य में extra sections) → तब section-wise Total
+    let hasSep = false; for (let dr = 1; dr < dom.rows; dr++) { const c = dom.cells[addr(dr, 2)]; if (c && c.role === "domsep") { hasSep = true; break; } }
+    boq.cells = {}; BOQ_HEADERS.forEach((h, c) => { boq.cells[addr(0, c)] = { v: h }; }); boq.rows = 1;
+    let r = 1, no = 1;
+    const secTotalRows = [];      // section-total की Excel पंक्तियाँ (Grand Total के लिए)
+    let secLabel = "मुख्य कार्य", secStart = null;   // secStart = section की पहली item-पंक्ति (0-based)
+    const closeSection = () => {
+      if (hasSep && secStart != null && r > secStart) {
+        const startE = secStart + 1, endE = r, trE = r + 1;   // items: secStart..r-1 → Excel (secStart+1)..r
+        domSetSheetCell(boq, r, 4, secLabel + " — Total"); domStyle(boq, r, 4, SECTOT_STYLE);   // label कॉलम E में
+        domSetSheetCell(boq, r, 5, "=ROUND(SUM(F" + startE + ":F" + endE + "),2)"); domStyle(boq, r, 5, SECTOT_STYLE);
+        domMarkRole(boq, r, "sectot"); secTotalRows.push(trE); r++;
+      }
+      secStart = null;
+    };
+    for (let dr = 1; dr < dom.rows; dr++) {
+      const c = dom.cells[addr(dr, 2)];
+      if (c && c.role === "domsep") {   // section बदला
+        closeSection();
+        const lbl = domCellRawSheet(dom, dr, 1);
+        domSetSheetCell(boq, r, 1, lbl); domStyle(boq, r, 1, { bg: "F3E8FF", al: "center", b: 1 }); domMarkRole(boq, r, "domsep"); r++;
+        secLabel = lbl.replace(/^अतिरिक्त\s*-\s*/, "").trim() || "अतिरिक्त";
+        continue;
+      }
+      if (!(c && c.role === "domhdr")) continue;
+      if (secStart == null) secStart = r;
+      let sr = -1;
+      for (let rr = dr + 1; rr < dom.rows; rr++) { const cc = dom.cells[addr(rr, 2)]; if (cc && cc.role === "domsub") { sr = rr; break; } if (cc && (cc.role === "domhdr" || cc.role === "domsep")) break; }
+      const hrE = dr + 1, srE = (sr > 0 ? sr : dr) + 1, n = r + 1;
+      const iid = c.itemId || "", det = domCellRawSheet(dom, dr, 1);
+      domSetSheetCell(boq, r, 0, no++);
+      if (iid) boq.cells[addr(r, 0)].itemId = iid;   // BOQ पंक्ति ↔ item (delete/move के लिए)
+      domSetSheetCell(boq, r, 1, "=" + domName + "!B" + hrE);
+      domSetSheetCell(boq, r, 2, "=" + domName + "!H" + srE);
+      domSetSheetCell(boq, r, 3, "=" + domName + "!I" + srE);
+      let rt = "";
+      if (iid.indexOf("xtr:") === 0 && extrasById) { const x = extrasById[iid.slice(4)]; if (x) rt = extraRate(est, x); }
+      else rt = (rateBy[det] != null ? rateBy[det] : "");
+      domSetSheetCell(boq, r, 4, rt === "" ? "" : rt);
+      domSetSheetCell(boq, r, 5, "=IF(OR(C" + n + "=\"\",E" + n + "=\"\"),\"\",ROUND(C" + n + "*E" + n + ",2))");
+      r++;
+    }
+    closeSection();   // अंतिम section
+    domSetSheetCell(boq, r, 1, "Grand Total (कुल राशि)"); domStyle(boq, r, 1, TOTAL_STYLE);
+    const gsum = (hasSep && secTotalRows.length) ? ("=ROUND(" + secTotalRows.map((n) => "F" + n).join("+") + ",2)") : ("=ROUND(SUM(F2:F" + r + "),2)");
+    domSetSheetCell(boq, r, 5, gsum); domStyle(boq, r, 5, TOTAL_STYLE);
+    domMarkRole(boq, r, "grandtot");
+    boq._boqSeeded = true;
+    ensureLock(boq); persistSheet(boq, true); buildEngine();
+  }
+  function renderBOQ(forceRate) {
+    const est = state.estimates[state.activeEstimateId];
+    const ttl = document.querySelector("#view-boq .dom-head-title");
+    if (ttl) ttl.innerHTML = "BOQ — Bill of Quantity" + (est ? " · " + escapeHtml(domCurrentTitle(est)) : "") + " <span class='boq-hint'>(Item व Quantity DOM से linked)</span>";
+    let dom = null, boq = null;
+    if (est) {
+      if (_domSubId) { const sub = findSub(est, _domSubId); if (sub) { dom = subDomSheet(est, sub); boq = subBoqSheet(est, sub); } }
+      else if (domActiveWg(est)) { dom = domEnsureSheet(est, domActiveWg(est)); boq = boqEnsureSheet(est, domActiveWg(est)); }
+    }
+    if (!dom || !boq) { state.activeSheetId = null; renderGrid(); return; }
+    const items = domCurrentItems(est);
+    const mainCtx = domIsMainCtx(est);
+    const extras = mainCtx ? estMainExtras(est) : null;
+    const extrasById = {}; (extras || []).forEach((x) => { extrasById[x.id] = x; });
+    domSyncSheet(est, dom, items, extras);          // DOM (source) पहले ताज़ा (extras सहित)
+    boqSync(est, boq, dom, !!forceRate, items, extrasById);
+    openSheet(boq.id);
+  }
+  /* ── मुख्य कार्य के extra items (Sub-Estimate ref + Item SOR) — main analyses के बाद, separator के नीचे ── */
+  function estMainExtras(est) { if (!Array.isArray(est.mainExtras)) est.mainExtras = []; return est.mainExtras; }
+  function domIsMainCtx(est) { const wg = domActiveWg(est); return !_domSubId && wg && wg.isMain; }
+  const EXTRA_CATS = [{ type: "sub", label: "अतिरिक्त - Sub-Estimate" }, { type: "sor", label: "अतिरिक्त - Item-SOR" }, { type: "ana", label: "अतिरिक्त - अन्य कार्य" }];
+  function extraDesc(est, x) {
+    if (x.desc != null && x.desc !== "") return x.desc;
+    if (x.type === "sor") { const rr = masterRowById("item_sor", x.sorRowId); return rr ? masterItemName("item_sor", rr) : "Item SOR"; }
+    if (x.type === "sub") { return subFullText(findSub(est, x.subId)); }   // नाम - Description
+    if (x.type === "ana") { const s = state.sheets[x.anaId]; return s ? (analysisItemDetail(s) || s.itemName || s.name) : "Analysis"; }
+    return "Item";
+  }
+  function extraUnit(est, x) {
+    if (x.type === "sub") { const s = findSub(est, x.subId); return (s && s.unit) ? s.unit : (x.unit || "job"); }
+    if (x.unit != null && x.unit !== "") return x.unit;
+    if (x.type === "sor") { const rr = masterRowById("item_sor", x.sorRowId); return rr ? (rr.unit || "") : ""; }
+    if (x.type === "ana") { const s = state.sheets[x.anaId]; return s ? (analysisRateUnit(s).unit || "") : ""; }
+    return "";
+  }
+  // sub-estimate का कुल (उसकी DOM+BOQ बनाकर grand total) — main BOQ में इसका rate
+  function computeSubTotal(est, sub) {
+    const items = (sub.itemIds || []).map((id) => state.sheets[id]).filter((s) => s && s.kind === "working");
+    const dom = subDomSheet(est, sub); domSyncSheet(est, dom, items);
+    const boq = subBoqSheet(est, sub); boqSync(est, boq, dom, false, items);
+    let g = -1; for (let r = 1; r < boq.rows; r++) { const c = boq.cells[addr(r, 2)]; if (c && c.role === "grandtot") { g = r; break; } }
+    if (g < 0) return 0;
+    const v = computedValue(boq, g, 5).val;
+    return (typeof v === "number" && isFinite(v)) ? round2(v) : 0;
+  }
+  // किसी कार्य-समूह का BOQ कुल (उसकी DOM+BOQ बनाकर grand total) — Summary के लिए
+  function computeGroupTotal(est, wg) {
+    const gk = (wg.rmrId || "") + "|" + (wg.ohGroupId || "");
+    const ids = state.order.filter((id) => { const s = state.sheets[id]; return s && s.kind === "working" && ((s.rmrId || "") + "|" + (s.ohGroupId || "")) === gk; });
+    const itemSheets = estGroupOrder(est, gk, ids).map((id) => state.sheets[id]).filter(Boolean);
+    const extras = wg.isMain ? estMainExtras(est) : null;
+    const extrasById = {}; (extras || []).forEach((x) => { extrasById[x.id] = x; });
+    const dom = domEnsureSheet(est, wg); domSyncSheet(est, dom, itemSheets, extras);
+    const boq = boqEnsureSheet(est, wg); boqSync(est, boq, dom, false, itemSheets, extrasById);
+    let g = -1; for (let r = 1; r < boq.rows; r++) { const c = boq.cells[addr(r, 2)]; if (c && c.role === "grandtot") { g = r; break; } }
+    if (g < 0) return 0;
+    const v = computedValue(boq, g, 5).val;
+    return (typeof v === "number" && isFinite(v)) ? v : 0;
+  }
+  /* ============== Summary of Estimated Cost — हर step पर S-reference, % का base stage चुनने योग्य ============== */
+  const SUM_PCT_DEFAULT = { labourCess: 1, competitive: 5, contingency: 1, gstCivil: 18, labourCess2: 1, priceDepr: 1.5, maint: 2.5, gstMaint: 18 };
+  const SUM_ON_DEFAULT = { labourCess: "A", competitive: "sub1", contingency: "sub2", gstCivil: "sub3", labourCess2: "sub3", priceDepr: "sub3", maint: "sub2", gstMaint: "maint" };
+  function renderSummary() {
+    const table = document.getElementById("summaryTable"); if (!table) return;
+    const est = state.estimates[state.activeEstimateId];
+    if (!est) { table.innerHTML = "<tbody><tr><td class='sum-empty'>पहले कोई Estimate खोलें।</td></tr></tbody>"; return; }
+    if (!est.summary) est.summary = {};
+    const S = est.summary;
+    const P = S.pct = Object.assign({}, SUM_PCT_DEFAULT, S.pct || {});
+    const ON = S.on = Object.assign({}, SUM_ON_DEFAULT, S.on || {});
+    if (!Array.isArray(S.extras)) S.extras = [
+      { label: "मार्ग पर विद्युत पोल के विस्थापन कार्य का (अनुमानित)", amount: 0 },
+      { label: "मार्ग पर पेड़ पातन हेतु लागत (अनुमानित)", amount: 0 },
+    ];
+    const wgs = estWorkGroups(est);
+    const mainWg = wgs.find((w) => w.isMain) || wgs[0];
+
+    const rows = []; let sn = 0;
+    const sv = {}, stageList = [];   // stage key → value; dropdown सूची
+    const addStage = (key, rf, label, val) => { sv[key] = val; stageList.push({ key: key, label: rf + " · " + label }); };
+
+    // S1 = मुख्य कार्य का BOQ grand total
+    const boqTotal = mainWg ? computeGroupTotal(est, mainWg) : 0;
+    rows.push({ ref: "S1", sn: ++sn, item: (mainWg ? mainWg.name : "Road Work") + " — Cost of work as per BOQ", rs: boqTotal, cls: "item" });
+    addStage("boq", "S1", (mainWg ? mainWg.name : "BOQ"), boqTotal);
+    // S2.a/b… = अन्य कार्य-समूह के वे Sub-Estimate जो मुख्य BOQ में नहीं लिए गए
+    const mainSubIds = new Set(estMainExtras(est).filter((x) => x.type === "sub").map((x) => x.subId));
+    const otherSubs = estSubs(est).filter((sub) => !mainSubIds.has(sub.id));
+    let othersTotal = 0;
+    otherSubs.forEach((sub, i) => {
+      const t = computeSubTotal(est, sub); othersTotal += t;
+      const rf = "S2." + String.fromCharCode(97 + i);
+      rows.push({ ref: rf, sn: ++sn, item: (sub.name || "Sub-Estimate") + " — अन्य कार्य-समूह (BOQ में नहीं लिया)", rs: t, cls: "item" });
+      addStage("sub_" + sub.id, rf, sub.name || "Sub", t);
+    });
+    let s = 2; const ref = () => "S" + (++s);   // S1, S2.x हो चुके → अगला S3
+
+    const A = boqTotal + othersTotal;
+    { const rf = ref(); rows.push({ ref: rf, item: "Total (A) =", rs: A, cls: "tot" }); addStage("A", rf, "Total (A)", A); }
+    // % step — base stage ON[stepKey] से (dropdown से बदल सकते हैं)
+    const pctRow = (stepKey, label, sign) => {
+      const onKey = (sv[ON[stepKey]] != null) ? ON[stepKey] : (stageList.length ? stageList[stageList.length - 1].key : "A");
+      ON[stepKey] = onKey;
+      const amt = sign * (sv[onKey] || 0) * P[stepKey] / 100;
+      const rf = ref();
+      rows.push({ ref: rf, sn: ++sn, item: label, rs: amt, cls: sign < 0 ? "less" : "add", pk: stepKey, onKey: onKey, stages: stageList.slice() });
+      addStage(stepKey, rf, label, amt);   // इस step का परिणाम भी एक stage — आगे के step इस पर % लगा सकें
+      return amt;
+    };
+    const cess = pctRow("labourCess", "Less Labour Cess", -1);
+    const sub1 = A + cess; { const rf = ref(); rows.push({ ref: rf, item: "Sub-Total", rs: sub1, cls: "sub" }); addStage("sub1", rf, "Sub-Total (Labour Cess के बाद)", sub1); }
+    const cpAmt = pctRow("competitive", "Less Competitive Price", -1);
+    const sub2 = sub1 + cpAmt; { const rf = ref(); rows.push({ ref: rf, item: "Sub-Total", rs: sub2, cls: "sub" }); addStage("sub2", rf, "Sub-Total (Competitive के बाद)", sub2); }
+    const cont = pctRow("contingency", "Add For Contingencies", 1);
+    const sub3 = sub2 + cont; { const rf = ref(); rows.push({ ref: rf, item: "Sub-Total", rs: sub3, cls: "sub" }); addStage("sub3", rf, "Sub-Total (Contingencies के बाद)", sub3); }
+    const gst = pctRow("gstCivil", "Add for GST on civil work", 1);
+    const lc2 = pctRow("labourCess2", "Add for Labour Cess", 1);
+    const pd = pctRow("priceDepr", "Add For Price Depreciation Fund", 1);
+    const total1 = sub3 + gst + lc2 + pd; { const rf = ref(); rows.push({ ref: rf, item: "Total =", rs: total1, cls: "tot" }); addStage("total1", rf, "Total", total1); }
+    const maint = pctRow("maint", "Add 5-Year Maintenance", 1);
+    const gstM = pctRow("gstMaint", "Add GST on Maintenance", 1);
+    const total2 = total1 + maint + gstM; { const rf = ref(); rows.push({ ref: rf, item: "Total Construction Cost of Road =", rs: total2, cls: "tot" }); addStage("total2", rf, "Total Construction Cost", total2); }
+    S.extras.forEach((ex, i) => rows.push({ ref: ref(), sn: ++sn, item: ex.label, rs: mrNum(ex.amount), cls: "est", ei: i }));
+    const nett = total2 + S.extras.reduce((t, e) => t + mrNum(e.amount), 0); rows.push({ ref: ref(), item: "Nett Amount =", rs: nett, cls: "tot" });
+    const say = Math.round(nett / 100000 * 100) / 100 * 100000; rows.push({ ref: ref(), item: "Say Rs. (in Lacs) =", rs: say, cls: "say" });
+    db.put("estimates", est);   // ON defaults सुरक्षित
+
+    let html = "<thead><tr><th>Ref</th><th>SN</th><th>Item Of Work</th><th>Cost in Rs.</th><th>Cost in Lacs</th></tr></thead><tbody>";
+    rows.forEach((o) => {
+      const neg = o.rs < 0;
+      const rsTxt = neg ? "(" + fmtAccounting(-o.rs) + ")" : fmtAccounting(o.rs);
+      const lacTxt = neg ? "(" + fmtAccounting(-o.rs / 100000) + ")" : fmtAccounting(o.rs / 100000);
+      let itemCell = escapeHtml(o.item);
+      if (o.pk) {
+        const opts = (o.stages || []).map((st) => "<option value='" + st.key + "'" + (st.key === o.onKey ? " selected" : "") + ">" + escapeHtml(st.label) + "</option>").join("");
+        itemCell += " @ <input class='sum-pct' data-pk='" + o.pk + "' value='" + P[o.pk] + "' />% <span class='sum-on-lbl'>on</span> <select class='sum-on' data-pk='" + o.pk + "'>" + opts + "</select>";
+      }
+      if (o.ei != null) itemCell = "<input class='sum-exlabel' data-ei='" + o.ei + "' value=\"" + escapeHtml(o.item) + "\" />";
+      const amtCell = (o.ei != null) ? "<input class='sum-examt' data-ei='" + o.ei + "' value='" + mrNum(o.rs) + "' />" : rsTxt;
+      html += "<tr class='sum-" + o.cls + "'><td class='sum-ref'>" + escapeHtml(o.ref) + "</td><td class='sum-sn'>" + (o.sn || "") + "</td>" +
+        "<td class='sum-item'>" + itemCell + "</td><td class='sum-rs'>" + amtCell + "</td><td class='sum-lac'>" + lacTxt + "</td></tr>";
+    });
+    html += "</tbody>";
+    table.innerHTML = html;
+    table.querySelectorAll(".sum-pct").forEach((inp) => inp.addEventListener("change", () => { est.summary.pct[inp.dataset.pk] = mrNum(inp.value); db.put("estimates", est); renderSummary(); }));
+    table.querySelectorAll(".sum-on").forEach((sel) => sel.addEventListener("change", () => { est.summary.on[sel.dataset.pk] = sel.value; db.put("estimates", est); renderSummary(); }));
+    table.querySelectorAll(".sum-examt").forEach((inp) => inp.addEventListener("change", () => { est.summary.extras[+inp.dataset.ei].amount = mrNum(inp.value); db.put("estimates", est); renderSummary(); }));
+    table.querySelectorAll(".sum-exlabel").forEach((inp) => inp.addEventListener("change", () => { est.summary.extras[+inp.dataset.ei].label = inp.value.trim(); db.put("estimates", est); }));
+  }
+  // ── Summary Templates (काम-प्रकार अनुसार) ──
+  const SUM_TPL_BUILTIN = [
+    { id: "tpl_road", name: "सड़क कार्य (Road)", pct: { labourCess: 1, competitive: 5, contingency: 1, gstCivil: 18, labourCess2: 1, priceDepr: 1.5, maint: 2.5, gstMaint: 18 }, on: {}, extras: [{ label: "मार्ग पर विद्युत पोल के विस्थापन कार्य का (अनुमानित)" }, { label: "मार्ग पर पेड़ पातन हेतु लागत (अनुमानित)" }] },
+    { id: "tpl_building", name: "भवन कार्य (Building)", pct: { labourCess: 1, competitive: 0, contingency: 3, gstCivil: 18, labourCess2: 0, priceDepr: 0, maint: 0, gstMaint: 0 }, on: {}, extras: [] },
+    { id: "tpl_general", name: "सामान्य कार्य (General)", pct: { labourCess: 0, competitive: 0, contingency: 0, gstCivil: 18, labourCess2: 0, priceDepr: 0, maint: 0, gstMaint: 0 }, on: {}, extras: [] },
+    { id: "tpl_blank", name: "खाली (Blank — 0%)", pct: { labourCess: 0, competitive: 0, contingency: 0, gstCivil: 0, labourCess2: 0, priceDepr: 0, maint: 0, gstMaint: 0 }, on: {}, extras: [] },
+  ];
+  function applySummaryTemplate(est, tpl) {
+    est.summary = {
+      pct: Object.assign({}, SUM_PCT_DEFAULT, tpl.pct || {}),
+      on: Object.assign({}, SUM_ON_DEFAULT, tpl.on || {}),
+      extras: (tpl.extras || []).map((e) => ({ label: e.label || "", amount: 0 })),
+      tpl: tpl.name || "",
+    };
+    db.put("estimates", est); renderSummary();
+    status("Template लगाया: " + (tpl.name || ""));
+  }
+  function openSummaryTemplatePicker() {
+    const est = state.estimates[state.activeEstimateId]; if (!est) return;
+    const all = SUM_TPL_BUILTIN.concat(summaryTemplates);
+    pickFromList("Summary Template चुनें (काम का प्रकार)", all.map((t) => ({ value: t.id, label: t.name, sub: (t.extras || []).length + " अनुमानित मद" })), (id) => {
+      const t = all.find((x) => x.id === id); if (t) applySummaryTemplate(est, t);
+    });
+  }
+  function saveSummaryTemplate() {
+    const est = state.estimates[state.activeEstimateId]; if (!est || !est.summary || !est.summary.pct) { alert("पहले Summary खोलें (गणना बनने दें)।"); return; }
+    const nm = prompt("इस Summary config को Template नाम दें (जैसे: सड़क, भवन):", est.summary.tpl || "");
+    if (nm === null) return; const name = nm.trim(); if (!name) return;
+    const S = est.summary;
+    const tpl = { id: uid("stpl"), name: name, pct: Object.assign({}, S.pct), on: Object.assign({}, S.on), extras: (S.extras || []).map((e) => ({ label: e.label })) };
+    const ex = summaryTemplates.find((t) => t.name.toLowerCase() === name.toLowerCase());
+    if (ex) { if (!confirm("'" + name + "' template पहले से है — बदलें?")) return; ex.pct = tpl.pct; ex.on = tpl.on; ex.extras = tpl.extras; }
+    else summaryTemplates.push(tpl);
+    saveSummaryTemplatesCloud();
+    status("Template सहेजा: " + name);
+  }
+  // सहेजे Template — नाम बदलें / हटाएँ / लोड करें (config बदलने के लिए: लोड → बदलें → 💾 उसी नाम से)
+  function openSummaryTemplateManager() {
+    const est = state.estimates[state.activeEstimateId];
+    const ov = document.createElement("div"); ov.className = "modal-overlay";
+    const listHtml = () => summaryTemplates.length
+      ? summaryTemplates.map((t) => "<div class='sub-est-row'><span class='se-name'>📋 " + escapeHtml(t.name) + "</span><span class='se-actions'>" +
+          "<button class='btn xs stpl-load' data-id='" + t.id + "'>लोड</button>" +
+          "<button class='btn xs stpl-ren' data-id='" + t.id + "'>✎ नाम</button>" +
+          "<button class='btn xs danger stpl-del' data-id='" + t.id + "'>🗑</button></span></div>").join("")
+      : "<div class='muted-row'>अभी कोई सहेजा Template नहीं — 💾 Template सहेजें से बनाएँ।</div>";
+    ov.innerHTML = "<div class='modal se-dialog'><div class='pk-head'><h3>✎ Template प्रबंधन</h3><button class='pk-x' id='tmX'>✕</button></div>" +
+      "<p class='sub'>config बदलने के लिए: <b>लोड</b> करें → % / stage / यूटिलिटी बदलें → <b>💾 उसी नाम से सहेजें</b>।</p>" +
+      "<div id='tmList' class='sub-est-list'>" + listHtml() + "</div></div>";
+    document.body.appendChild(ov);
+    const close = () => ov.remove();
+    const wire = () => {
+      ov.querySelectorAll(".stpl-load").forEach((b) => b.addEventListener("click", () => { const t = summaryTemplates.find((x) => x.id === b.dataset.id); if (t && est) { close(); applySummaryTemplate(est, t); } }));
+      ov.querySelectorAll(".stpl-ren").forEach((b) => b.addEventListener("click", () => { const t = summaryTemplates.find((x) => x.id === b.dataset.id); if (!t) return; const nm = prompt("नया नाम:", t.name); if (nm === null) return; const n = nm.trim(); if (n) { t.name = n; saveSummaryTemplatesCloud(); ov.querySelector("#tmList").innerHTML = listHtml(); wire(); } }));
+      ov.querySelectorAll(".stpl-del").forEach((b) => b.addEventListener("click", () => { const t = summaryTemplates.find((x) => x.id === b.dataset.id); if (!t) return; if (confirm("Template '" + t.name + "' हटाएँ?")) { summaryTemplates = summaryTemplates.filter((x) => x.id !== t.id); saveSummaryTemplatesCloud(); ov.querySelector("#tmList").innerHTML = listHtml(); wire(); } }));
+    };
+    ov.querySelector("#tmX").addEventListener("click", close);
+    ov.addEventListener("mousedown", (e) => { if (e.target === ov) close(); });
+    wire();
+  }
+  function extraRate(est, x) {
+    if (x.type === "sor") { const rr = masterRowById("item_sor", x.sorRowId); return rr ? round2(mrNum(masterItemRate("item_sor", rr))) : ""; }
+    if (x.type === "sub") { const s = findSub(est, x.subId); return s ? computeSubTotal(est, s) : ""; }
+    if (x.type === "ana") { const s = state.sheets[x.anaId]; const rt = s ? analysisRateUnit(s).rate : ""; return rt === "" ? "" : round2(mrNum(rt)); }
+    return "";
+  }
+  // extra item का DOM block (desc user-editable; itemId = "xtr:"+id)
+  function domSeedExtraBlock(sheet, r, itemNo, est, x, saved) {
+    const eid = "xtr:" + x.id;
+    // माप सिर्फ़ इसी extra के unique id से (नाम-fallback नहीं — वरना दूसरी category/मुख्य के same-analysis की माप नकल हो जाए)
+    const savedMeas = (saved && saved.byId[eid]) || null;
+    // sub-estimate lump-sum → डिफ़ॉल्ट Quantity 1 (Amount = sub का कुल); SOR → खाली 2 पंक्तियाँ
+    const dflt = (x.type === "sub") ? [["1", "", "", "", ""], [null, null, null, null, null]] : [null, null];
+    const meas = (Array.isArray(savedMeas) && savedMeas.length) ? savedMeas : dflt;
+    const hr = r, firstMeas = r + 1, lastMeas = firstMeas + meas.length - 1, sub = lastMeas + 1, e = (v) => v + 1;
+    domSetSheetCell(sheet, hr, 0, itemNo);
+    domSetSheetCell(sheet, hr, 1, extraDesc(est, x)); domStyle(sheet, hr, 1, { bg: "F3E8FF", al: "left" });
+    domMarkRole(sheet, hr, "domhdr"); sheet.cells[addr(hr, 2)].itemId = eid;
+    meas.forEach((vals, k) => { const mr = firstMeas + k; if (Array.isArray(vals)) for (let cc = 0; cc < 5; cc++) { if (vals[cc] != null && vals[cc] !== "") domSetSheetCell(sheet, mr, 2 + cc, vals[cc]); } domSetSheetCell(sheet, mr, 7, "=IF(COUNT(C" + e(mr) + ":G" + e(mr) + ")=0,\"\",PRODUCT(C" + e(mr) + ":G" + e(mr) + "))"); });
+    domSetSheetCell(sheet, sub, 6, "Sub Total"); domStyle(sheet, sub, 6, SECTOT_STYLE);
+    domSetSheetCell(sheet, sub, 7, "=ROUND(SUM(H" + e(firstMeas) + ":H" + e(lastMeas) + "),3)"); domStyle(sheet, sub, 7, SECTOT_STYLE);
+    domSetSheetCell(sheet, sub, 8, extraUnit(est, x)); domStyle(sheet, sub, 8, SECTOT_STYLE);
+    domMarkRole(sheet, sub, "domsub");
+    return sub + 1;
+  }
+  // DOM/BOQ में आइटम को move/delete — extra / sub-estimate / समूह
+  function domBoqMoveItem(itemId, dir) {
+    const est = state.estimates[state.activeEstimateId]; if (!est) return;
+    let ok = false;
+    if (String(itemId).indexOf("xtr:") === 0) {   // extra items — अपनी ही category में
+      const id = String(itemId).slice(4), arr = estMainExtras(est), cur = arr.find((x) => x.id === id);
+      if (cur) { const same = arr.filter((x) => x.type === cur.type); const p = same.indexOf(cur), np = p + dir; if (np >= 0 && np < same.length) { const other = same[np], ia = arr.indexOf(cur), ib = arr.indexOf(other); arr[ia] = other; arr[ib] = cur; db.put("estimates", est); ok = true; } }
+    } else if (_domSubId) { const sub = findSub(est, _domSubId); if (sub) { const o = sub.itemIds || []; const i = o.indexOf(itemId), j = i + dir; if (i >= 0 && j >= 0 && j < o.length) { const t = o[i]; o[i] = o[j]; o[j] = t; sub.itemIds = o; db.put("estimates", est); ok = true; } } }
+    else ok = moveEstimateItem(est, itemId, dir);
+    if (!ok) return;
+    const v = document.querySelector(".view.active");
+    if (v && v.id === "view-boq") renderBOQ(); else renderDOM();
+  }
+  function domBoqDeleteItem(itemId) {
+    const est = state.estimates[state.activeEstimateId]; if (!est) return;
+    if (String(itemId).indexOf("xtr:") === 0) { const id = String(itemId).slice(4); est.mainExtras = estMainExtras(est).filter((x) => x.id !== id); db.put("estimates", est); }
+    else if (_domSubId) { const sub = findSub(est, _domSubId); if (!sub) return; sub.itemIds = (sub.itemIds || []).filter((id) => id !== itemId); db.put("estimates", est); }
+    else return;
+    const v = document.querySelector(".view.active");
+    if (v && v.id === "view-boq") renderBOQ(); else renderDOM();
+  }
+  // सरल सूची-picker
+  function pickFromList(title, options, onPick) {
+    const ov = document.createElement("div"); ov.className = "modal-overlay";
+    const rows = options.map((o) => "<button class='lap-item' data-v='" + escapeHtml(String(o.value)) + "'><span class='lap-nm'>" + escapeHtml(o.label) + "</span>" + (o.sub ? "<span class='lap-tt'>" + escapeHtml(o.sub) + "</span>" : "") + "</button>").join("") || "<div class='ag-empty muted'>कोई विकल्प नहीं</div>";
+    ov.innerHTML = "<div class='modal pick'><div class='pk-head'><h3>" + escapeHtml(title) + "</h3><button class='pk-x' id='pkX'>✕</button></div><input type='search' id='pkS' class='search' placeholder='🔍 खोजें…' /><div class='lap-list'>" + rows + "</div></div>";
+    document.body.appendChild(ov);
+    const close = () => ov.remove();
+    ov.querySelector("#pkX").addEventListener("click", close);
+    ov.addEventListener("mousedown", (e) => { if (e.target === ov) close(); });
+    const sEl = ov.querySelector("#pkS");
+    sEl.addEventListener("input", () => { const q = sEl.value.trim().toLowerCase(); ov.querySelectorAll(".lap-item").forEach((b) => { b.style.display = (!q || b.querySelector(".lap-nm").textContent.toLowerCase().includes(q)) ? "" : "none"; }); });
+    ov.querySelectorAll(".lap-item").forEach((b) => b.addEventListener("click", () => { close(); onPick(b.dataset.v); }));
+    sEl.focus();
+  }
+  function domAddSubEstimate() {
+    const est = state.estimates[state.activeEstimateId]; if (!est) return;
+    const subs = estSubs(est);
+    if (!subs.length) { alert("पहले कोई Sub-Estimate बनाएँ (DOM & BOQ › Sub-Estimate में)।"); return; }
+    pickFromList("Sub-Estimate जोड़ें (मुख्य BOQ में)", subs.map((s) => ({ value: s.id, label: s.name, sub: (s.description ? s.description + " · " : "") + (s.itemIds || []).length + " item" })), (subId) => {
+      const s = findSub(est, subId); estMainExtras(est).push({ id: uid("x"), type: "sub", subId: subId }); db.put("estimates", est); renderDOM();   // desc auto = नाम - Description
+      status("Sub-Estimate जुड़ा: " + (s ? s.name : ""));
+    });
+  }
+  function domAddSorItem() {
+    const est = state.estimates[state.activeEstimateId]; if (!est) return;
+    const rows = (loadedVersionRows("item_sor") || []).filter((r) => r.id && (r.desc || r.itemno));
+    if (!rows.length) { alert("पहले Master Data › Primary Rate › Item SOR Rate में version Load करें।"); return; }
+    pickFromList("Item SOR से आइटम जोड़ें", rows.map((r) => ({ value: r.id, label: masterItemName("item_sor", r), sub: (r.unit || "") + " · ₹" + round2(masterItemRate("item_sor", r)) })), (rowId) => {
+      const rr = masterRowById("item_sor", rowId); estMainExtras(est).push({ id: uid("x"), type: "sor", sorRowId: rowId, desc: rr ? masterItemName("item_sor", rr) : "", unit: rr ? (rr.unit || "") : "" }); db.put("estimates", est); renderDOM();
+      status("Item SOR आइटम जुड़ा");
+    });
+  }
+  // "अन्य कार्य" — अब तक लोड किया गया कोई भी Analysis (search करके) जोड़ो
+  function domAddAnaItem() {
+    const est = state.estimates[state.activeEstimateId]; if (!est) return;
+    const anas = state.order.map((id) => state.sheets[id]).filter((s) => s && s.kind === "working");
+    if (!anas.length) { alert("अभी कोई Analysis load नहीं — पहले Rate Analysis में load करें।"); return; }
+    pickFromList("अन्य कार्य — कोई Analysis जोड़ें", anas.map((s) => { const info = analysisRateUnit(s); return { value: s.id, label: analysisItemDetail(s) || s.itemName || s.name, sub: (info.unit || "") + (info.rate !== "" ? " · ₹" + info.rate : "") }; }), (anaId) => {
+      estMainExtras(est).push({ id: uid("x"), type: "ana", anaId: anaId }); db.put("estimates", est); renderDOM();
+      status("अन्य कार्य आइटम जुड़ा");
+    });
+  }
+  // नया Sub-Estimate — नाम + इकाई एक ही dialog में
+  function askSubEstimate(onOk) {
+    const ov = document.createElement("div"); ov.className = "modal-overlay";
+    ov.innerHTML =
+      "<div class='modal se-dialog'>" +
+        "<div class='pk-head'><h3>🗂️ नया Sub-Estimate</h3><button class='pk-x' id='seX'>✕</button></div>" +
+        "<p class='sub'>इस समूह के सभी Analysis इसमें आ जाएँगे; काम करते समय अनचाहे को DOM/BOQ में delete कर दें।</p>" +
+        "<label class='ns-fld'>Sub-Estimate का नाम <span class='muted'>(short name)</span><input id='seNm' type='text' placeholder='जैसे: नाली, डिवाइडर' autocomplete='off' /></label>" +
+        "<label class='ns-fld'>विवरण (Description) <span class='muted'>— DOM/BOQ में नाम के आगे “ - विवरण” जुड़ेगा</span><textarea id='seDesc' rows='2' placeholder='पूरा विवरण…' autocomplete='off'></textarea></label>" +
+        "<label class='ns-fld'>इकाई (यूनिट) <span class='muted'>— मुख्य कार्य में जुड़ने पर यही दिखेगी</span><input id='seUn' type='text' placeholder='जैसे: Rmt, Sqm, No, job' autocomplete='off' /></label>" +
+        "<div class='row' style='margin-top:14px'><button class='btn' id='seCancel'>रद्द</button><button class='btn primary' id='seOk'>बनाएँ</button></div>" +
+      "</div>";
+    document.body.appendChild(ov);
+    const nm = ov.querySelector("#seNm"), un = ov.querySelector("#seUn"), de = ov.querySelector("#seDesc");
+    const close = () => ov.remove();
+    const submit = () => { const name = nm.value.trim(); if (!name) { nm.style.borderColor = "var(--red)"; nm.focus(); return; } close(); onOk(name, un.value.trim(), de.value.trim()); };
+    ov.querySelector("#seX").addEventListener("click", close);
+    ov.querySelector("#seCancel").addEventListener("click", close);
+    ov.querySelector("#seOk").addEventListener("click", submit);
+    ov.addEventListener("mousedown", (e) => { if (e.target === ov) close(); });
+    ov.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); close(); } else if (e.key === "Enter" && e.target !== de) { e.preventDefault(); submit(); } });
+    nm.focus();
+  }
+  // DOM & BOQ पेज — मुख्य के अलावा हर कार्य-समूह के अंदर कई Sub-Estimate
+  function renderSubEstimates() {
+    const box = document.getElementById("subEstList"); if (!box) return;
+    box.innerHTML = "";
+    const est = state.estimates[state.activeEstimateId];
+    if (!est) { box.innerHTML = "<div class='muted-row'>पहले कोई Estimate खोलें।</div>"; return; }
+    const groups = estWorkGroups(est).filter((w) => !w.isMain);
+    if (!groups.length) { box.innerHTML = "<div class='muted-row'>अभी कोई अन्य कार्य-समूह नहीं — Estimate में और कार्य-समूह जोड़ें।</div>"; return; }
+    groups.forEach((w) => {
+      const gBox = document.createElement("div"); gBox.className = "se-group";
+      const cnt = domGroupSheets(est, w).sheets.length;
+      const head = document.createElement("div"); head.className = "se-ghead";
+      head.innerHTML = "<span class='se-gname'>🗂 " + escapeHtml(w.name) + "</span><span class='se-count'>" + cnt + " analysis</span><button class='btn xs primary se-add'>+ नया Sub-Estimate</button>";
+      head.querySelector(".se-add").addEventListener("click", () => {
+        askSubEstimate((name, unit, desc) => { const sub = createSubEstimate(est, w, name, unit, desc); renderSubEstimates(); openDOMSub(sub.id); });
+      });
+      gBox.appendChild(head);
+      const list = document.createElement("div"); list.className = "se-sublist";
+      const subs = estSubs(est).filter((x) => x.wgId === w.id);
+      if (!subs.length) list.innerHTML = "<div class='se-empty muted'>अभी कोई Sub-Estimate नहीं — “+ नया” से बनाएँ (समूह के सभी analysis आ जाएँगे; अनचाहे को DOM/BOQ में delete कर दें)।</div>";
+      subs.forEach((sub) => {
+        const row = document.createElement("div"); row.className = "sub-est-row";
+        row.innerHTML = "<span class='se-name'>📋 " + escapeHtml(sub.name) + "</span><span class='se-count'>" + (sub.itemIds || []).length + " item</span>" +
+          "<span class='se-actions'><button class='btn xs se-dom'>📐 DOM</button><button class='btn xs primary se-boq'>🧾 BOQ</button><button class='btn xs se-del danger' title='यह Sub-Estimate हटाएँ'>🗑</button></span>";
+        row.querySelector(".se-dom").addEventListener("click", () => openDOMSub(sub.id));
+        row.querySelector(".se-boq").addEventListener("click", () => openBOQSub(sub.id));
+        row.querySelector(".se-del").addEventListener("click", () => {
+          const linked = subLinkedInMain(est, sub.id);
+          const msg = "Sub-Estimate '" + sub.name + "' हटाएँ?" + (linked ? "\n\n⚠ यह मुख्य कार्य के DOM/BOQ में भी जुड़ा है — वहाँ से भी हट जाएगा।" : "");
+          if (confirm(msg)) { deleteSubEstimate(est, sub.id); renderSubEstimates(); }
+        });
+        list.appendChild(row);
+      });
+      gBox.appendChild(list); box.appendChild(gBox);
+    });
+  }
+
   // loaded Material Query Rate के सभी material से RMR की rows बनाओ (सब पर एक ही दूरी)
   function buildRmrRowsFromMaster(distance) {
     const matRows = loadedVersionRows("material_query");
@@ -4385,14 +5301,24 @@
     }));
   }
 
-  // loaded Material Query Rate से distinct Query नामों की सूची (हर Query में कितने material)
+  // Query नामों की सूची — मुख्यतः Master Data → Material Query Rate की "Query Names" सूची से
+  //  (जितनी वहाँ जोड़ी गईं); साथ में loaded version में हर Query के material की गिनती।
   function rmrQueryList() {
+    const cat = state.master["material_query"];
+    const names = (cat && Array.isArray(cat.queryNames)) ? cat.queryNames : [];
     const matRows = loadedVersionRows("material_query") || [];
+    const count = {};
+    for (const r of matRows) { const qn = (r.query_name || "").trim() || "__noquery__"; count[qn] = (count[qn] || 0) + 1; }
     const seen = [], map = {};
-    for (const m of matRows) {
-      const qn = (m.query_name || "").trim(), key = qn || "__noquery__";
-      if (!map[key]) { map[key] = { key: key, name: qn || "(बिना Query नाम)", count: 0 }; seen.push(map[key]); }
-      map[key].count++;
+    // 1) Master की Query Names सूची — जितनी वहाँ जोड़ी गई हैं
+    for (const nm of names) {
+      const qn = (nm || "").trim(); if (!qn || map[qn]) continue;
+      map[qn] = { key: qn, name: qn, count: count[qn] || 0 }; seen.push(map[qn]);
+    }
+    // 2) loaded rows में कोई query_name जो सूची में नहीं (fallback — पुराना डेटा)
+    for (const r of matRows) {
+      const qn = (r.query_name || "").trim(), key = qn || "__noquery__";
+      if (!map[key]) { map[key] = { key: key, name: qn || "(बिना Query नाम)", count: count[key] || 0 }; seen.push(map[key]); }
     }
     return seen;
   }
@@ -4412,20 +5338,21 @@
     });
   }
   // सभी Query की दूरी (km) पूछने का modal — साथ में RMR नाम
-  function askQueryDistances(defName, existing) {
+  function askQueryDistances(defName, existing, hideName) {
     return new Promise((resolve) => {
       const queries = rmrQueryList();
-      if (!queries.length) { alert("पहले Master Data → Material Query Rate में कोई version Load करें (Query नाम वहीं से आएँगे)।"); resolve(null); return; }
+      if (!queries.length) { alert("पहले Master Data → Primary Rate → Material Query Rate में\n\"🏷️ Query Names\" सूची में कुछ Query नाम जोड़ें — वही यहाँ आएँगे।"); resolve(null); return; }
       existing = existing || {};
       const rowsH = queries.map((qz) =>
         "<label class='qd-row'><span class='qd-nm'>" + escapeHtml(qz.name) + "<small>" + qz.count + " material</small></span>" +
         "<input type='text' class='qd-km num' data-qk='" + escapeHtml(qz.key) + "' value=\"" + escapeHtml(existing[qz.key] == null ? "" : String(existing[qz.key])) + "\" placeholder='km' /></label>"
       ).join("");
+      const titleSuffix = hideName && defName ? (" — " + defName) : "";
       const ov = document.createElement("div"); ov.className = "modal-overlay";
       ov.innerHTML =
-        "<div class='modal qd-modal'><h3>📏 साइट से Query की दूरी (km)</h3>" +
+        "<div class='modal qd-modal'><h3>📏 साइट से Query की दूरी (km)" + escapeHtml(titleSuffix) + "</h3>" +
         "<p class='sub'>हर Query (स्रोत/खदान) से साइट की दूरी किमी में भरें — यही दूरी RMR में उस Query के सभी material पर लग जाएगी।</p>" +
-        "<label class='qd-name'>RMR का नाम<input type='text' id='qdName' value=\"" + escapeHtml(defName || "") + "\" /></label>" +
+        (hideName ? "" : "<label class='qd-name'>RMR का नाम<input type='text' id='qdName' value=\"" + escapeHtml(defName || "") + "\" /></label>") +
         "<div class='qd-list'>" + rowsH + "</div>" +
         "<div class='row' style='margin-top:12px'><button class='btn' id='qdCancel'>रद्द</button><button class='btn primary' id='qdOk'>✓ ठीक है</button></div></div>";
       document.body.appendChild(ov);
@@ -4433,7 +5360,8 @@
       ov.querySelector("#qdCancel").addEventListener("click", () => done(null));
       ov.addEventListener("mousedown", (e) => { if (e.target === ov) done(null); });
       ov.querySelector("#qdOk").addEventListener("click", () => {
-        const name = (ov.querySelector("#qdName").value || "").trim() || defName;
+        const nmEl = ov.querySelector("#qdName");
+        const name = (nmEl ? nmEl.value : "").trim() || defName;
         const queryDist = {};
         ov.querySelectorAll(".qd-km").forEach((inp) => { queryDist[inp.dataset.qk] = (inp.value || "").trim(); });
         done({ name: name, queryDist: queryDist });
@@ -4477,7 +5405,8 @@
     if (rmr) rmrActiveId = rmr.id;
     // form (Load Estimate) से बना RMR — तब Material Query Rate load न था, rows खाली रहीं → अब भर दो
     if (rmr && (!rmr.rows || !rmr.rows.length)) {
-      rmr.rows = buildRmrRowsFromMaster(rmr.siteDist == null ? "" : rmr.siteDist);
+      rmr.rows = rmr.queryDist ? buildRmrRowsWithQueryDist(rmr.queryDist)       // हर Query की अपनी दूरी
+                               : buildRmrRowsFromMaster(rmr.siteDist == null ? "" : rmr.siteDist);  // पुराने (एकल-दूरी) RMR
       if (rmr.rows.length) db.put("estimates", est);
     }
     if (sub && rmr && rmr.remark) sub.textContent = est.name + " · " + rmr.name + ": " + rmr.remark;
@@ -4574,9 +5503,74 @@
     if (open) open.addEventListener("click", openRMRView);
     const back = document.getElementById("rmrBack");
     if (back) back.addEventListener("click", () => setActiveView("basic-analysis"));
+    // DOM (Detail of Measurement)
+    const mainWgId = () => { const est = state.estimates[state.activeEstimateId]; if (!est) return null; const m = estWorkGroups(est).find((w) => w.isMain) || estWorkGroups(est)[0]; return m ? m.id : null; };
+    const odom = document.getElementById("btnOpenDOM");
+    if (odom) odom.addEventListener("click", () => openDOMView(mainWgId()));   // मुख्य कार्य
+    const dback = document.getElementById("domBack");
+    if (dback) dback.addEventListener("click", () => setActiveView("dom-boq"));
+    const dAddSub = document.getElementById("domAddSub"); if (dAddSub) dAddSub.addEventListener("click", domAddSubEstimate);
+    const dAddSor = document.getElementById("domAddSor"); if (dAddSor) dAddSor.addEventListener("click", domAddSorItem);
+    const dAddAna = document.getElementById("domAddAna"); if (dAddAna) dAddAna.addEventListener("click", domAddAnaItem);
+    // Summary
+    const sRef = document.getElementById("sumRefresh"); if (sRef) sRef.addEventListener("click", () => { try { reRateAllAnalyses(); } catch (e) { } renderSummary(); status("Summary ताज़ा"); });
+    const sTpl = document.getElementById("sumTemplate"); if (sTpl) sTpl.addEventListener("click", openSummaryTemplatePicker);
+    const sSave = document.getElementById("sumSaveTpl"); if (sSave) sSave.addEventListener("click", saveSummaryTemplate);
+    const sMng = document.getElementById("sumMngTpl"); if (sMng) sMng.addEventListener("click", openSummaryTemplateManager);
+    const sAdd = document.getElementById("sumAddUtil"); if (sAdd) sAdd.addEventListener("click", () => {
+      const est = state.estimates[state.activeEstimateId]; if (!est) return;
+      if (!est.summary) est.summary = {}; if (!Array.isArray(est.summary.extras)) est.summary.extras = [];
+      est.summary.extras.push({ label: "नई यूटिलिटी", amount: 0 }); db.put("estimates", est); renderSummary();
+    });
+    const sDel = document.getElementById("sumDelUtil"); if (sDel) sDel.addEventListener("click", () => {
+      const est = state.estimates[state.activeEstimateId]; if (!est) return;
+      const ex = (est.summary && est.summary.extras) || [];
+      if (!ex.length) { alert("अभी कोई यूटिलिटी नहीं।"); return; }
+      pickFromList("कौन-सी यूटिलिटी हटाएँ?", ex.map((e, i) => ({ value: String(i), label: e.label || ("यूटिलिटी " + (i + 1)), sub: fmtAccounting(mrNum(e.amount)) })), (idx) => {
+        ex.splice(+idx, 1); db.put("estimates", est); renderSummary(); status("यूटिलिटी हटाई");
+      });
+    });
+    const dref = document.getElementById("domRefresh");
+    if (dref) dref.addEventListener("click", () => {
+      if (!state.estimates[state.activeEstimateId]) return;
+      try { reRateAllAnalyses(); } catch (e) { }   // पहले analysis की दरें ताज़ा
+      renderDOM();
+      status("DOM ताज़ा — मुख्य समूह के items व Quantity दोबारा ली गईं");
+    });
+    // BOQ
+    const obq = document.getElementById("btnOpenBOQ");
+    if (obq) obq.addEventListener("click", () => openBOQView(mainWgId()));   // मुख्य कार्य
+    const bqback = document.getElementById("boqBack");
+    if (bqback) bqback.addEventListener("click", () => setActiveView("dom-boq"));
+    const bqref = document.getElementById("boqRefresh");
+    if (bqref) bqref.addEventListener("click", () => {
+      if (!state.estimates[state.activeEstimateId]) return;
+      try { reRateAllAnalyses(); } catch (e) { }
+      renderBOQ(true);   // दरें analysis से फिर से
+      status("BOQ ताज़ा — दरें Analysis से दोबारा; Amount अद्यतन");
+    });
   }
 
   function wireShell() {
+    // ── मोबाइल/टैबलेट: sidebar को off-canvas खोलें/बंद करें ──
+    (function () {
+      const shell = document.querySelector(".app-shell");
+      const toggle = document.getElementById("btnSidebarToggle");
+      if (!shell || !toggle) return;
+      let backdrop = document.getElementById("sidebarBackdrop");
+      if (!backdrop) {
+        backdrop = document.createElement("div");
+        backdrop.id = "sidebarBackdrop";
+        backdrop.className = "sidebar-backdrop";
+        shell.appendChild(backdrop);
+      }
+      const closeNav = () => shell.classList.remove("nav-open");
+      toggle.addEventListener("click", (e) => { e.stopPropagation(); shell.classList.toggle("nav-open"); });
+      backdrop.addEventListener("click", closeNav);
+      // छोटी screen पर कोई भी nav-item चुनने पर menu अपने-आप बंद
+      const sb = document.getElementById("sidebar");
+      if (sb) sb.addEventListener("click", (e) => { if (e.target.closest(".nav-item")) closeNav(); });
+    })();
     document.querySelectorAll(".nav-item").forEach((n) => n.addEventListener("click", () => setActiveView(n.dataset.view)));
     document.querySelectorAll("[data-todo]").forEach((b) =>
       b.addEventListener("click", () => status("\"" + b.getAttribute("data-todo") + "\" — यह हिस्सा अगली बार बनाएँगे (frame तैयार है)।")));
@@ -4587,15 +5581,21 @@
     if (cardEdit) cardEdit.addEventListener("click", openEditEstimatePicker);
     const neCancel = document.getElementById("neCancel");
     if (neCancel) neCancel.addEventListener("click", () => { editingEstimateId = null; show(false); });
-    // "+ और RMR" / "+ group" — linear row जोड़ो
-    const rmrAdd = document.getElementById("neRmrAdd");
-    if (rmrAdd) rmrAdd.addEventListener("click", () => {
-      const box = document.getElementById("neRmrRows");
-      const n = box.querySelectorAll(".lin-row").length + 1;
-      box.appendChild(neRmrRow({ name: "RMR" + n }));
+    // "+ समूह जोड़ें" — "सड़क निर्माण कार्य" समूह का सारा डेटा (दूरियाँ + Overhead) copy करके नया
+    const wgAdd = document.getElementById("neWgAdd");
+    if (wgAdd) wgAdd.addEventListener("click", () => {
+      const box = document.getElementById("neWgRows");
+      const cards = Array.prototype.filter.call(box.querySelectorAll(".wg-card"), (c) => c.style.display !== "none");
+      const src = cards.find((c) => wgCardName(c) === "सड़क निर्माण कार्य") || cards[0];
+      const base = src ? readWgCard(src) : {};
+      const used = new Set(cards.map(wgCardName));
+      const nextName = WG_PRESETS.find((p) => !used.has(p)) || "";   // पहला अनुपयोगी preset नाम
+      box.appendChild(neWgRow({
+        name: nextName, isMain: false,
+        queryDist: Object.assign({}, base.queryDist || {}),
+        sep: base.sep, ohPct: base.ohPct, cpPct: base.cpPct, combPct: base.combPct,
+      }));
     });
-    const ohAdd = document.getElementById("neOhAdd");
-    if (ohAdd) ohAdd.addEventListener("click", () => document.getElementById("neOhRows").appendChild(neOhRow(null)));
     const neCreate = document.getElementById("neCreate");
     if (neCreate) neCreate.addEventListener("click", saveEstimateForm);
     setActiveView("rate-analysis"); // डिफ़ॉल्ट view
@@ -4612,142 +5612,194 @@
     setV("neLength", est ? est.length : "");
     setV("neEwLead", est ? (est.ewLead != null ? est.ewLead : 1) : "1.00");
     setV("neYear", est ? est.year : "");
-    renderNeRmrRows(est);
-    renderNeOhRows(est);
+    renderNeWgRows(est);
     const h = document.querySelector("#newEstimateForm h3"); if (h) h.textContent = est ? ("Estimate सुधारें — " + est.name) : "नए Estimate का विवरण";
     const okb = document.getElementById("neCreate"); if (okb) okb.textContent = est ? "सुधार सहेजें" : "Estimate बनाएँ";
     document.getElementById("newEstimateForm").style.display = "block";
     document.getElementById("neWorkName").focus();
   }
-  /* --- Estimate form: RMR व Overhead-group की linear rows --- */
-  function neRmrRow(data) {
+  /* --- Estimate form: कार्य-समूह (हर समूह = नाम + मुख्य? + अपना RMR + अपने Overhead) --- */
+  const WG_PRESETS = ["सड़क निर्माण कार्य", "नाली/डिवाइडर का कार्य", "पुल/पुलिया का कार्य", "अन्य कार्य"];
+  // card का चुना नाम (dropdown या custom)
+  function wgCardName(card) {
+    const sel = card.querySelector(".wg-nm-sel"); if (!sel) return "";
+    return sel.value === "__custom__" ? (card.querySelector(".wg-nm-custom").value || "").trim() : sel.value;
+  }
+  // card के मौजूदा (DOM) मान — copy/save के लिए
+  function readWgCard(card) {
+    const qd = {};
+    card.querySelectorAll(".wg-qd-km").forEach((inp) => { qd[inp.dataset.qk] = (inp.value || "").trim(); });
+    const comb = card.querySelector(".wg-mode").value === "comb";
+    return {
+      name: wgCardName(card), isMain: card.querySelector(".wg-ismain").checked, queryDist: qd, sep: !comb,
+      ohPct: mrNum(card.querySelector(".wg-ohpct").value),
+      cpPct: mrNum(card.querySelector(".wg-cppct").value),
+      combPct: mrNum(card.querySelector(".wg-combpct").value),
+    };
+  }
+  function neWgRow(data) {
     data = data || {};
     const row = document.createElement("div");
-    row.className = "lin-row";
+    row.className = "wg-card";
     if (data.id) row.dataset.id = data.id;
+    if (data.rmrId) row.dataset.rmrId = data.rmrId;
+    if (data.ohGroupId) row.dataset.ohId = data.ohGroupId;
+    const qd0 = data.queryDist || {};   // पहले से भरी दूरियाँ
+    // Query सूची — Master Data → Material Query Rate की Query Names से; हर के सामने km box (inline)
+    const queries = rmrQueryList();
+    const qdItems = queries.length
+      ? queries.map((qz) =>
+          "<label class='wg-qd-item'><span class='wg-qd-nm'>" + escapeHtml(qz.name) +
+          (qz.count ? "<small>" + qz.count + " material</small>" : "") + "</span>" +
+          "<span class='wg-qd-plus' title='1 किमी lead + आपकी दूरी'>1+</span>" +
+          "<input type='text' class='wg-qd-km num' data-qk='" + escapeHtml(qz.key) + "' value=\"" +
+          escapeHtml(qd0[qz.key] == null ? "" : String(qd0[qz.key])) + "\" placeholder='km' /></label>"
+        ).join("")
+      : "<div class='wg-qd-empty muted'>Master Data → Primary Rate → Material Query Rate → 🏷️ Query Names में नाम जोड़ें — वे यहाँ आएँगे।</div>";
     row.innerHTML =
-      "<label>RMR का नाम<input class='lr-name' placeholder='जैसे: RMR1' /></label>" +
-      "<label>Site से Query की दूरी (km)<input class='lr-km' placeholder='जैसे: 12.5' /></label>" +
-      "<label class='grow'>Remark (source/खदान)<input class='lr-remark' placeholder='जैसे: पत्थर खदान — ग्राम अमुक' /></label>" +
-      "<button type='button' class='lr-x' title='यह RMR हटाएँ'>✕</button>";
-    row.querySelector(".lr-name").value = data.name || "";
-    row.querySelector(".lr-km").value = data.siteDist == null ? "" : data.siteDist;
-    row.querySelector(".lr-remark").value = data.remark || "";
-    row.querySelector(".lr-x").addEventListener("click", () => {
-      // पहले से saved RMR → save पर हटेगा; नई row → तुरंत हटाओ
+      "<div class='wg-top'>" +
+        "<label class='wg-name'>कार्य-समूह का नाम" +
+          "<div class='wg-nm-wrap'>" +
+            "<select class='wg-nm-sel'>" +
+              WG_PRESETS.map((p) => "<option value='" + escapeHtml(p) + "'>" + escapeHtml(p) + "</option>").join("") +
+              "<option value='__custom__'>✏️ अन्य नाम (खुद लिखें)…</option>" +
+            "</select>" +
+            "<input class='wg-nm-custom' placeholder='समूह का नाम लिखें' style='display:none' />" +
+          "</div>" +
+        "</label>" +
+        "<label class='wg-main' title='इस estimate का मुख्य कार्य'><input type='radio' name='wgMain' class='wg-ismain' /> मुख्य कार्य</label>" +
+        "<button type='button' class='lr-x wg-x' title='यह समूह हटाएँ'>✕</button>" +
+      "</div>" +
+      "<div class='wg-body'>" +
+        "<div class='wg-qd'>" +
+          "<div class='wg-qd-head'>📏 साइट से Query की दूरी (km) <span class='wg-qd-sub'>— हर Query के सभी material पर वही दूरी लगेगी</span></div>" +
+          "<div class='wg-qd-grid'>" + qdItems + "</div>" +
+        "</div>" +
+        "<div class='wg-oh'>" +
+          "<span class='wg-oh-label'>Overhead व Contractor Profit</span>" +
+          "<label class='wg-f'>प्रकार<select class='wg-mode'><option value='sep'>अलग-अलग</option><option value='comb'>एक साथ</option></select></label>" +
+          "<label class='wg-f wg-f-oh'>Overhead %<input class='wg-ohpct' /></label>" +
+          "<label class='wg-f wg-f-cp'>Contractor Profit %<input class='wg-cppct' /></label>" +
+          "<label class='wg-f wg-f-comb'>Overhead+Profit %<input class='wg-combpct' /></label>" +
+        "</div>" +
+      "</div>";
+    // नाम — preset चुना हो तो dropdown; custom हो तो "अन्य नाम" + text box
+    const nmSel = row.querySelector(".wg-nm-sel"), nmCustom = row.querySelector(".wg-nm-custom");
+    const nm0 = data.name || "";
+    if (nm0 && WG_PRESETS.indexOf(nm0) === -1) { nmSel.value = "__custom__"; nmCustom.value = nm0; nmCustom.style.display = ""; }
+    else { nmSel.value = nm0 || WG_PRESETS[0]; }
+    nmSel.addEventListener("change", () => {
+      const c = nmSel.value === "__custom__";
+      nmCustom.style.display = c ? "" : "none";
+      if (c) nmCustom.focus();
+    });
+    row.querySelector(".wg-ismain").checked = !!data.isMain;
+    row.querySelector(".wg-mode").value = data.sep === false ? "comb" : "sep";
+    row.querySelector(".wg-ohpct").value = data.ohPct != null ? data.ohPct : OH_DEFAULTS.ohPct;
+    row.querySelector(".wg-cppct").value = data.cpPct != null ? data.cpPct : OH_DEFAULTS.cpPct;
+    row.querySelector(".wg-combpct").value = data.combPct != null ? data.combPct : OH_DEFAULTS.combPct;
+    // Overhead mode → कौन-से % दिखें
+    const syncMode = () => {
+      const comb = row.querySelector(".wg-mode").value === "comb";
+      row.querySelector(".wg-f-oh").style.display = comb ? "none" : "";
+      row.querySelector(".wg-f-cp").style.display = comb ? "none" : "";
+      row.querySelector(".wg-f-comb").style.display = comb ? "" : "none";
+    };
+    row.querySelector(".wg-mode").addEventListener("change", syncMode); syncMode();
+    // हटाओ
+    row.querySelector(".wg-x").addEventListener("click", () => {
+      const box = document.getElementById("neWgRows");
+      const visible = Array.prototype.filter.call(box.querySelectorAll(".wg-card"), (x) => x.style.display !== "none");
+      if (visible.length <= 1) { alert("कम-से-कम एक कार्य-समूह ज़रूरी है।"); return; }
+      const wasMain = row.querySelector(".wg-ismain").checked;
       if (row.dataset.id) { row.dataset.removed = "1"; row.style.display = "none"; }
       else row.remove();
-    });
-    return row;
-  }
-  function renderNeRmrRows(est) {
-    const box = document.getElementById("neRmrRows"); if (!box) return;
-    box.innerHTML = "";
-    const rmrs = (est && est.rmrs) ? est.rmrs : [];
-    rmrs.forEach((r) => box.appendChild(neRmrRow(r)));
-    if (!rmrs.length) box.appendChild(neRmrRow({ name: "RMR1" }));
-  }
-  function neOhRow(g) {
-    g = g || {};
-    const row = document.createElement("div");
-    row.className = "lin-row";
-    if (g.id) row.dataset.gid = g.id;
-    row.innerHTML =
-      "<label class='grow'>Remark (group का नाम)<input class='lr-remark' placeholder='जैसे: Road Work' /></label>" +
-      "<label>प्रकार<select class='lr-mode'><option value='sep'>अलग-अलग</option><option value='comb'>एक साथ</option></select></label>" +
-      "<label class='lr-f-oh'>Overhead %<input class='lr-ohpct' /></label>" +
-      "<label class='lr-f-cp'>Contractor Profit %<input class='lr-cppct' /></label>" +
-      "<label class='lr-f-comb'>Overhead+Profit %<input class='lr-combpct' /></label>" +
-      "<button type='button' class='lr-x' title='यह group हटाएँ'>✕</button>";
-    row.querySelector(".lr-remark").value = g.remark || "";
-    row.querySelector(".lr-mode").value = g.sep === false ? "comb" : "sep";
-    row.querySelector(".lr-ohpct").value = g.ohPct != null ? g.ohPct : OH_DEFAULTS.ohPct;
-    row.querySelector(".lr-cppct").value = g.cpPct != null ? g.cpPct : OH_DEFAULTS.cpPct;
-    row.querySelector(".lr-combpct").value = g.combPct != null ? g.combPct : OH_DEFAULTS.combPct;
-    const sync = () => {
-      const comb = row.querySelector(".lr-mode").value === "comb";
-      row.querySelector(".lr-f-oh").style.display = comb ? "none" : "";
-      row.querySelector(".lr-f-cp").style.display = comb ? "none" : "";
-      row.querySelector(".lr-f-comb").style.display = comb ? "" : "none";
-    };
-    row.querySelector(".lr-mode").addEventListener("change", sync);
-    sync();
-    row.querySelector(".lr-x").addEventListener("click", () => {
-      const box = document.getElementById("neOhRows");
-      const visible = Array.prototype.filter.call(box.querySelectorAll(".lin-row"), (x) => x.style.display !== "none");
-      if (visible.length <= 1) { alert("कम-से-कम एक Overhead group ज़रूरी है।"); return; }
-      row.remove();
-    });
-    return row;
-  }
-  function renderNeOhRows(est) {
-    const box = document.getElementById("neOhRows"); if (!box) return;
-    box.innerHTML = "";
-    const gs = est ? estOhGroups(est) : [Object.assign({ remark: "" }, OH_DEFAULTS)];
-    gs.forEach((g) => box.appendChild(neOhRow(g)));
-  }
-  // form की RMR rows → estimate के rmrs में बनाओ/सुधारो/हटाओ
-  function applyNeRmrRows(est) {
-    if (!est.rmrs) est.rmrs = [];
-    const removed = new Set();
-    document.querySelectorAll("#neRmrRows .lin-row").forEach((row) => {
-      const id = row.dataset.id || "";
-      if (row.dataset.removed) { if (id) removed.add(id); return; }
-      const nm = row.querySelector(".lr-name").value.trim();
-      const kmRaw = row.querySelector(".lr-km").value.trim();
-      const remark = row.querySelector(".lr-remark").value.trim();
-      if (id) {
-        const rmr = est.rmrs.find((x) => x.id === id); if (!rmr) return;
-        if (nm) rmr.name = nm;
-        rmr.remark = remark;
-        if (kmRaw !== "" && kmRaw !== String(rmr.siteDist == null ? "" : rmr.siteDist)) {
-          rmr.siteDist = kmRaw;
-          (rmr.rows || []).forEach((r) => { r.distance = kmRaw; });   // सभी material पर यही दूरी
-        } else if (kmRaw !== "") {
-          rmr.siteDist = kmRaw;
-        }
-      } else {
-        if (kmRaw === "" && !remark) return;   // पूरी खाली row — कुछ नहीं बनाना
-        est.rmrs.push({
-          id: uid("rmr"),
-          name: nm || ("RMR" + (est.rmrs.length + 1)),
-          remark: remark, siteDist: kmRaw,
-          rows: buildRmrRowsFromMaster(kmRaw),   // Material Query Rate load न हो तो खाली — RMR view में अपने-आप भरेंगी
-        });
+      if (wasMain) {   // मुख्य हटा तो पहला बचा समूह मुख्य बना दो
+        const first = Array.prototype.find.call(box.querySelectorAll(".wg-card"), (x) => x.style.display !== "none");
+        if (first) first.querySelector(".wg-ismain").checked = true;
       }
     });
-    if (removed.size) est.rmrs = est.rmrs.filter((r) => !removed.has(r.id));
+    return row;
+  }
+  function renderNeWgRows(est) {
+    const box = document.getElementById("neWgRows"); if (!box) return;
+    box.innerHTML = "";
+    const wgs = est ? neWgData(est) : [];
+    if (wgs.length) wgs.forEach((w) => box.appendChild(neWgRow(w)));
+    else box.appendChild(neWgRow({ name: "", isMain: true }));   // नया estimate → एक खाली समूह (मुख्य)
+  }
+  // form के कार्य-समूह cards → est.workGroups + est.rmrs + est.ohGroups
+  function applyNeWgRows(est) {
+    const cards = Array.prototype.filter.call(document.querySelectorAll("#neWgRows .wg-card"), (c) => !c.dataset.removed);
+    const prevRmrs = est.rmrs || [];
+    const rmrs = [], ohGroups = [], workGroups = [];
+    let anyMain = false;
+    cards.forEach((card, i) => {
+      const name = wgCardName(card) || ("समूह " + (i + 1));
+      const isMain = card.querySelector(".wg-ismain").checked; if (isMain) anyMain = true;
+      // inline Query दूरी boxes से qd बनाओ (Query key → km)
+      const qd = {};
+      card.querySelectorAll(".wg-qd-km").forEach((inp) => { qd[inp.dataset.qk] = (inp.value || "").trim(); });
+      const comb = card.querySelector(".wg-mode").value === "comb";
+      const rmrId = card.dataset.rmrId || uid("rmr");
+      const ohId = card.dataset.ohId || uid("ohg");
+      // RMR — मौजूदा rows रखो, दूरियाँ qd से ताज़ा करो; नई हों तो बनाओ
+      const prev = prevRmrs.find((r) => r.id === rmrId);
+      let rows;
+      if (prev && prev.rows && prev.rows.length) {
+        rows = prev.rows;
+        rows.forEach((r) => {
+          const mat = rmrMaterial(r);
+          const key = (mat.query || "").trim() || "__noquery__";
+          r.query = mat.query || r.query || "";
+          const d = qd[key];
+          if (d != null && String(d).trim() !== "") r.distance = String(d).trim();
+        });
+      } else {
+        rows = buildRmrRowsWithQueryDist(qd);   // Material Query Rate load न हो तो खाली — RMR view में भरेंगी
+      }
+      rmrs.push({ id: rmrId, name: name, remark: name, queryDist: qd, rows: rows, locked: prev ? !!prev.locked : false });
+      ohGroups.push({
+        id: ohId, remark: name, sep: !comb,
+        ohPct: mrNum(card.querySelector(".wg-ohpct").value) || 0,
+        cpPct: mrNum(card.querySelector(".wg-cppct").value) || 0,
+        combPct: mrNum(card.querySelector(".wg-combpct").value) || 0,
+      });
+      workGroups.push({ id: card.dataset.id || uid("wg"), name: name, isMain: isMain, rmrId: rmrId, ohGroupId: ohId });
+    });
+    if (!anyMain && workGroups.length) workGroups[0].isMain = true;
+    est.rmrs = rmrs;
+    est.ohGroups = ohGroups.length ? ohGroups : [Object.assign({ id: uid("ohg"), remark: "" }, OH_DEFAULTS)];
+    est.workGroups = workGroups;
   }
 
   function saveEstimateForm() {
     const wn = document.getElementById("neWorkName").value.trim();
     if (!wn) { alert("कार्य का नाम ज़रूरी है।"); return; }
+    // ── कार्य-समूह: Overhead भरा हो, और Query दूरी की जाँच (खाली/0 पर पूछो) ──
+    const wgCards = Array.prototype.filter.call(document.querySelectorAll("#neWgRows .wg-card"), (c) => !c.dataset.removed);
+    let ohMissing = false, anyDistBox = false, distEmptyOrZero = false;
+    for (const card of wgCards) {
+      const comb = card.querySelector(".wg-mode").value === "comb";
+      const ohSel = comb ? [".wg-combpct"] : [".wg-ohpct", ".wg-cppct"];
+      ohSel.forEach((s) => { if ((card.querySelector(s).value || "").trim() === "") ohMissing = true; });
+      card.querySelectorAll(".wg-qd-km").forEach((inp) => {
+        anyDistBox = true;
+        const v = (inp.value || "").trim();
+        if (v === "" || mrNum(v) === 0) distEmptyOrZero = true;
+      });
+    }
+    if (ohMissing) { alert("हर कार्य-समूह में Overhead / Contractor Profit % भरें।"); return; }
+    if (anyDistBox && distEmptyOrZero &&
+        !confirm("कुछ Query की साइट-दूरी खाली या 0 किमी है।\nक्या 0 किमी मानकर estimate बनाना है?")) return;
     const ewRaw = document.getElementById("neEwLead").value.trim();
     const ewN = mrNum(ewRaw);
-    // Overhead groups (linear rows) — कम-से-कम एक
-    const groups = [];
-    document.querySelectorAll("#neOhRows .lin-row").forEach((row) => {
-      if (row.style.display === "none") return;
-      const comb = row.querySelector(".lr-mode").value === "comb";
-      groups.push({
-        id: row.dataset.gid || uid("ohg"),
-        remark: row.querySelector(".lr-remark").value.trim(),
-        sep: !comb,
-        ohPct: mrNum(row.querySelector(".lr-ohpct").value) || 0,
-        cpPct: mrNum(row.querySelector(".lr-cppct").value) || 0,
-        combPct: mrNum(row.querySelector(".lr-combpct").value) || 0,
-      });
-    });
-    if (!groups.length) groups.push(Object.assign({ id: uid("ohg"), remark: "" }, OH_DEFAULTS));
     const fields = {
       name: wn,
       roadCode: document.getElementById("neRoadCode").value.trim(),
       length: document.getElementById("neLength").value.trim(),
       year: document.getElementById("neYear").value.trim(),
       ewLead: (ewRaw !== "" && isFinite(ewN) && ewN > 0) ? ewN : 1,
-      ohGroups: groups,
-      // पहले group के % पुराने single-fields में भी (backward compatibility)
-      ohSep: groups[0].sep, ohPct: groups[0].ohPct, cpPct: groups[0].cpPct, combPct: groups[0].combPct,
     };
     let est, isNew = false;
     if (editingEstimateId && state.estimates[editingEstimateId]) {
@@ -4758,7 +5810,10 @@
       state.estimates[est.id] = est; state.estOrder.push(est.id); isNew = true;
     }
     setActiveEstimateId(est.id);
-    applyNeRmrRows(est);   // form की RMR rows लागू करो
+    applyNeWgRows(est);   // कार्य-समूह → est.workGroups + est.rmrs + est.ohGroups
+    // पहले group के % पुराने single-fields में भी (backward compatibility)
+    const g0 = est.ohGroups[0];
+    est.ohSep = g0.sep; est.ohPct = g0.ohPct; est.cpPct = g0.cpPct; est.combPct = g0.combPct;
     editingEstimateId = null;
     db.put("estimates", est);
     document.getElementById("newEstimateForm").style.display = "none";
@@ -4987,6 +6042,8 @@
     let _chaptersFromCloud = false;
     for (const m of masterRecs) {
       if (m && m.id === CHAPTERS_META_ID) { if (applyChaptersRecord(m)) _chaptersFromCloud = true; continue; }
+      if (m && m.id === SETS_META_ID) { if (Array.isArray(m.sets)) analysisSets = m.sets; continue; }
+      if (m && m.id === SUMTPL_META_ID) { if (Array.isArray(m.templates)) summaryTemplates = m.templates; continue; }
       state.master[m.id] = m;
     }
     // cloud में chapters न हों तो इस browser के localStorage वाले cloud पर seed कर दो

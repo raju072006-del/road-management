@@ -971,11 +971,44 @@ tr.sec-row-new  td { background: #effcf6; }
   .tbl thead tr { background: #eef1f7 !important; -webkit-print-color-adjust: exact; }
 }
 
+/* हैम्बर्गर मेन्यू बटन — केवल मोबाइल/टैबलेट पर दिखे */
+.menu-toggle{
+  display:none; flex:none; width:40px; height:40px; border:1px solid var(--border);
+  background:#fff; border-radius:11px; font-size:20px; line-height:1; cursor:pointer;
+  align-items:center; justify-content:center; color:var(--text1,#1a2233);
+}
+.menu-toggle:active{transform:scale(.95)}
+.drawer-backdrop{position:fixed; inset:0; background:rgba(10,14,30,.45); z-index:125; display:none}
+.drawer-backdrop.open{display:block}
+
 @media(max-width:900px) {
   .stats-grid { grid-template-columns:1fr 1fr; }
   .cat-grid   { grid-template-columns:repeat(2,1fr); }
   .fin-row    { grid-template-columns:1fr; }
-  .left-panel { display:none; }
+  .menu-toggle{ display:flex; }
+  /* left-panel को off-canvas drawer बनाओ (छिपाने के बजाय) */
+  .left-panel{
+    position:fixed; top:0; left:0; bottom:0; width:min(82vw,270px);
+    z-index:130; overflow-y:auto; padding-top:16px;
+    transform:translateX(-100%); transition:transform .26s var(--ease);
+    box-shadow:6px 0 30px rgba(10,14,30,.45);
+  }
+  body.drawer-open .left-panel{ transform:translateX(0); }
+  .header-top{ padding:10px 14px; gap:10px; }
+  .header-subtitle{ display:none; }
+  .navbar{ padding:6px 12px; }
+  .main-content{ padding:16px 12px; }
+  .filter-bar{ flex-wrap:wrap; }
+  .f-input{ min-width:0; flex:1 1 160px; }
+  /* चौड़ी टेबल पेज को न फैलाए — card के भीतर horizontal scroll */
+  .card-body, .card-body-flush{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .tbl{ min-width:560px; }
+}
+@media(max-width:560px){
+  .stats-grid{ grid-template-columns:1fr; }
+  .cat-grid  { grid-template-columns:1fr; }
+  .header-title{ font-size:15px; }
+  .header-date{ display:none; }
 }
 
 /* ── LOGIN SCREEN ── */
@@ -1337,6 +1370,7 @@ tr.sec-row-new  td { background: #effcf6; }
 <!-- SITE HEADER -->
 <header class="site-header">
   <div class="header-top">
+    <button class="menu-toggle" id="menuToggle" aria-label="मेन्यू" onclick="toggleSideDrawer()">☰</button>
     <div class="ashoka-wheel">🏛️</div>
     <div class="header-text">
       <div class="header-title">सड़क परियोजना प्रबंधन प्रणाली</div>
@@ -4274,6 +4308,7 @@ var _payOverlayProjName = null;
 var _payOverlayDetails  = null;
 
 function openPaymentOverlay(projName, details) {
+  if (typeof closeSideDrawer === 'function') closeSideDrawer();
   var ov = document.getElementById('pay-overlay');
   ov.style.display = 'flex';
   document.body.style.overflow = 'hidden';
@@ -4671,7 +4706,29 @@ window.addEventListener('message', function(e) {
     [fn](e.data._payPayload);
 });
 
+// ── मोबाइल side-drawer (left-panel) खोलें/बंद ──
+function _drawerBackdrop(){
+  var b = document.getElementById('drawerBackdrop');
+  if(!b){
+    b = document.createElement('div');
+    b.id = 'drawerBackdrop';
+    b.className = 'drawer-backdrop';
+    b.onclick = closeSideDrawer;
+    document.body.appendChild(b);
+  }
+  return b;
+}
+function toggleSideDrawer(){
+  var open = document.body.classList.toggle('drawer-open');
+  _drawerBackdrop().classList.toggle('open', open);
+}
+function closeSideDrawer(){
+  document.body.classList.remove('drawer-open');
+  _drawerBackdrop().classList.remove('open');
+}
+
 function showPage(name, navEl, panelEl) {
+  closeSideDrawer();
   document.querySelectorAll('.page').forEach(function(p){p.classList.remove('active');});
   document.getElementById('page-'+name).classList.add('active');
   if(navEl){ document.querySelectorAll('.nav-link').forEach(function(n){n.classList.remove('active');}); navEl.classList.add('active'); }
@@ -8845,6 +8902,7 @@ function _estUrlWithRole() {
   return ESTIMATOR_URL + (role ? ('?role=' + encodeURIComponent(role)) : '');
 }
 function openEstimator() {
+  if (typeof closeSideDrawer === 'function') closeSideDrawer();
   var ov = document.getElementById('est-overlay');
   var fr = document.getElementById('est-frame');
   if (!ov || !fr) { window.open(_estUrlWithRole(), '_blank'); return; }

@@ -126,14 +126,15 @@
               <label>वित्तीय वर्ष<input type="text" id="neYear" placeholder="जैसे: 2026-27" /></label>
             </div>
             <div class="oh-block">
-              <div class="lin-head">📦 RMR — Site से Query की दूरी (km) <button type="button" class="btn xs" id="neRmrAdd">+ और RMR जोड़ें</button></div>
-              <div class="lin-rows" id="neRmrRows"></div>
-              <p class="oh-note">हर RMR में loaded <b>Material Query Rate</b> के सभी material अपने-आप आते हैं — यहाँ भरी दूरी सभी material पर लागू होगी। Material-wise दूरी बाद में <b>Basic Analysis › RMR</b> में बदल सकते हैं।</p>
-            </div>
-            <div class="oh-block">
-              <div class="lin-head">📊 Overhead व Contractor Profit — group <button type="button" class="btn xs" id="neOhAdd">+ group जोड़ें</button></div>
-              <div class="lin-rows" id="neOhRows"></div>
-              <p class="oh-note">A (सभी sub-head का योग) पर Overhead, फिर (A + Overhead) पर Contractor Profit; तीनों जुड़कर Total। एक से ज़्यादा group हों तो Rate Analysis में Analysis load करते समय <b>Remark के अनुसार group पूछा जाएगा</b> — उसी % से Overhead/Profit जुड़ेंगे।</p>
+              <div class="lin-head">🗂 कार्य-समूह <button type="button" class="btn xs" id="neWgAdd">+ समूह जोड़ें</button></div>
+              <div class="wg-rows" id="neWgRows"></div>
+              <datalist id="wgPresets">
+                <option value="सड़क निर्माण कार्य"></option>
+                <option value="नाली/डिवाइडर का कार्य"></option>
+                <option value="पुल/पुलिया का कार्य"></option>
+                <option value="अन्य कार्य"></option>
+              </datalist>
+              <p class="oh-note">हर <b>कार्य-समूह</b> का अपना <b>RMR</b> (📏 Query दूरियाँ) और अपने <b>Overhead/Profit %</b> होते हैं। आगे Analysis load करते समय समूह चुना जाएगा — उसी का RMR व दरें लगेंगी, इसलिए हर समूह का Analysis अलग रहेगा। एक समूह को <b>मुख्य कार्य</b> मार्क करें (आगे काम आएगा)।</p>
             </div>
             <div class="form-actions">
               <button class="btn" id="neCancel">रद्द</button>
@@ -254,17 +255,58 @@
         <section class="view scroll-view" id="view-dom-boq">
           <div class="view-head"><h2>DOM &amp; BOQ</h2><p class="view-sub">Detail of Measurement (Excel), Bill of Quantity, और Sub-Estimate के DOM/BOQ।</p></div>
           <div class="card-grid">
-            <div class="doc-card"><div class="ac-ic">📐</div><b>DOM (Measurement)</b><span class="dc-sub">Excel फॉर्मेट</span><div class="doc-actions"><button class="btn xs" data-todo="DOM">बनाएँ</button></div></div>
-            <div class="doc-card"><div class="ac-ic">🧾</div><b>BOQ (Bill of Quantity)</b><span class="dc-sub">Rate Analysis से linked</span><div class="doc-actions"><button class="btn xs" data-todo="BOQ">बनाएँ</button></div></div>
-            <div class="doc-card"><div class="ac-ic">🗂️</div><b>Sub-Estimate (DOM/BOQ)</b><div class="doc-actions"><button class="btn xs" data-todo="Sub-Estimate">जोड़ें</button></div></div>
+            <div class="doc-card"><div class="ac-ic">📐</div><b>DOM (Measurement)</b><span class="dc-sub">मुख्य कार्य — Quantity calculation</span><div class="doc-actions"><button class="btn xs" id="btnOpenDOM">खोलें</button></div></div>
+            <div class="doc-card"><div class="ac-ic">🧾</div><b>BOQ (Bill of Quantity)</b><span class="dc-sub">मुख्य कार्य — DOM से linked · Rate/Amount</span><div class="doc-actions"><button class="btn xs" id="btnOpenBOQ">खोलें</button></div></div>
           </div>
-          <p class="hint-box">BOQ की दर Rate Analysis की footer (say) पंक्ति से link होगी — link slip-proof रहेगा।</p>
+          <div class="panel-card" id="subEstCard">
+            <h3>🗂️ Sub-Estimate (DOM/BOQ) — अन्य कार्य-समूह</h3>
+            <p class="view-sub">मुख्य कार्य के अलावा हर कार्य-समूह का अपना DOM व BOQ। नीचे से खोलें।</p>
+            <div id="subEstList" class="sub-est-list"></div>
+          </div>
+          <p class="hint-box">DOM सिर्फ़ Quantity के लिए; BOQ में DOM से Quantity linked होकर Rate × Quantity = Amount बनता है। हर कार्य-समूह का अलग सेट।</p>
+        </section>
+
+        <!-- ===== 5a. DOM (Detail of Measurement) — असली spreadsheet (Rate Analysis editor) ===== -->
+        <section class="view" id="view-dom">
+          <div class="dom-head">
+            <button class="btn sm" id="domBack">← DOM &amp; BOQ</button>
+            <b class="dom-head-title">DOM — Detail of Measurement</b>
+            <span id="domAddBtns" style="display:none">
+              <button class="btn sm" id="domAddSub" title="बनाए गए किसी Sub-Estimate को जोड़ें (रेट BOQ में उसके कुल से link)">➕ Sub-Estimate</button>
+              <button class="btn sm" id="domAddSor" title="Master › Primary Rate › Item SOR Rate से आइटम जोड़ें">➕ Item SOR</button>
+              <button class="btn sm" id="domAddAna" title="कोई भी लोड किया Analysis जोड़ें (अन्य कार्य)">➕ अन्य</button>
+            </span>
+            <button class="btn sm" id="domRefresh" title="items व Quantity दोबारा लाएँ">🔄 ताज़ा</button>
+          </div>
+          <div class="dom-editor-host" id="domEditorHost"><!-- editor-panel यहाँ mount होता है --></div>
+        </section>
+
+        <!-- ===== 5b. BOQ (Bill of Quantity) — DOM से linked ===== -->
+        <section class="view" id="view-boq">
+          <div class="dom-head">
+            <button class="btn sm" id="boqBack">← DOM &amp; BOQ</button>
+            <b class="dom-head-title">BOQ — Bill of Quantity <span class="boq-hint">(Item व Quantity DOM से linked)</span></b>
+            <button class="btn sm" id="boqRefresh" title="दरें Analysis से फिर से लाएँ (Amount ताज़ा)">🔄 दर ताज़ा</button>
+          </div>
+          <div class="dom-editor-host" id="boqEditorHost"><!-- editor-panel यहाँ mount होता है --></div>
         </section>
 
         <!-- ===== 6. SUMMARY ===== -->
         <section class="view scroll-view" id="view-summary">
-          <div class="view-head"><h2>Summary</h2><p class="view-sub">पूरे estimate का सार — abstract of cost।</p></div>
-          <div class="panel-card"><p class="muted">Summary यहाँ अपने-आप बनेगा (BOQ/Sub-Estimate से)। अगली बार जोड़ेंगे।</p></div>
+          <div class="view-head">
+            <h2>Summary of Estimated Cost</h2>
+            <p class="view-sub">हर step पर reference नंबर (S1, S2…) — गणना में सुधार बताने के लिए। % व अनुमानित मद editable।</p>
+          </div>
+          <div class="sum-toolbar">
+            <button class="btn sm primary" id="sumTemplate" title="काम-प्रकार का Template लोड करें (Road/Building…) — Summary तुरंत बन जाएगी">📋 Template लोड करें</button>
+            <button class="btn sm" id="sumSaveTpl" title="मौजूदा Summary config को Template के रूप में सहेजें">💾 Template सहेजें</button>
+            <button class="btn sm" id="sumMngTpl" title="सहेजे Template — नाम बदलें / हटाएँ / लोड करें">✎ Template प्रबंधन</button>
+            <button class="btn sm" id="sumAddUtil" title="यूटिलिटी जोड़ें (जैसे विद्युत पोल, पेड़ पातन)">➕ यूटिलिटी जोड़ें</button>
+            <button class="btn sm" id="sumDelUtil" title="कोई यूटिलिटी हटाएँ">🗑 यूटिलिटी हटायें</button>
+            <button class="btn sm" id="sumRefresh" title="BOQ से दरें/कुल दोबारा लाएँ">🔄 ताज़ा</button>
+          </div>
+          <div class="sum-wrap"><table class="sum-table" id="summaryTable"></table></div>
+          <p class="hint-box">S# = step reference। किसी step की गणना बदलवानी हो तो उसका S-नंबर बताएँ (जैसे “S7 = S5 − 6%”)। हरे % box व अनुमानित-मद के amount box editable हैं।</p>
         </section>
 
         <!-- ===== 7. MASTER DATA ===== -->

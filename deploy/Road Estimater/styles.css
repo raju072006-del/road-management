@@ -132,6 +132,7 @@ body{
 }
 .icon-btn:hover{border-color:var(--navy-light); color:var(--navy); box-shadow:var(--shadow)}
 .only-mobile{display:none}
+.sidebar-backdrop{position:fixed; inset:0; background:rgba(10,14,30,.45); z-index:15; display:none; -webkit-tap-highlight-color:transparent}
 
 /* ----- Views (one visible at a time) ----- */
 .views{flex:1; min-height:0; display:flex; flex-direction:column; background:var(--bg)}
@@ -235,9 +236,12 @@ body{
 .estimate-list li:hover{border-color:rgba(76,102,240,.4); box-shadow:var(--shadow-md); transform:translateY(-1px)}
 .estimate-list li.muted-row{color:var(--muted); cursor:default; justify-content:center; font-size:13px; background:var(--line-soft); border-style:dashed}
 .estimate-list li.muted-row:hover{border-color:var(--line); box-shadow:none; transform:none}
-.estimate-list .ei-main{flex:1}
+.estimate-list .ei-main{flex:1; min-width:0}
 .estimate-list .ei-name{font-weight:600; color:var(--ink)}
 .estimate-list .ei-meta{font-size:11px; color:var(--muted)}
+.estimate-list .ei-actions{display:flex; align-items:center; gap:8px; flex:none}
+.estimate-list .ei-detail{background:#eef2ff; color:var(--navy-dark); border-color:#dfe4ff}
+.estimate-list .ei-detail:hover{background:#e2e9ff}
 .hint-box{
   background:linear-gradient(135deg,#eef2ff,#f4f0ff); border:1px solid #dfe4ff; color:#3d4db4;
   border-radius:var(--r-md); padding:12px 16px; font-size:12.5px; margin-top:4px; line-height:1.55;
@@ -393,13 +397,41 @@ body{
 .ml-field{display:flex; flex-direction:column; gap:5px; font-size:12px; font-weight:600; color:#3d4a63}
 .ml-field select{padding:9px 11px; border:1.5px solid var(--line); border-radius:10px; font-family:var(--ui); font-size:13px; min-width:200px; background:#fff}
 
-@media(max-width:980px){
+/* टैबलेट (641–980px): sidebar सिर्फ़ आइकन-रेल */
+@media(max-width:980px) and (min-width:641px){
   .sidebar{width:66px}
   .sidebar .ni-tx,.sidebar-brand .brand-text,.sidebar-foot{display:none}
   .sidebar-brand{justify-content:center; padding:14px 6px}
   .nav-item{justify-content:center; padding:12px 8px}
   .nav-item:hover{transform:none}
   .nav-item.active::before{left:-10px}
+  .scroll-view{padding:20px 18px}
+}
+
+/* मोबाइल (≤640px): sidebar off-canvas — ☰ से खुले/बंद हो */
+@media(max-width:640px){
+  .only-mobile{display:inline-flex; align-items:center; justify-content:center}
+  .sidebar{
+    position:fixed; top:0; left:0; bottom:0; width:min(80vw,260px);
+    transform:translateX(-100%); transition:transform .26s var(--ease);
+    z-index:30; box-shadow:6px 0 30px rgba(10,14,30,.4);
+  }
+  .app-shell.nav-open .sidebar{transform:translateX(0)}
+  .app-shell.nav-open .sidebar-backdrop{display:block}
+  /* पूरा text वापस (240px वाला layout) */
+  .sidebar .ni-tx,.sidebar-brand .brand-text,.sidebar-foot{display:block}
+  .sidebar-brand{justify-content:flex-start; padding:16px 16px 14px}
+  .nav-item{justify-content:flex-start; padding:11px 14px}
+  .topbar{padding:8px 12px; gap:8px; flex-wrap:wrap}
+  .topbar-title{order:2; flex-basis:100%}
+  #btnSidebarToggle{order:1}
+  .topbar-actions{order:3; margin-left:auto}
+  .tb-estimate{max-width:60vw}
+  .topbar-actions,.topbar-master-tools{gap:6px}
+  .scroll-view{padding:16px 12px}
+  /* स्प्रेडशीट/एडिटर मोबाइल पर भी full-width; अंदर horizontal scroll */
+  .editor-panel{min-width:0}
+  .form-grid{grid-template-columns:1fr !important}
 }
 
 /* ---------- Header (legacy) ---------- */
@@ -476,23 +508,23 @@ body{
 /* लोड किए Analysis — कॉम्पैक्ट कार्ड (theme: indigo), कम ऊँचाई के लिए 2 तंग लाइन */
 .sheet-list li.sl-card{
   display:flex; align-items:center; gap:7px; cursor:pointer;
-  padding:6px 9px 6px 11px; background:#fff;
-  border:1px solid var(--line); border-radius:11px; margin:0;
-  box-shadow:0 1px 2px rgba(20,28,46,.04);
+  padding:6px 9px 6px 11px; margin:0 0 0 14px; background:#f5f6f9;
+  border:1px solid #e8ebf1; border-radius:10px;
   transition:border-color .15s var(--ease), box-shadow .15s var(--ease), background .15s var(--ease);
 }
-.sheet-list li.sl-card:hover{border-color:var(--navy-light,#c3ceff); box-shadow:0 2px 8px rgba(20,28,46,.08)}
-.sheet-list li.sl-card.active{background:#f4f7ff; border-color:var(--sel-border,#b9c6ff); box-shadow:0 0 0 2.5px rgba(76,102,240,.10)}
+.sheet-list li.sl-card:hover{background:#eef0f5; border-color:#d7dbe6}
+.sheet-list li.sl-card.active{background:#eef2ff; border-color:var(--sel-border,#b9c6ff); box-shadow:0 0 0 2px rgba(76,102,240,.12)}
 .sheet-list li.sl-card::before{content:none}
 
 .sl-body{flex:1; min-width:0; display:flex; flex-direction:column; gap:3px}
 .sl-row1{display:flex; align-items:baseline; gap:8px}
 .sl-title{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-  font-family:var(--mono,var(--ui)); font-weight:700; font-size:13px; color:#3a4150; line-height:1.2}
-.sl-card.active .sl-title{color:#2c313c}
-.sl-code{flex:none; font-size:10.5px; font-weight:800; letter-spacing:.03em}
-.sl-code.morth{color:#4056d6}
-.sl-code.mord{color:#0e9f6e}
+  font-family:var(--mono,var(--ui)); font-weight:600; font-size:12.5px; color:#727a89; line-height:1.2}
+.sl-card:hover .sl-title{color:#5a6172}
+.sl-card.active .sl-title{color:#3a4150; font-weight:700}
+.sl-code{flex:none; font-size:10px; font-weight:700; letter-spacing:.03em; opacity:.7}
+.sl-code.morth{color:#6b78c9}
+.sl-code.mord{color:#4f9e86}
 
 .sl-chips{display:flex; flex-wrap:wrap; gap:4px}
 .sl-chip{font-size:9.5px; font-weight:700; border-radius:999px; padding:1px 8px; border:1px solid transparent; white-space:nowrap; line-height:1.5}
@@ -535,6 +567,23 @@ body{
 .sl-x:hover{background:#fdeaea; color:#c0392b; border-color:#f5c6c6}
 .sheet-list li.muted-row{list-style:none; text-align:center; color:var(--muted); font-size:12.5px; line-height:1.5;
   padding:16px 14px; background:var(--line-soft); border:1px dashed var(--line); border-radius:12px; cursor:default}
+/* कार्य-समूह header (Rate Analysis बाईं सूची) — accordion */
+.sheet-list li.sl-group-head{list-style:none; display:flex; align-items:center; gap:7px;
+  padding:8px 10px; margin-top:6px; background:linear-gradient(135deg,#eef2ff,#f5f8ff); border:1px solid #dbe3fb; border-radius:10px; cursor:pointer;
+  transition:border-color .15s var(--ease), box-shadow .15s var(--ease)}
+.sheet-list li.sl-group-head:first-child{margin-top:0}
+.sheet-list li.sl-group-head:hover{border-color:var(--navy-light,#c3ceff)}
+.sheet-list li.sl-group-head.open{box-shadow:0 2px 8px rgba(20,28,46,.08); border-color:var(--sel-border,#b9c6ff)}
+.sheet-list li.sl-group-head.other{background:var(--line-soft); border-color:var(--line); cursor:default}
+.slg-toggle{flex:none; font-size:10px; color:var(--navy); width:12px; text-align:center}
+.slg-name{flex:1; font-size:12.5px; font-weight:800; color:var(--navy-dark); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0}
+.slg-count{flex:none; font-size:10.5px; font-weight:800; color:#3d4db4; background:#fff; border:1px solid #dbe3fb; border-radius:999px; min-width:20px; text-align:center; padding:1px 6px}
+.slg-actions{flex:none; display:flex; align-items:center; gap:5px}
+.slg-save{background:#fff; color:#6b21a8; border:1px solid #e4ccfb; border-radius:7px; padding:4px 8px; font-family:var(--ui); font-size:10.5px; font-weight:700; cursor:pointer; transition:all .15s var(--ease)}
+.slg-save:hover{background:#f6ecff}
+.slg-load{background:var(--navy); color:#fff; border:none; border-radius:7px; padding:4px 10px; font-family:var(--ui); font-size:10.5px; font-weight:700; cursor:pointer; transition:background .15s var(--ease)}
+.slg-load:hover{background:var(--navy-dark)}
+.sheet-list li.sl-group-empty{list-style:none; padding:4px 12px 8px 20px; font-size:11.5px; color:var(--muted)}
 
 /* ---------- Editor ---------- */
 .editor-panel{position:relative}
@@ -631,8 +680,9 @@ body{
 .modal .row{display:flex; gap:8px; justify-content:flex-end; margin-top:18px}
 .ns-fld{display:block; font-size:12px; font-weight:600; color:#3d4a63; margin-top:12px}
 .ns-fld .muted{font-weight:400}
-.ns-fld input{display:block; width:100%; box-sizing:border-box; margin-top:5px; padding:10px 12px; border:1.5px solid var(--line); border-radius:10px; font-family:var(--ui); font-size:14px; font-weight:400; background:#fbfcfe; transition:border-color .15s var(--ease), box-shadow .15s var(--ease)}
-.ns-fld input:focus{outline:none; border-color:var(--sel-border); background:#fff; box-shadow:0 0 0 3.5px rgba(76,102,240,.16)}
+.ns-fld input,.ns-fld textarea{display:block; width:100%; box-sizing:border-box; margin-top:5px; padding:10px 12px; border:1.5px solid var(--line); border-radius:10px; font-family:var(--ui); font-size:14px; font-weight:400; background:#fbfcfe; transition:border-color .15s var(--ease), box-shadow .15s var(--ease)}
+.ns-fld textarea{resize:vertical; line-height:1.4}
+.ns-fld input:focus,.ns-fld textarea:focus{outline:none; border-color:var(--sel-border); background:#fff; box-shadow:0 0 0 3.5px rgba(76,102,240,.16)}
 .ns-preview{min-height:16px; margin-top:5px; font-family:var(--mono); font-size:12px; color:var(--green); font-weight:600}
 .ctx-menu{
   position:fixed; z-index:1000; min-width:214px; background:rgba(255,255,255,.97);
@@ -855,11 +905,81 @@ body{
 .lap-group{border-bottom:1px solid var(--line)}
 .lap-group:last-child{border-bottom:none}
 .lap-gname{padding:8px 13px; background:#f5f7fc; font-weight:700; font-size:12px; color:#3d4a63; position:sticky; top:0; z-index:1}
-.lap-item{display:flex; flex-direction:column; gap:1px; width:100%; text-align:left; background:none; border:none; border-bottom:1px solid var(--line-soft); padding:9px 15px; cursor:pointer; font-family:var(--ui); transition:background .12s var(--ease)}
+.lap-item{display:flex; flex-direction:column; gap:1px; width:100%; text-align:left; background:none; border:none; border-bottom:1px solid var(--line-soft); padding:9px 15px 9px 34px; position:relative; cursor:pointer; font-family:var(--ui); transition:background .12s var(--ease)}
 .lap-item:last-child{border-bottom:none}
 .lap-item:hover{background:#eef2fe}
+/* multi-select — बायाँ टिक box */
+.lap-item::before{content:""; position:absolute; left:13px; top:11px; width:15px; height:15px; border:1.5px solid #c3cbdc; border-radius:5px; background:#fff; transition:all .12s var(--ease)}
+.lap-item.sel{background:#eef2fe}
+.lap-item.sel::before{content:"✓"; color:#fff; font-size:11px; font-weight:900; line-height:15px; text-align:center; background:var(--navy); border-color:var(--navy)}
 .lap-nm{font-weight:600; font-size:13px; font-family:var(--mono,var(--ui))}
 .lap-tt{font-size:11.5px; color:var(--muted)}
+
+/* सेट (template) bar + footer */
+.lap-setbar{display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:6px 0 2px; padding:7px 10px; background:#f3e8ff; border:1px solid #e4ccfb; border-radius:var(--r-md)}
+.lap-setbar .psb-label{color:#6b21a8}
+.lap-set-btn{background:#fff; border:1px solid #e0c8fb; border-radius:8px; padding:4px 11px; font-family:var(--ui); font-size:11.5px; font-weight:600; color:#6b21a8; cursor:pointer; transition:all .15s var(--ease)}
+.lap-set-btn:hover{background:#f6ecff}
+.lap-set-btn b{font-weight:800; opacity:.7}
+.lap-foot{display:flex; align-items:center; gap:10px; margin-top:12px}
+.lap-selinfo{flex:1; font-size:12.5px; font-weight:600; color:var(--navy-dark)}
+
+/* ===== DOM / BOQ — असली spreadsheet (Rate Analysis editor यहाँ mount होता है) ===== */
+#view-dom.active,#view-boq.active{display:flex; flex-direction:column}
+.boq-hint{font-weight:500; font-size:11px; color:var(--muted)}
+.dom-head{display:flex; align-items:center; gap:10px; padding:5px 12px; border-bottom:1px solid var(--line); background:#fff}
+.dom-head-title{flex:1; min-width:0; font-size:13.5px; font-weight:800; color:var(--ink); letter-spacing:-.01em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.dom-editor-host{flex:1; min-height:0; display:flex; overflow:hidden}
+.dom-editor-host > .editor-panel{flex:1; min-width:0}
+/* Sub-Estimate (DOM/BOQ) — हर कार्य-समूह के अंदर कई उपकार्य */
+.sub-est-list{display:flex; flex-direction:column; gap:14px; margin-top:10px}
+.se-group{border:1px solid var(--line); border-radius:12px; overflow:hidden}
+.se-ghead{display:flex; align-items:center; gap:10px; padding:9px 12px; background:linear-gradient(135deg,#eef2ff,#f5f8ff); border-bottom:1px solid #dbe3fb}
+.se-gname{flex:1; min-width:0; font-weight:800; color:var(--navy-dark); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.se-ghead .se-count{flex:none; font-size:11px; color:#3d4db4; background:#fff; border:1px solid #dbe3fb; border-radius:999px; padding:2px 9px}
+.se-ghead .se-add{flex:none}
+.se-sublist{display:flex; flex-direction:column; gap:7px; padding:10px 12px}
+.se-empty{font-size:12px; padding:4px 2px; line-height:1.5}
+.sub-est-row{display:flex; align-items:center; gap:10px; padding:8px 11px; background:#f5f6f9; border:1px solid #e8ebf1; border-radius:9px}
+.sub-est-row .se-name{flex:1; min-width:0; font-weight:600; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.sub-est-row .se-count{flex:none; font-size:11px; color:var(--muted); background:#fff; border:1px solid var(--line); border-radius:999px; padding:2px 9px}
+.sub-est-row .se-actions{flex:none; display:flex; gap:6px}
+.btn.xs.danger{color:#b91c1c; border-color:#f6bcbc; background:#fef2f2}
+.btn.xs.danger:hover{background:#fde4e4}
+.se-dialog{width:400px; max-width:94vw}
+
+/* ===== Summary of Estimated Cost ===== */
+.sum-toolbar{display:flex; align-items:center; gap:10px; margin:0 0 12px}
+.sum-wrap{overflow-x:auto}
+.sum-table{width:100%; border-collapse:collapse; font-size:13px; background:#fff; border:1px solid var(--line)}
+.sum-table th{background:var(--navy); color:#fff; font-weight:700; font-size:11.5px; padding:8px 8px; text-align:center; border:1px solid rgba(255,255,255,.12)}
+.sum-table td{border:1px solid var(--line); padding:6px 9px; vertical-align:middle; color:#2c313c}
+.sum-table td.sum-ref{text-align:center; font-family:var(--mono); font-weight:700; font-size:11px; color:#3d4db4; background:#eef2fe; width:42px}
+.sum-table td.sum-sn{text-align:center; color:var(--muted); width:36px}
+.sum-table td.sum-item{text-align:left; min-width:320px}
+.sum-table td.sum-rs,.sum-table td.sum-lac{text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; width:150px}
+/* row types */
+.sum-table tr.sum-tot td,.sum-table tr.sum-sub td{background:#eaf1f8; font-weight:700}
+.sum-table tr.sum-tot td.sum-item{font-weight:800}
+.sum-table tr.sum-say td{background:#fff2cc; font-weight:800; font-size:14px}
+.sum-table tr.sum-est td{background:#fffbe6}
+.sum-table tr.sum-less td.sum-rs,.sum-table tr.sum-less td.sum-lac{color:#b91c1c}
+.sum-table tr.sum-item td.sum-item{font-weight:600}
+.sum-pct{width:52px; text-align:right; border:1.5px solid #b5ead6; border-radius:6px; background:#def7ec; padding:2px 5px; font-family:var(--ui); font-size:12.5px; font-weight:700; color:#046c4e}
+.sum-pct:focus{outline:none; border-color:var(--sel-border); box-shadow:0 0 0 2px rgba(76,102,240,.14)}
+.sum-exlabel{width:100%; box-sizing:border-box; border:1.5px solid transparent; border-radius:6px; background:transparent; padding:3px 5px; font-family:var(--ui); font-size:13px}
+.sum-exlabel:hover{border-color:var(--line)} .sum-exlabel:focus{outline:none; border-color:var(--sel-border); background:#fff}
+.sum-examt{width:120px; box-sizing:border-box; text-align:right; border:1.5px solid #e6d9a8; border-radius:6px; background:#fffbe6; padding:3px 6px; font-family:var(--ui); font-size:12.5px; font-variant-numeric:tabular-nums}
+.sum-examt:focus{outline:none; border-color:var(--sel-border); background:#fff; box-shadow:0 0 0 2px rgba(76,102,240,.14)}
+.sum-empty{padding:24px; text-align:center; color:var(--muted)}
+.sum-on-lbl{font-size:11px; color:var(--muted); font-weight:600}
+.sum-on{max-width:220px; border:1.5px solid #cfd8f5; border-radius:6px; background:#eef2fe; padding:2px 5px; font-family:var(--ui); font-size:11.5px; font-weight:600; color:#3d4db4; cursor:pointer; vertical-align:middle}
+.sum-on:focus{outline:none; border-color:var(--sel-border); box-shadow:0 0 0 2px rgba(76,102,240,.14)}
+/* DOM — ऊपर की पट्टियाँ compact ताकि sheet को ज़्यादा जगह मिले */
+.editor-panel.dom-mode .sheet-title-banner{display:none}   /* "Detail of Measurement —" banner नहीं */
+.editor-panel.dom-mode .editor-head{padding:4px 12px}
+.editor-panel.dom-mode .formula-bar{padding:4px 12px}
+.editor-panel.dom-mode .editor-tools{gap:6px}
 
 /* Load Analysis modal header */
 .modal.pick{width:560px; max-width:94vw}
@@ -921,6 +1041,16 @@ body{
    (ये सिर्फ़ Master edit mode के लिए रखे गए हैं) */
 .editor-panel:not(.master-mode) .editor-head,
 .editor-panel:not(.master-mode) .kind-banner{display:none}
+
+/* DOM mode — Rate Analysis जैसा ही, पर + Row / − Row चालू (कोई भी पंक्ति जोड़ें/हटाएँ) */
+.editor-panel.dom-mode .editor-head{display:flex}
+.editor-panel.dom-mode .editor-tools{display:flex}
+.editor-panel.dom-mode .editor-title{display:none}   /* शीट-नाम input नहीं */
+.editor-panel.dom-mode #btnAddSubhead,
+.editor-panel.dom-mode #btnDelSubhead,
+.editor-panel.dom-mode #btnMasterItem,
+.editor-panel.dom-mode #btnDelSheet,
+.editor-panel.dom-mode #btnSheetExcel{display:none}   /* analysis-only tools छिपे */
 
 /* master-mode editor — warm accent ताकि Master edit, Rate Analysis से अलग दिखे */
 .editor-panel.master-mode{background:#fffdf7; box-shadow:inset 0 3px 0 #e3ac0f}
@@ -1009,12 +1139,65 @@ body{
 .lin-row label.grow{flex:1; min-width:180px}
 .lin-row label.grow input{width:100%}
 .lin-row input:focus,.lin-row select:focus{outline:none; border-color:var(--sel-border); box-shadow:0 0 0 3px rgba(76,102,240,.14)}
+.lin-row .lr-qd{white-space:nowrap}
+.lin-row .lr-qd.filled{background:#def7ec; border-color:#b5ead6; color:#046c4e; font-weight:600}
 .lin-row .lr-x{
   flex:none; align-self:center; margin-top:15px; background:#fff; border:1px solid var(--line);
   border-radius:8px; width:28px; height:28px; cursor:pointer; color:var(--muted); font-size:13px;
   transition:all .14s var(--ease);
 }
 .lin-row .lr-x:hover{background:#fde4e4; color:var(--red); border-color:var(--red)}
+
+/* Estimate form — कार्य-समूह cards (हर समूह = नाम + मुख्य? + RMR + Overhead) */
+.wg-rows{display:flex; flex-direction:column; gap:12px}
+.wg-card{
+  background:#fbfcff; border:1px solid #dbe3fb; border-left:4px solid var(--navy);
+  border-radius:12px; padding:12px 14px;
+  transition:border-color .15s var(--ease), box-shadow .15s var(--ease);
+}
+.wg-card:hover{box-shadow:var(--shadow)}
+.wg-card:focus-within{border-color:rgba(76,102,240,.5); box-shadow:0 0 0 3px rgba(76,102,240,.12)}
+.wg-top{display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap}
+.wg-name{display:flex; flex-direction:column; gap:5px; font-size:12px; font-weight:600; color:#3d4a63; flex:1; min-width:220px}
+.wg-nm-wrap{display:flex; gap:8px; flex-wrap:wrap}
+.wg-nm-sel{flex:1 1 220px; padding:9px 12px; border:1.5px solid var(--line); border-radius:9px; background:#fff; font-family:var(--ui); font-size:14px; font-weight:600; color:#3d4a63; cursor:pointer; transition:border-color .15s var(--ease), box-shadow .15s var(--ease)}
+.wg-name input{flex:1 1 200px; padding:9px 12px; border:1.5px solid var(--line); border-radius:9px; background:#fff; font-family:var(--ui); font-size:14px; font-weight:600; transition:border-color .15s var(--ease), box-shadow .15s var(--ease)}
+.wg-nm-sel:focus,.wg-name input:focus{outline:none; border-color:var(--sel-border); box-shadow:0 0 0 3px rgba(76,102,240,.14)}
+.wg-main{display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:700; color:var(--navy-dark); white-space:nowrap; cursor:pointer; padding-bottom:8px}
+.wg-main input{width:16px; height:16px; accent-color:var(--navy); cursor:pointer}
+.wg-x{flex:none; align-self:center; background:#fff; border:1px solid var(--line); border-radius:8px; width:28px; height:28px; cursor:pointer; color:var(--muted); font-size:13px; transition:all .14s var(--ease)}
+.wg-x:hover{background:#fde4e4; color:var(--red); border-color:var(--red)}
+/* body — Query दूरी (बाएँ, बाकी जगह) + Overhead (दाएँ, तय column) साथ-साथ */
+.wg-body{display:flex; align-items:flex-start; gap:16px; flex-wrap:wrap; margin-top:10px; padding-top:10px; border-top:1px dashed var(--line-soft)}
+/* inline Query दूरी grid (हर Query के सामने km) */
+.wg-qd{flex:1 1 300px; min-width:250px}
+.wg-qd-head{font-size:11.5px; font-weight:700; color:#3d4a63; margin-bottom:8px}
+.wg-qd-sub{font-weight:500; color:var(--muted)}
+.wg-qd-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(215px,1fr)); gap:8px}
+.wg-qd-item{display:flex; align-items:center; gap:8px; background:#fff; border:1px solid var(--line-soft); border-radius:9px; padding:6px 8px 6px 11px; transition:border-color .15s var(--ease), box-shadow .15s var(--ease)}
+.wg-qd-item:focus-within{border-color:var(--sel-border); box-shadow:0 0 0 3px rgba(76,102,240,.12)}
+.wg-qd-nm{flex:1; min-width:0; display:flex; flex-direction:column; line-height:1.25; font-size:12px; font-weight:600; color:#3d4a63; overflow:hidden}
+.wg-qd-nm small{font-weight:500; font-size:10px; color:var(--muted)}
+.wg-qd-plus{flex:none; font-size:12.5px; font-weight:700; color:#8a6d1a}
+.wg-qd-km{flex:none; width:66px; padding:6px 8px; border:1.5px solid #e6d9a8; border-radius:8px; background:#fffbe6; font-family:var(--ui); font-size:13px; text-align:right; transition:border-color .15s var(--ease), box-shadow .15s var(--ease)}
+.wg-qd-km:focus{outline:none; border-color:var(--sel-border); background:#fffef7; box-shadow:0 0 0 3px rgba(76,102,240,.14)}
+.wg-qd-empty{font-size:11.5px; padding:8px 4px; line-height:1.5}
+/* Overhead — दाईं ओर horizontal (fields अगल-बगल) ताकि card ऊँचा न हो */
+.wg-oh{flex:1 1 320px; display:flex; flex-direction:row; align-items:flex-end; gap:10px; flex-wrap:wrap; align-content:flex-start; padding-left:16px; border-left:1px dashed var(--line-soft)}
+.wg-oh-label{flex-basis:100%; font-size:11.5px; font-weight:700; color:#3d4a63; margin-bottom:2px}
+.wg-f{display:flex; flex-direction:column; gap:4px; font-size:11px; font-weight:600; color:#66738a}
+.wg-f input,.wg-f select{width:104px; padding:6px 9px; border:1.5px solid var(--line); border-radius:9px; background:#fff; font-family:var(--ui); font-size:13px; transition:border-color .15s var(--ease), box-shadow .15s var(--ease)}
+/* भरे जाने वाले value cells (Overhead/Profit %) — हल्का पीला */
+.wg-f input{background:#fffbe6; border-color:#e6d9a8}
+.wg-f input:focus,.wg-f select:focus{outline:none; border-color:var(--sel-border); background:#fffef7; box-shadow:0 0 0 3px rgba(76,102,240,.14)}
+@media(max-width:620px){ .wg-oh{flex-basis:100%; padding-left:0; border-left:none; border-top:1px dashed var(--line-soft); padding-top:10px} }
+
+/* Load picker — कार्य-समूह bar */
+.lap-wgbar{display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:8px 0 2px; padding:7px 10px; background:#eef2fe; border:1px solid #dbe3fb; border-radius:var(--r-md)}
+.lap-wgbar .psb-label{color:#3d4db4}
+.lap-wg-btn{background:#fff; border:1px solid #cfd8f5; border-radius:8px; padding:4px 11px; font-family:var(--ui); font-size:11.5px; font-weight:600; color:#3d4db4; cursor:pointer; transition:all .15s var(--ease)}
+.lap-wg-btn:hover{background:#e2e9ff}
+.lap-wg-btn.active{background:var(--navy); color:#fff; border-color:var(--navy); box-shadow:0 3px 8px rgba(64,86,214,.3)}
 
 /* Master picker — rate mode: checkbox items + footer */
 .pk-item.pk-check{cursor:pointer; justify-content:flex-start; gap:9px}

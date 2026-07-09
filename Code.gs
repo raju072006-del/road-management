@@ -4260,7 +4260,7 @@ function pay_importItems(payload){
   return { items: items.length, meas: meas.length };
 }
 
-// ── Import template (Google Sheet in project folder) ──────────
+// ── Import template (डेटाबेस में अस्थायी टेम्प्लेट) ──────────
 function pay_createImportTemplate(){
   var folder = payFolder_();
   var ss = SBApp.create('आयात टेम्प्लेट — Measurement MB');

@@ -1961,12 +1961,11 @@ function openImportModal(){
   const body=`<div style="line-height:1.6">
     <p style="margin-bottom:8px">Excel (.xlsx) से <b>आइटम</b> व उनकी <b>निर्धारित नाप</b> एक साथ आयात करें। एक ही <b>ItemNo</b> की कई पंक्तियाँ उसी आइटम की नापें बन जाती हैं।</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
-      <button class="btn btn-ghost" onclick="makeImportTemplate()"><span class="ic">⧉</span> Google Sheet टेम्पलेट (dropdown सहित)</button>
       <button class="btn btn-ghost" onclick="downloadSampleExcel()"><span class="ic">⭳</span> नमूना Excel डाउनलोड</button></div>
     <div class="field"><label>Excel फ़ाइल चुनें (.xlsx / .csv)</label>
       <input type="file" id="imp_file" class="inp" accept=".xlsx,.xls,.csv" onchange="handleImportFile(this)"></div>
     <div id="imp_summary" class="faint" style="margin-top:12px">फ़ाइल चुनने पर सारांश यहाँ दिखेगा।</div>
-    <div class="faint" style="margin-top:10px;font-size:12px">कॉलम: ${IMPORT_COLS.join(', ')}.<br>• एक ही <b>ItemNo</b> की कई पंक्तियाँ = उसी आइटम की कई नाप।<br>• <b>इकाई</b> का असली dropdown <b>Google Sheet टेम्पलेट</b> में मिलेगा (Excel में native dropdown नहीं बनता)।<br>• लंबाई खाली हो तो चैनेज (तक−से)×1000 से अपने-आप; वर्ग मीटर में Depth खाली छोड़ें। आयात <b>जोड़ता</b> है।</div></div>`;
+    <div class="faint" style="margin-top:10px;font-size:12px">कॉलम: ${IMPORT_COLS.join(', ')}.<br>• एक ही <b>ItemNo</b> की कई पंक्तियाँ = उसी आइटम की कई नाप।<br>• <b>इकाई</b> के मान्य विकल्प नमूना Excel की <b>इकाई-विकल्प</b> शीट में हैं (Excel में native dropdown नहीं बनता)।<br>• लंबाई खाली हो तो चैनेज (तक−से)×1000 से अपने-आप; वर्ग मीटर में Depth खाली छोड़ें। आयात <b>जोड़ता</b> है।</div></div>`;
   openModal('Excel से आयात', body,
     `<button class="btn btn-ghost" onclick="closeModal()">बंद करें</button>
      <button class="btn btn-primary" id="imp_run" onclick="runImport()" disabled>आयात करें</button>`, true);
@@ -1986,14 +1985,6 @@ function downloadSampleExcel(){
   const uws=XLSX.utils.aoa_to_sheet([['मान्य इकाई'],['घन मीटर'],['वर्ग मीटर'],['मीटर'],['संख्या']]);
   XLSX.utils.book_append_sheet(wb,uws,'इकाई-विकल्प');
   XLSX.writeFile(wb,'BOQ_namuna.xlsx');
-}
-function makeImportTemplate(){
-  if(!IS_GAS){ toast('Google Sheet टेम्पलेट केवल तैनात वेब-ऐप में बनता है',true); return; }
-  loader(true);
-  api('createImportTemplate').then(function(r){ loader(false);
-    if(r&&r.url){ window.open(r.url,'_blank'); toast('टेम्पलेट बना — भरकर File → Download → .xlsx कर के आयात करें'); }
-    else toast('टेम्पलेट नहीं बना',true);
-  }).catch(e=>{loader(false);toast('त्रुटि: '+e,true);});
 }
 function handleImportFile(input){
   const f=input.files && input.files[0]; if(!f) return;

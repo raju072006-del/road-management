@@ -178,12 +178,12 @@ body{
 .panel-card h3{margin:0 0 14px; font-size:15px; color:var(--ink); font-weight:700; letter-spacing:-.01em}
 .form-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px}
 .form-grid label{display:flex; flex-direction:column; gap:5px; font-size:12px; font-weight:600; color:#3d4a63}
-.form-grid input{
+.form-grid input,.form-grid select{
   padding:9px 12px; border:1.5px solid var(--line); border-radius:10px; background:#fbfcfe;
   font-family:var(--ui); font-size:13px; font-weight:400; transition:border-color .15s var(--ease), box-shadow .15s var(--ease), background .15s var(--ease);
 }
-.form-grid input:hover{border-color:#cbd4e6}
-.form-grid input:focus{outline:none; border-color:var(--sel-border); background:#fff; box-shadow:0 0 0 3.5px rgba(76,102,240,.16)}
+.form-grid input:hover,.form-grid select:hover{border-color:#cbd4e6}
+.form-grid input:focus,.form-grid select:focus{outline:none; border-color:var(--sel-border); background:#fff; box-shadow:0 0 0 3.5px rgba(76,102,240,.16)}
 .form-actions{display:flex; justify-content:flex-end; gap:8px; margin-top:16px}
 
 /* ---------- New Estimate form — बाक़ी panels से अलग, हाइलाइटेड creation-panel ---------- */
@@ -216,10 +216,26 @@ body{
   padding:22px 24px 8px; gap:18px;
   grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
 }
-#newEstimateForm .form-grid > label:first-child{grid-column:1 / -1}   /* "कार्य का नाम" पूरी चौड़ाई में */
+#newEstimateForm .form-grid.ne-basic > label:first-child{grid-column:1 / -1}   /* "कार्य का नाम" पूरी चौड़ाई में */
+#newEstimateForm > .form-grid.ne-top{grid-template-columns:1fr 1fr 1fr}   /* आगणन प्रकार | योजना का नाम | वित्तीय वर्ष — तीन बराबर */
 #newEstimateForm .form-grid label{font-size:12.5px; gap:6px}
-#newEstimateForm .form-grid input{padding:11px 14px; font-size:14px}
+#newEstimateForm .form-grid input,#newEstimateForm .form-grid select{padding:11px 14px; font-size:14px}
 #newEstimateForm > .oh-block{margin:16px 24px 0}
+/* विभागीय अधिकारी — खंड/वृत्त कार्यालय समूह */
+#neOfficers{margin-top:6px}
+.off-grp{border:1px solid var(--line); border-radius:12px; padding:12px 14px 14px; margin-top:12px; background:#fbfcfe}
+.off-grp-h{font-size:12.5px; font-weight:700; color:#2e3a73; margin-bottom:10px; display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+.off-grp-h small{font-weight:500; color:var(--muted); font-size:11.5px}
+.off-multi{margin-top:12px}
+.off-multi-h{font-size:12px; font-weight:600; color:#3d4a63; margin-bottom:6px; display:flex; align-items:center; gap:10px}
+.off-row{display:flex; gap:8px; align-items:center; margin-bottom:8px}
+.off-row input{flex:1; padding:10px 13px; border:1.5px solid var(--line); border-radius:10px; background:#fff; font-family:var(--ui); font-size:14px}
+.off-row input:hover{border-color:#cbd4e6}
+.off-row input:focus{outline:none; border-color:var(--sel-border); box-shadow:0 0 0 3.5px rgba(76,102,240,.16)}
+.off-del{border:1px solid var(--line); background:#fff; color:#c0392b; border-radius:8px; width:34px; height:34px; flex:0 0 auto; cursor:pointer; font-size:13px}
+.off-del:hover{background:#fdeaea; border-color:#e6b3ab}
+.off-add{border:1px solid var(--line); background:#eef2fe; color:#2e3a73; border-radius:8px; padding:3px 11px; font-size:11.5px; font-weight:600; cursor:pointer; font-family:var(--ui)}
+.off-add:hover{background:#e0e8ff}
 #newEstimateForm > .form-actions{
   margin-top:0; padding:15px 22px 18px; background:#fafbff; border-top:1px solid #eef1f7;
 }
@@ -316,6 +332,65 @@ body{
 .qd-nm{flex:1; min-width:0; display:flex; flex-direction:column; font-size:13px; font-weight:600; color:var(--ink)}
 .qd-nm small{font-weight:500; color:var(--muted); font-size:10.5px}
 .qd-km{width:88px !important; flex:none; text-align:right; margin:0 !important}
+.mr-item-desc{width:100%; box-sizing:border-box; padding:9px 12px; border:1.5px solid var(--line); border-radius:10px; font-family:var(--ui); font-size:14px}
+.mr-item-desc:focus{outline:none; border-color:var(--sel-border); box-shadow:0 0 0 3.5px rgba(76,102,240,.16)}
+.bc-row{display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap}
+.bc-row label{display:flex; flex-direction:column; gap:5px; font-size:12px; font-weight:600; color:#3d4a63}
+.bc-row label.bc-grow{flex:1; min-width:180px}
+.bc-row input{width:100%; box-sizing:border-box; padding:9px 12px; border:1.5px solid var(--line); border-radius:10px; font-family:var(--ui); font-size:14px}
+.bc-row label:not(.bc-grow) input{width:140px}
+.bc-row input:focus{outline:none; border-color:var(--sel-border); box-shadow:0 0 0 3.5px rgba(76,102,240,.16)}
+/* Estimate form — Bitumen Cartage विवरण की पंक्तियाँ */
+.bit-rows{display:flex; flex-direction:column; gap:8px; margin:8px 0 4px}
+.bit-card{display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; background:#f7f8fc; border:1px solid #e8ebf1; border-radius:10px; padding:9px 11px}
+.bit-card .bit-f{display:flex; flex-direction:column; gap:4px; font-size:11.5px; font-weight:600; color:#3d4a63}
+.bit-card .bit-f.bit-grow{flex:1; min-width:180px}
+.bit-card .bit-f input,.bit-card .bit-f select{padding:8px 10px; border:1.5px solid var(--line); border-radius:9px; font-family:var(--ui); font-size:13px; background:#fff}
+.bit-card .bit-f:not(.bit-grow) input,.bit-card .bit-f:not(.bit-grow) select{width:150px}
+.bit-card .bit-f input:focus,.bit-card .bit-f select:focus{outline:none; border-color:var(--sel-border); box-shadow:0 0 0 3px rgba(76,102,240,.14)}
+.bit-card .bit-del{align-self:center}
+.ne-bit-date{display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:#3d4a63; margin-left:8px}
+.ne-bit-date select{padding:5px 9px; border:1.5px solid var(--line); border-radius:8px; font-family:var(--ui); font-size:12.5px; background:#fff}
+.ne-bit-date select:focus{outline:none; border-color:var(--sel-border); box-shadow:0 0 0 2px rgba(76,102,240,.14)}
+.bit-refdist{margin:8px 0 10px}
+.bit-refdist .wg-qd-grid{grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
+.bit-refdist .wg-qd-item.bit-rd-item{flex-wrap:wrap; row-gap:6px}
+.bit-refdist .wg-qd-nm{overflow:visible; white-space:normal; word-break:break-word; min-width:88px}
+.bit-type-table{width:100%; margin:6px 0 0; font-size:12.5px}
+.bit-type-table th{background:#f7f8fc; font-size:11px; padding:6px 10px}
+.bit-type-table td{padding:5px 10px}
+.bit-type-table td.bit-sn{text-align:center; font-weight:600}
+.bit-type-table td.num{text-align:right; font-variant-numeric:tabular-nums}
+.bit-refdist .bit-rd-side{padding:5px 8px; border:1.5px solid var(--line); border-radius:8px; font-family:var(--ui); font-size:12px; background:#fff}
+.bit-refdist .bit-rd-side:focus{outline:none; border-color:var(--sel-border); box-shadow:0 0 0 2px rgba(76,102,240,.14)}
+/* Master › Bitumen Rate — date-समूह */
+.bit-group{border:1px solid var(--line); border-radius:12px; background:#fff; margin:0 0 16px; overflow:hidden; box-shadow:var(--shadow)}
+.bit-group-head{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 14px; background:#eef2fe; border-bottom:1px solid var(--line); flex-wrap:wrap}
+.bit-group-head b{font-size:13.5px; color:var(--ink)}
+.bit-group-acts{display:flex; gap:6px; flex-wrap:wrap}
+.bit-group-table{width:100%; margin:0}
+.bit-group-table th{background:#f7f8fc; font-size:11.5px}
+.bit-group-table select,.bit-group-table input{width:100%; box-sizing:border-box; padding:6px 8px; border:1.5px solid var(--line); border-radius:8px; font-family:var(--ui); font-size:13px; background:#fff}
+.bit-group-table select:focus,.bit-group-table input:focus{outline:none; border-color:var(--sel-border); box-shadow:0 0 0 2px rgba(76,102,240,.14)}
+.bit-refs{display:flex; gap:16px; flex-wrap:wrap; padding:11px 14px; background:#fafbff; border-top:1px solid var(--line-soft)}
+.bit-ref-item{font-size:12.5px; color:#3d4a63; display:flex; align-items:center; gap:8px}
+.bit-ref-item a{color:var(--primary,#4056d6); font-weight:600; text-decoration:none}
+.bit-ref-item a:hover{text-decoration:underline}
+.bit-refup{cursor:pointer}
+.bit-filter{padding:11px 14px}
+.bit-filter h3{margin:0 0 8px}
+.bit-filter-row{display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap}
+.bit-filter-row label{display:flex; flex-direction:column; gap:4px; font-size:11.5px; font-weight:600; color:#3d4a63}
+.bit-filter-row select{padding:7px 10px; border:1.5px solid var(--line); border-radius:9px; font-family:var(--ui); font-size:13px; background:#fff; min-width:120px}
+.bit-lockbadge{font-size:11px; font-weight:700; color:#b45309; background:#fff4e0; border:1px solid #f5d9a8; border-radius:999px; padding:1px 8px; margin-left:6px}
+.bit-group.locked{opacity:.96}
+.bit-group.locked .bit-group-head{background:#f3f5f9}
+.bit-group.locked .bit-group-table td{color:#2c313c}
+.bit-group-table td.bit-sn{text-align:center; vertical-align:middle; font-weight:600}
+.bit-dp-row{display:flex; gap:12px; margin:6px 0 2px}
+.bit-dp-row label{flex:1; display:flex; flex-direction:column; gap:5px; font-size:12px; font-weight:600; color:#3d4a63}
+.bit-dp-row select{padding:9px 11px; border:1.5px solid var(--line); border-radius:10px; font-family:var(--ui); font-size:14px; background:#fff}
+.bit-dp-row select:focus{outline:none; border-color:var(--sel-border); box-shadow:0 0 0 3px rgba(76,102,240,.14)}
 .mr-calc{margin-top:16px; max-width:520px}
 .mr-calc .calc-row{display:flex; align-items:flex-end; gap:12px}
 .mr-calc .calc-row label{display:flex; flex-direction:column; gap:5px; font-size:12px; font-weight:600; color:#3d4a63}
@@ -774,6 +849,142 @@ body{
   table.ptable tr.pt-foot td{background:#fef4d8; font-weight:700}
 }
 
+/* ============== Basic Sheet › Cover Page (HTML दस्तावेज़) ============== */
+.cover-head{flex-wrap:wrap; gap:8px}
+.cover-tools{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-left:auto}
+.cov-pick{display:inline-flex; align-items:center; gap:5px; font-size:12px; color:var(--muted)}
+.cov-pick select,.cov-pick input{font-family:var(--ui); font-size:12.5px; padding:5px 8px; border:1px solid var(--line); border-radius:8px; background:#fff}
+.cov-pick input{min-width:170px}
+.cover-stage{display:flex; justify-content:center; padding:22px; background:#eef1f6; overflow:auto}
+.cover-empty{padding:60px 20px; text-align:center; font-size:14px}
+/* A4 = 210×297mm; भीतरी border-frame के साथ */
+.cover-doc{
+  width:794px; min-height:1123px; background:#fff; color:#111;
+  padding:34px 34px 38px; border:3px double #111; box-shadow:0 6px 30px rgba(20,28,46,.18);
+  box-sizing:border-box; font-family:"Noto Sans Devanagari","Nirmala UI",var(--ui);
+  display:flex; flex-direction:column; justify-content:space-between;   /* पूरा A4 पेज भरे */
+}
+/* सभी लाइनें/खंड cover-doc के सीधे flex-child (contents) → gap Auto, पेज हमेशा भरा */
+.cov-gov{text-align:center; font-size:52px; font-weight:800; font-family:"Noto Serif Devanagari",serif; letter-spacing:.5px; line-height:1.15; margin:0}
+.cov-emblem-wrap{text-align:center; margin:0}
+.cov-emblem{width:190px; height:190px; object-fit:contain}
+.cov-emblem-ph{display:inline-flex; flex-direction:column; align-items:center; justify-content:center; width:170px; height:170px; border:2px dashed #b6bccb; border-radius:50%; color:#98a0b3; font-size:15px; font-weight:600; line-height:1.25}
+.cov-emblem-ph small{font-size:10px; font-weight:500}
+.cov-title-box{border:2px solid #111; text-align:center; font-size:28px; font-weight:700; font-style:italic; font-family:"Noto Serif Devanagari",serif; padding:9px 12px; margin:0 40px}
+.cov-year-box{border:1.5px solid #111; text-align:center; font-size:17px; padding:5px; margin:0 150px}
+.cov-fields{display:contents}
+.cov-row{display:flex; align-items:baseline; gap:10px; margin:0; font-size:15px; line-height:1.35}
+.cov-lbl{color:#111; flex:0 0 auto; min-width:150px}
+.cov-lbl2{color:#111; margin-left:44px; flex:0 0 auto}
+.cov-val{flex:1; font-weight:600; min-width:0}
+.cov-row-2 .cov-val{flex:0 1 auto}
+.cov-val.strong{font-weight:700}
+.cov-len{display:contents}
+.cov-len .cov-lbl{min-width:210px}
+.cov-val.big{font-size:22px; font-weight:800; font-style:italic; flex:0 0 auto}
+.cov-val.big2{font-size:17px; font-weight:700; font-style:italic; flex:0 0 auto}
+.cov-unit{font-weight:700; font-size:13px}
+.cov-cost{display:flex; align-items:baseline; gap:12px; background:#c9def0; border:1px solid #9dc0e0; padding:9px 12px; margin:0; font-size:17px}
+.cov-cost .cov-lbl{min-width:auto; font-weight:600}
+.cov-cost-val{font-size:24px; font-weight:800; font-style:italic}
+.cov-break{margin:0; width:58%}
+.cb-row{display:flex; justify-content:space-between; gap:16px; background:#fdf6d8; border:1px solid #e6d9a0; border-bottom:none; padding:4px 9px; font-size:12.5px; font-style:italic; color:#3a3a20}
+.cb-row:last-child{border-bottom:1px solid #e6d9a0}
+.cb-row.cb-total{font-weight:700; background:#f7edbe}
+
+/* Checklist — Checking Proforma (compact — एक A4 पेज पर) */
+.chk-doc{display:block; align-self:flex-start; justify-content:flex-start; min-height:auto; height:auto; overflow:visible; color:#111; padding:18px 26px 22px; border:1.5px solid #111;
+  font-family:"Noto Sans Devanagari","Nirmala UI",var(--ui)}
+.chk-hd{text-align:center; font-size:17px; font-weight:800; border:1.5px solid #111; padding:5px; margin-bottom:5px; letter-spacing:.4px}
+.chk-sub{text-align:center; font-size:12px; font-weight:700; border:1px solid #111; padding:3px; margin-bottom:6px}
+.chk-work{text-align:center; font-size:11px; font-weight:600; margin-bottom:8px; line-height:1.3}
+.chk-body{margin-bottom:4px}
+.chk-item{display:flex; gap:6px; margin-top:5px; font-size:11px; line-height:1.28}
+.chk-n{font-weight:700; flex:0 0 18px; text-align:right}
+.chk-h{font-weight:700}
+.chk-pt{display:flex; gap:6px; margin:2px 0 0 24px; font-size:10.5px; line-height:1.3}
+.chk-pn{flex:0 0 22px}
+.chk-tx{flex:1}
+.chk-off{width:100%; border-collapse:collapse; margin-top:10px; font-size:11px}
+.chk-off th,.chk-off td{border:1px solid #111; padding:4px 7px; vertical-align:top}
+.chk-off th{text-align:center; font-weight:700; background:#eef1fa; padding:4px}
+.chk-off .chk-sn{text-align:center}
+.chk-off .chk-nm{font-weight:600}
+.chk-off .chk-dg{font-style:italic}
+.chk-off tbody tr{height:30px}
+
+/* Index — विषय-सूची */
+.idx-doc{padding:26px 30px 30px; border:none}
+.idx-hd{text-align:center; font-size:20px; font-weight:800; border:1.5px solid #111; padding:12px; margin-bottom:16px; text-decoration:underline; letter-spacing:.5px}
+.idx-tbl{width:100%; border-collapse:collapse; font-size:14px}
+.idx-tbl th,.idx-tbl td{border:1px solid #111; padding:9px 12px; vertical-align:middle}
+.idx-tbl th{text-align:center; font-weight:700; background:#d9d9d9}
+.idx-tbl .idx-sn{text-align:center; width:16%}
+.idx-tbl .idx-ct{text-align:left}
+.idx-tbl tbody tr{height:40px}
+
+/* Report — प्रतिवेदन (editable + linked) */
+.rpt-hint{font-size:11px; color:var(--muted)}
+.rpt-doc{align-self:flex-start; display:block; min-height:auto; height:auto; overflow:visible; border:none; color:#111; padding:26px 34px 40px;
+  font-family:"Noto Sans Devanagari","Nirmala UI",var(--ui); font-size:15.5px; line-height:1.65}
+.rpt-doc:focus{outline:none}
+.rpt-title{text-align:center; font-size:22px; font-weight:800; text-decoration:underline; margin-bottom:18px}
+.rpt-row{display:flex; gap:14px; margin-bottom:13px}
+.rpt-lbl{flex:0 0 158px; font-weight:700}
+.rpt-val{flex:1; text-align:justify}
+.rpt-para{text-align:justify; margin:13px 0}
+.rpt-link{background:#e8f0ff; border-radius:3px; padding:0 3px; font-weight:600}
+.rpt-tbl{border-collapse:collapse; margin:14px auto; width:80%; font-size:15px}
+.rpt-tbl th,.rpt-tbl td{border:1px solid #111; padding:6px 9px; text-align:center}
+.rpt-tbl td:nth-child(2){text-align:left; font-style:italic}
+.rpt-tbl2{border-collapse:collapse; margin:8px 0 12px; width:100%; font-size:14px}
+.rpt-tbl2 td{border:1px solid #111; padding:5px 8px; vertical-align:top}
+.rpt-tbl2 .rpt-n{text-align:center; width:36px}
+.rpt-tbl2 .rpt-it{width:34%}
+.rpt-sign{display:flex; justify-content:space-between; margin-top:48px; text-align:center; gap:20px}
+.rpt-sign-col{width:46%}
+.rpt-sign-nm{font-weight:700; margin-bottom:2px}
+.rpt-sign-col b{display:block}
+.rpt-tot{font-weight:700}
+.rpt-act{width:58px; text-align:center; white-space:nowrap}
+.rpt-act button{border:1px solid var(--line); background:#fff; border-radius:6px; width:23px; height:23px; line-height:1; cursor:pointer; font-size:12px; padding:0; margin:0 1px}
+.rpt-act button:hover{background:#eef2fe}
+.rpt-rowins{color:#2e7d32}
+.rpt-rowdel{color:#c0392b}
+
+/* Reference फाइलें */
+.ref-top{margin:6px 2px 16px}
+.ref-empty{padding:40px 20px; text-align:center; font-size:14px}
+.ref-items{display:flex; flex-direction:column; gap:10px}
+.ref-item{display:flex; align-items:center; gap:12px; padding:11px 14px; border:1px solid var(--line); border-radius:12px; background:#fff; box-shadow:var(--shadow)}
+.ref-ord{display:flex; flex-direction:column; gap:3px}
+.ref-ord button{border:1px solid var(--line); background:#fff; border-radius:6px; width:26px; height:20px; line-height:1; cursor:pointer; font-size:10px; color:var(--navy,#2e3a73); padding:0}
+.ref-ord button:hover:not(:disabled){background:#eef2fe}
+.ref-ord button:disabled{opacity:.35; cursor:default}
+.ref-ic{font-size:26px; flex:0 0 auto}
+.ref-main{flex:1; min-width:0; display:flex; flex-direction:column; gap:6px}
+.ref-nm{font-weight:600; font-size:13.5px; color:var(--ink); word-break:break-word}
+.ref-note{padding:7px 11px; border:1.5px solid var(--line); border-radius:9px; background:#fbfcfe; font-family:var(--ui); font-size:12.5px; max-width:520px}
+.ref-note:focus{outline:none; border-color:var(--sel-border); box-shadow:0 0 0 3px rgba(76,102,240,.14)}
+.ref-acts{display:flex; gap:8px; flex:0 0 auto}
+.ref-del{color:#c0392b}
+@media(max-width:640px){ .ref-item{flex-wrap:wrap} .ref-acts{width:100%} }
+
+@media print{
+  @page{size:A4; margin:8mm}
+  .cover-doc.cover-print{width:100%; min-height:279mm; height:279mm; border:3px double #000; box-shadow:none; padding:12mm 12mm;
+    -webkit-print-color-adjust:exact; print-color-adjust:exact}
+  .cover-doc.cover-print .cov-gov{font-size:46px}
+  .cover-doc.cover-print .cov-emblem{width:175px; height:175px}
+  .cover-doc.chk-doc.cover-print{height:auto; min-height:auto; border:1.5px solid #000; padding:7mm 10mm;
+    -webkit-print-color-adjust:exact; print-color-adjust:exact}
+  .cover-doc.idx-doc.cover-print{border:none; padding:8mm 10mm}
+  .cover-doc.rpt-doc.cover-print{border:none; height:auto; min-height:auto; padding:8mm 12mm}
+  .rpt-print .rpt-link{background:none !important; padding:0}
+  .rpt-print .rpt-act{display:none}
+  .chk-item,.chk-off tbody tr,.chk-off thead,.idx-tbl tbody tr,.rpt-sign,.rpt-tbl2 tr{page-break-inside:avoid}
+}
+
 /* ---------- Responsive ---------- */
 @media(max-width:1000px){
   .layout{grid-template-columns:1fr; grid-auto-rows:minmax(220px,auto)}
@@ -930,6 +1141,12 @@ body{
 .dom-head{display:flex; align-items:center; gap:10px; padding:5px 12px; border-bottom:1px solid var(--line); background:#fff}
 .dom-head-title{flex:1; min-width:0; font-size:13.5px; font-weight:800; color:var(--ink); letter-spacing:-.01em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .dom-editor-host{flex:1; min-height:0; display:flex; overflow:hidden}
+/* Summary head — शीर्षक + Template-स्थिति + inline toolbar */
+.sum-head{flex-wrap:wrap}
+.sum-head .dom-head-title{flex:0 1 auto}
+.sum-tpl-status{flex:1 1 160px; min-width:0; font-size:11.5px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.sum-toolbar-inline{display:flex; align-items:center; gap:6px; flex-wrap:wrap}
+@media(max-width:640px){ .sum-tpl-status{flex-basis:100%; white-space:normal} }
 .dom-editor-host > .editor-panel{flex:1; min-width:0}
 /* Sub-Estimate (DOM/BOQ) — हर कार्य-समूह के अंदर कई उपकार्य */
 .sub-est-list{display:flex; flex-direction:column; gap:14px; margin-top:10px}
@@ -944,8 +1161,12 @@ body{
 .sub-est-row .se-name{flex:1; min-width:0; font-weight:600; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .sub-est-row .se-count{flex:none; font-size:11px; color:var(--muted); background:#fff; border:1px solid var(--line); border-radius:999px; padding:2px 9px}
 .sub-est-row .se-actions{flex:none; display:flex; gap:6px}
+.sub-est-row .se-remark{flex:none; font-size:11px; font-weight:700; border-radius:999px; padding:2px 10px; white-space:nowrap; border:1px solid transparent}
+.sub-est-row .se-remark.added{color:#046c4e; background:#def7ec; border-color:#a7e3c9}
+.sub-est-row .se-remark.insum{color:#3d4db4; background:#eef2fe; border-color:#cfd8f5}
 .btn.xs.danger{color:#b91c1c; border-color:#f6bcbc; background:#fef2f2}
 .btn.xs.danger:hover{background:#fde4e4}
+.se-tpl-foot{display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; padding-top:12px; border-top:1px solid var(--line)}
 .se-dialog{width:400px; max-width:94vw}
 
 /* ===== Summary of Estimated Cost ===== */

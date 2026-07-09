@@ -117,12 +117,27 @@
           <!-- New estimate detail form (hidden until needed) -->
           <div class="panel-card" id="newEstimateForm" style="display:none">
             <h3>नए Estimate का विवरण</h3>
+            <div class="form-grid ne-top">
+              <label>आगणन प्रकार<select id="neCovAagType">
+                <option value="प्रारम्भिक आगणन">प्रारम्भिक आगणन</option>
+                <option value="विस्तृत आगणन">विस्तृत आगणन</option>
+              </select></label>
+              <label>योजना का नाम<select id="neCovYojana"></select></label>
+              <label>वित्तीय वर्ष<input type="text" id="neYear" placeholder="जैसे: 2026-27" /></label>
+            </div>
             <div class="form-grid">
+              <label>विधानसभा का नाम<input type="text" id="neCovVidhan" placeholder="जैसे: Orai, Madhaugarh" /></label>
+              <label>लोकसभा का नाम<input type="text" id="neCovLok" placeholder="जैसे: Jalaun-Garautha-Bhognipur" /></label>
+              <label>ब्लॉक का नाम<input type="text" id="neCovBlock" placeholder="जैसे: Dakore, Konch" /></label>
+            </div>
+            <div class="form-grid ne-basic">
               <label>कार्य का नाम<input type="text" id="neWorkName" placeholder="जैसे: चावला मार्केट से हमीरपुर रोड चौड़ीकरण" /></label>
               <label>मार्ग का Code<input type="text" id="neRoadCode" placeholder="जैसे: MDR-12" /></label>
-              <label>लंबाई (km)<input type="text" id="neLength" placeholder="जैसे: 8.5" /></label>
-              <label>Earth Work Leading Distance<input type="text" id="neEwLead" value="1.00" placeholder="जैसे: 1.00" /></label>
-              <label>वित्तीय वर्ष<input type="text" id="neYear" placeholder="जैसे: 2026-27" /></label>
+              <label>मार्ग का सृष्टि कोड<input type="text" id="neCovSrishti" placeholder="जैसे: UP34OD 0148" /></label>
+              <label>प्रस्तावित लंबाई (km)<input type="text" id="neLength" placeholder="जैसे: 8.5" /></label>
+              <label>मार्ग की कुल लम्बाई (km)<input type="text" id="neCovTotalLen" placeholder="जैसे: 3.500" /></label>
+              <label>मशीनरी Leading की दूरी (km)<input type="text" id="neMachLead" placeholder="प्रस्तावित लंबाई से" /></label>
+              <label>Earth Work Leading Distance (km)<input type="text" id="neEwLead" value="5.00" placeholder="जैसे: 5.00" /></label>
             </div>
             <div class="oh-block">
               <div class="lin-head">🗂 कार्य-समूह <button type="button" class="btn xs" id="neWgAdd">+ समूह जोड़ें</button></div>
@@ -134,6 +149,30 @@
                 <option value="अन्य कार्य"></option>
               </datalist>
               <p class="oh-note">हर <b>कार्य-समूह</b> का अपना <b>RMR</b> (📏 Query दूरियाँ) और अपने <b>Overhead/Profit %</b> होते हैं। आगे Analysis load करते समय समूह चुना जाएगा — उसी का RMR व दरें लगेंगी, इसलिए हर समूह का Analysis अलग रहेगा। एक समूह को <b>मुख्य कार्य</b> मार्क करें (आगे काम आएगा)।</p>
+            </div>
+            <div class="oh-block">
+              <div class="lin-head">🛢️ Bitumen Cartage &amp; Rate विवरण
+                <label class="ne-bit-date">📅 प्रभावी Date <select id="neBitDate"><option value="">— Master से Date चुनें —</option></select></label>
+                <button type="button" class="btn xs" id="neBitLock">🔒 Save/Lock</button></div>
+              <div class="wg-qd bit-refdist" id="neBitRefDist"></div>
+              <div class="bit-rows" id="neBitRows"></div>
+              <p class="oh-note">ऊपर से केवल <b>प्रभावी Date</b> चुनें — Master › Bitumen Rate से <b>प्रकार, Refinery व दरें</b> अपने-आप लोड हो जाती हैं; फिर <b>Refinery से site की दूरी</b> (📏 grid) में हर Refinery के लिए <b>एक बार</b> दूरी भरें — उस Refinery के सभी प्रकार पर वही लगेगी (Both/One Side डिफ़ॉल्ट Both Side)। Rate/Refinery चाहें तो नीचे बदल सकते हैं।</p>
+            </div>
+            <div class="oh-block">
+              <div class="lin-head">🏛 क्षेत्र/खंड व विभागीय अधिकारी</div>
+              <div class="form-grid">
+                <label>क्षेत्र का नाम<input type="text" id="neCovKshetra" placeholder="जैसे: झांसी क्षेत्र, लो0नि0वि0, झांसी" /></label>
+                <label>वृत्त का नाम<input type="text" id="neCovVritt" placeholder="जैसे: झांसी वृत्त, लो0नि0वि0, झांसी" /></label>
+                <label>खंड का नाम<input type="text" id="neCovKhand" placeholder="जैसे: प्रांतीय खंड, लो0नि0वि0, उरई (जालौन)" /></label>
+              </div>
+              <div id="neOfficers"></div>
+              <datalist id="offEE"></datalist>
+              <datalist id="offAE"></datalist>
+              <datalist id="offJE"></datalist>
+              <datalist id="offJEPraK"></datalist>
+              <datalist id="offJEPraV"></datalist>
+              <datalist id="offSE"></datalist>
+              <p class="oh-note"><b>खंड कार्यालय</b> के अधिकारी खंड-नाम के अनुसार, <b>वृत्त कार्यालय</b> के वृत्त-नाम के अनुसार सुरक्षित होते हैं — अगली बार उसी खंड/वृत्त पर वही नाम drop-down में मिलेंगे। सहायक/अवर अभियंता एक से अधिक जोड़ सकते हैं। <b>लागतें</b> Summary पेज से स्वतः कवर में आती हैं।</p>
             </div>
             <div class="form-actions">
               <button class="btn" id="neCancel">रद्द</button>
@@ -151,13 +190,84 @@
         <section class="view scroll-view" id="view-basic-sheet">
           <div class="view-head"><h2>Basic Sheet</h2><p class="view-sub">कवर पेज, चेकलिस्ट, Index, Report व Reference फाइलें।</p></div>
           <div class="card-grid">
-            <div class="doc-card"><div class="ac-ic">📘</div><b>Cover Page</b><div class="doc-actions"><button class="btn xs" data-todo="Cover बनाएँ">बनाएँ</button><button class="btn xs" data-todo="Cover edit">Edit</button></div></div>
-            <div class="doc-card"><div class="ac-ic">✅</div><b>Checklist</b><div class="doc-actions"><button class="btn xs" data-todo="Checklist">बनाएँ</button><button class="btn xs" data-todo="Checklist edit">Edit</button></div></div>
-            <div class="doc-card"><div class="ac-ic">🔖</div><b>Index</b><div class="doc-actions"><button class="btn xs" data-todo="Index">बनाएँ</button><button class="btn xs" data-todo="Index edit">Edit</button></div></div>
-            <div class="doc-card"><div class="ac-ic">📝</div><b>Report</b><div class="doc-actions"><button class="btn xs" data-todo="Report">बनाएँ</button><button class="btn xs" data-todo="Report edit">Edit</button></div></div>
-            <div class="doc-card"><div class="ac-ic">📎</div><b>Reference फाइलें</b><div class="doc-actions"><button class="btn xs" data-todo="Reference upload">Upload</button></div></div>
+            <div class="doc-card"><div class="ac-ic">📘</div><b>Cover Page</b><span class="dc-sub">सरकारी कवर पृष्ठ — Print/PDF</span><div class="doc-actions"><button class="btn xs" id="openCover">खोलें</button></div></div>
+            <div class="doc-card"><div class="ac-ic">✅</div><b>Checklist</b><span class="dc-sub">Checking Proforma — Print/PDF</span><div class="doc-actions"><button class="btn xs" id="openChecklist">खोलें</button></div></div>
+            <div class="doc-card"><div class="ac-ic">🔖</div><b>Index</b><span class="dc-sub">विषय-सूची — Print/PDF</span><div class="doc-actions"><button class="btn xs" id="openIndex">खोलें</button></div></div>
+            <div class="doc-card"><div class="ac-ic">📝</div><b>Report</b><span class="dc-sub">प्रतिवेदन — editable, कुछ फ़ील्ड linked</span><div class="doc-actions"><button class="btn xs" id="openReport">खोलें</button></div></div>
+            <div class="doc-card"><div class="ac-ic">📎</div><b>Reference फाइलें</b><span class="dc-sub">फाइल अपलोड · नोट · View · क्रम</span><div class="doc-actions"><button class="btn xs" id="openReference">खोलें</button></div></div>
           </div>
           <p class="hint-box">यह खंड अभी ढाँचा (frame) है — अगली बार इसके अंदर एक-एक करके बनाएँगे।</p>
+        </section>
+
+        <!-- ===== 2a. BASIC SHEET › COVER PAGE (HTML दस्तावेज़ template) ===== -->
+        <section class="view scroll-view" id="view-cover">
+          <div class="dom-head cover-head">
+            <button class="btn sm" id="coverBack">← Basic Sheet</button>
+            <b class="dom-head-title">Cover Page — कवर पृष्ठ</b>
+            <span class="cover-tools">
+              <label class="cov-pick">डिज़ाइन
+                <select id="covDesign"><option value="up-sarkar">UP सरकार</option></select></label>
+              <label class="cov-pick">आगणन
+                <select id="covAagType"><option value="प्रारम्भिक आगणन">प्रारम्भिक आगणन</option><option value="विस्तृत आगणन">विस्तृत आगणन</option></select></label>
+              <label class="cov-pick">योजना
+                <select id="covYojana"></select></label>
+              <button class="btn sm" id="covEmblem" title="राज्य-चिन्ह (लोगो) अपलोड करें">🖼 राज्य-चिन्ह</button>
+              <button class="btn sm" id="covEmblemClear" title="राज्य-चिन्ह हटाएँ">✕</button>
+              <button class="btn sm primary" id="covPrint">🖨 Print / PDF</button>
+            </span>
+          </div>
+          <div class="cover-stage"><div class="cover-doc" id="coverDoc"></div></div>
+          <input type="file" id="covEmblemFile" accept="image/*" style="display:none" />
+        </section>
+
+        <!-- ===== 2b. BASIC SHEET › CHECKLIST (Checking Proforma — HTML दस्तावेज़) ===== -->
+        <section class="view scroll-view" id="view-checklist">
+          <div class="dom-head cover-head">
+            <button class="btn sm" id="chkBack">← Basic Sheet</button>
+            <b class="dom-head-title">Checklist — Checking Proforma</b>
+            <span class="cover-tools">
+              <button class="btn sm primary" id="chkPrint">🖨 Print / PDF</button>
+            </span>
+          </div>
+          <div class="cover-stage"><div class="cover-doc chk-doc" id="checklistDoc"></div></div>
+        </section>
+
+        <!-- ===== 2c. BASIC SHEET › INDEX (विषय-सूची — HTML दस्तावेज़) ===== -->
+        <section class="view scroll-view" id="view-index">
+          <div class="dom-head cover-head">
+            <button class="btn sm" id="idxBack">← Basic Sheet</button>
+            <b class="dom-head-title">Index — विषय-सूची</b>
+            <span class="cover-tools">
+              <button class="btn sm primary" id="idxPrint">🖨 Print / PDF</button>
+            </span>
+          </div>
+          <div class="cover-stage"><div class="cover-doc chk-doc idx-doc" id="indexDoc"></div></div>
+        </section>
+
+        <!-- ===== 2d. BASIC SHEET › REPORT (प्रतिवेदन — editable + linked fields) ===== -->
+        <section class="view scroll-view" id="view-report">
+          <div class="dom-head cover-head">
+            <button class="btn sm" id="rptBack">← Basic Sheet</button>
+            <b class="dom-head-title">Report — प्रतिवेदन</b>
+            <span class="cover-tools">
+              <span class="rpt-hint">🔗 नीला = linked (Estimate से auto)</span>
+              <button class="btn sm" id="rptReset" title="फिर से default बनाएँ (edits मिटेंगे)">🔄 फिर से</button>
+              <button class="btn sm" id="rptSave">💾 सहेजें</button>
+              <button class="btn sm primary" id="rptPrint">🖨 Print / PDF</button>
+            </span>
+          </div>
+          <div class="cover-stage"><div class="cover-doc rpt-doc" id="reportDoc" spellcheck="false"></div></div>
+        </section>
+
+        <!-- ===== 2e. BASIC SHEET › REFERENCE फाइलें ===== -->
+        <section class="view scroll-view" id="view-reference">
+          <div class="view-head with-back">
+            <button class="btn sm" id="refBack">← Basic Sheet</button>
+            <div><h2>Reference फाइलें</h2><p class="view-sub">फाइल अपलोड करें — हर के साथ छोटा नोट, View, Delete व ऊपर/नीचे क्रम।</p></div>
+          </div>
+          <div class="ref-top"><button class="btn primary" id="refUpload">⭳ फाइल अपलोड करें</button>
+            <input type="file" id="refFile" multiple style="display:none" /></div>
+          <div id="refList"></div>
         </section>
 
         <!-- ===== 3. BASIC ANALYSIS ===== -->
@@ -165,9 +275,19 @@
           <div class="view-head"><h2>Basic Analysis</h2><p class="view-sub">RMR (Carted Rate of Material incl. leading charges) व Bitumen Rate Analysis।</p></div>
           <div class="card-grid">
             <div class="doc-card"><div class="ac-ic">🪨</div><b>RMR (Material दर + Cartage)</b><span class="dc-sub">हर estimate के अपने RMR1, RMR2…</span><div class="doc-actions"><button class="btn xs" id="openRMR">खोलें</button></div></div>
-            <div class="doc-card"><div class="ac-ic">🛢️</div><b>Bitumen Rate Analysis</b><div class="doc-actions"><button class="btn xs" data-todo="Bitumen">बनाएँ</button></div></div>
+            <div class="doc-card"><div class="ac-ic">🛢️</div><b>Bitumen Rate Analysis</b><span class="dc-sub">Bitumen/Emulsion — Basic Rate + Cartage → Total/Say</span><div class="doc-actions"><button class="btn xs" id="openBitumen">खोलें</button></div></div>
           </div>
           <p class="hint-box">RMR में loaded "Material Query Rate" के सभी material अपने-आप आते हैं — आप सिर्फ़ दूरी भरते हैं, Cartage व Total अपने-आप बनते हैं।</p>
+        </section>
+
+        <!-- ===== 3b. BASIC ANALYSIS › BITUMEN RATE ANALYSIS (Excel शीट) ===== -->
+        <section class="view" id="view-bitumen">
+          <div class="dom-head">
+            <button class="btn sm" id="bitumenBack">← Basic Analysis</button>
+            <b class="dom-head-title">Bitumen / Emulsion — Rate Analysis</b>
+            <button class="btn sm" id="bitumenReset" title="तालिका फिर से default बनाएँ (वर्तमान बदलाव मिटेंगे)">🔄 फिर से बनाएँ</button>
+          </div>
+          <div class="dom-editor-host" id="bitumenEditorHost"><!-- editor-panel यहाँ mount होता है --></div>
         </section>
 
         <!-- ===== 3a. BASIC ANALYSIS › RMR ===== -->
@@ -290,22 +410,18 @@
           <div class="dom-editor-host" id="boqEditorHost"><!-- editor-panel यहाँ mount होता है --></div>
         </section>
 
-        <!-- ===== 6. SUMMARY ===== -->
-        <section class="view scroll-view" id="view-summary">
-          <div class="view-head">
-            <h2>Summary of Estimated Cost</h2>
-            <p class="view-sub">हर step पर reference नंबर (S1, S2…) — गणना में सुधार बताने के लिए। % व अनुमानित मद editable।</p>
+        <!-- ===== 6. SUMMARY — असली spreadsheet (formula सहित; Excel export हेतु) ===== -->
+        <section class="view" id="view-summary">
+          <div class="dom-head sum-head">
+            <b class="dom-head-title">Summary of Estimated Cost</b>
+            <span id="sumTplStatus" class="sum-tpl-status"></span>
+            <span class="sum-toolbar-inline">
+              <button class="btn sm primary" id="sumTemplate" title="Template — लोड करें / नया बनाएँ / हटाएँ (हर Template पूरी तालिका का स्वतंत्र snapshot)">📋 Template</button>
+              <button class="btn sm" id="sumSaveTpl" title="वर्तमान तालिका को Template के रूप में सहेजें। लोड किया Template है तो उसी को अद्यतन (replace) करता है; वरना नए नाम से।">💾 सहेजें</button>
+              <button class="btn sm" id="sumRefresh" title="तालिका फिर से default (auto) बनाएँ — BOQ/Sub-Estimate से ताज़ा (वर्तमान बदलाव मिटेंगे)">🔄 फिर से बनाएँ</button>
+            </span>
           </div>
-          <div class="sum-toolbar">
-            <button class="btn sm primary" id="sumTemplate" title="काम-प्रकार का Template लोड करें (Road/Building…) — Summary तुरंत बन जाएगी">📋 Template लोड करें</button>
-            <button class="btn sm" id="sumSaveTpl" title="मौजूदा Summary config को Template के रूप में सहेजें">💾 Template सहेजें</button>
-            <button class="btn sm" id="sumMngTpl" title="सहेजे Template — नाम बदलें / हटाएँ / लोड करें">✎ Template प्रबंधन</button>
-            <button class="btn sm" id="sumAddUtil" title="यूटिलिटी जोड़ें (जैसे विद्युत पोल, पेड़ पातन)">➕ यूटिलिटी जोड़ें</button>
-            <button class="btn sm" id="sumDelUtil" title="कोई यूटिलिटी हटाएँ">🗑 यूटिलिटी हटायें</button>
-            <button class="btn sm" id="sumRefresh" title="BOQ से दरें/कुल दोबारा लाएँ">🔄 ताज़ा</button>
-          </div>
-          <div class="sum-wrap"><table class="sum-table" id="summaryTable"></table></div>
-          <p class="hint-box">S# = step reference। किसी step की गणना बदलवानी हो तो उसका S-नंबर बताएँ (जैसे “S7 = S5 − 6%”)। हरे % box व अनुमानित-मद के amount box editable हैं।</p>
+          <div class="dom-editor-host" id="sumEditorHost"><!-- editor-panel यहाँ mount होता है --></div>
         </section>
 
         <!-- ===== 7. MASTER DATA ===== -->
@@ -332,6 +448,7 @@
               <div class="doc-card"><div class="ac-ic">🧱</div><b>Material Query Rate</b><span class="card-badge none" data-badge="material_query">कोई version load नहीं</span><div class="doc-actions"><button class="btn xs" data-cat="material_query">खोलें</button></div></div>
               <div class="doc-card"><div class="ac-ic">📒</div><b>Material SOR Rate</b><span class="card-badge none" data-badge="material_sor">कोई version load नहीं</span><div class="doc-actions"><button class="btn xs" data-cat="material_sor">खोलें</button></div></div>
               <div class="doc-card"><div class="ac-ic">📗</div><b>Item SOR Rate</b><span class="card-badge none" data-badge="item_sor">कोई version load नहीं</span><div class="doc-actions"><button class="btn xs" data-cat="item_sor">खोलें</button></div></div>
+              <div class="doc-card"><div class="ac-ic">🛢️</div><b>Bitumen Rate</b><span class="card-badge none" data-badge="bitumen_rate">कोई version load नहीं</span><div class="doc-actions"><button class="btn xs" data-cat="bitumen_rate">खोलें</button></div></div>
             </div>
           </div>
 
@@ -376,6 +493,7 @@
             <table class="data-table" id="mrTable"></table>
           </div>
           <div id="mrExtra"></div>
+          <div id="bitRateHost" style="display:none"></div>
           <p class="hint-box" id="mrHint"></p>
         </section>
 

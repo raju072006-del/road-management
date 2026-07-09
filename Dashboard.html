@@ -2011,7 +2011,7 @@ tr.sec-row-new  td { background: #effcf6; }
     <div class="modal-header" style="background:linear-gradient(135deg,var(--navy2),var(--navy));">
       <div>
         <div class="modal-title">📤 दस्तावेज़ Upload करें</div>
-        <div class="modal-sub">Google Drive में save होगा — 4_Documents Sheet में record रहेगा</div>
+        <div class="modal-sub">फ़ाइल डेटाबेस Storage में save होगी — 4_Documents में record रहेगा</div>
       </div>
       <div class="modal-close" onclick="closeModal('upload-modal')">✕</div>
     </div>
@@ -2956,7 +2956,7 @@ tr.sec-row-new  td { background: #effcf6; }
   <div class="page-hdr">
     <div class="page-hdr-left">
       <div class="page-title">⚙️ सिस्टम सेटिंग्स</div>
-      <div class="page-sub">Google Apps Script — Spreadsheet से सीधा connected</div>
+      <div class="page-sub">Supabase डेटाबेस — केंद्रीय, सभी users के लिए एक ही डेटा</div>
       <div class="page-hdr-title-line"></div>
     </div>
   </div>
@@ -2970,27 +2970,25 @@ tr.sec-row-new  td { background: #effcf6; }
     </div>
     <div class="info-box">
       <strong>📌 Loading कैसे काम करता है:</strong><br>
-      पहला load: Spreadsheet से पढ़ता है (3-8 सेकंड)<br>
+      पहला load: Supabase डेटाबेस से पढ़ता है (3-8 सेकंड)<br>
       बाद के loads (5 min तक): Cache से आता है (&lt;1 सेकंड) ✅<br><br>
       <strong>📌 नया डेटा जोड़ने के बाद:</strong><br>
-      "🗑️ Cache Clear + Fresh Load" दबाएं — या Spreadsheet में 🛣️ Road Management → 🔄 Cache Clear करें<br><br>
-      <strong>📌 Sheets Setup (पहली बार):</strong><br>
-      Spreadsheet → 🛣️ Road Management Menu → ⚙️ Sheets Setup करें
+      "🗑️ Cache Clear + Fresh Load" दबाएं — ताज़ा डेटा डेटाबेस से आ जाएगा
     </div>
   </div>
 
   <div class="config-section">
-    <div class="config-title">📊 Spreadsheet Sheets Structure</div>
+    <div class="config-title">📊 डेटाबेस संरचना (Supabase Tables)</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;color:var(--text2);">
-      <div style="padding:10px;background:var(--bg);border-radius:6px;">📗 Sheet 1: <strong>1_Roads_Master</strong><br><span style="font-size:11px;color:var(--text3);">Road_ID, Road_Name, Road_Type, Srishti_Code, Vidhansabha</span></div>
-      <div style="padding:10px;background:var(--bg);border-radius:6px;">📘 Sheet 2: <strong>2_Road_Sections</strong><br><span style="font-size:11px;color:var(--text3);">Section_ID, Road_ID, Chainage, KM_Number, Surface, Last_Work</span></div>
-      <div style="padding:10px;background:var(--bg);border-radius:6px;">📙 Sheet 3: <strong>3_Projects</strong><br><span style="font-size:11px;color:var(--text3);">Project_ID, Project_Name, Type, Sanction_Date, Amount, Status</span></div>
-      <div style="padding:10px;background:var(--bg);border-radius:6px;">📒 Sheet 3B: <strong>3B_Project_Roads</strong><br><span style="font-size:11px;color:var(--text3);">PR_ID, Project_ID, Road_ID, KM, Work_Description, Amount</span></div>
-      <div style="padding:10px;background:var(--bg);border-radius:6px;">📓 Sheet 4: <strong>4_Documents</strong><br><span style="font-size:11px;color:var(--text3);">Doc_ID, Project_ID, Category_No, File_Name, Drive_Link</span></div>
-      <div style="padding:10px;background:var(--bg);border-radius:6px;">📔 Sheet 5: <strong>5_Letters</strong><br><span style="font-size:11px;color:var(--text3);">Letter_ID, Project_ID, Letter_No, Direction, Reply_Received</span></div>
-      <div style="padding:10px;background:var(--bg);border-radius:6px;">📕 Sheet 6: <strong>6_Finance_Ledger</strong><br><span style="font-size:11px;color:var(--text3);">Txn_ID, Project_ID, Date, Type, Amount, Running_Balance</span></div>
-      <div style="padding:10px;background:var(--bg);border-radius:6px;">📗 Sheet 7: <strong>7_Annual_Plan</strong><br><span style="font-size:11px;color:var(--text3);">Plan_ID, Road_ID, Year, <strong>Work_Type</strong>, Proposed_Work, Priority, Status</span></div>
-      <div style="padding:10px;background:var(--bg);border-radius:6px;">📋 Sheet 8: <strong>8_Work_Types</strong><br><span style="font-size:11px;color:var(--text3);">Work_Type — कार्य प्रकारों की सूची</span></div>
+      <div style="padding:10px;background:var(--bg);border-radius:6px;">📗 <strong>1_Roads_Master</strong><br><span style="font-size:11px;color:var(--text3);">Road_ID, Road_Name, Road_Type, Srishti_Code, Vidhansabha</span></div>
+      <div style="padding:10px;background:var(--bg);border-radius:6px;">📘 <strong>2_Road_Sections</strong><br><span style="font-size:11px;color:var(--text3);">Section_ID, Road_ID, Chainage, KM_Number, Surface, Last_Work</span></div>
+      <div style="padding:10px;background:var(--bg);border-radius:6px;">📙 <strong>3_Projects</strong><br><span style="font-size:11px;color:var(--text3);">Project_ID, Project_Name, Type, Sanction_Date, Amount, Status</span></div>
+      <div style="padding:10px;background:var(--bg);border-radius:6px;">📒 <strong>3B_Project_Roads</strong><br><span style="font-size:11px;color:var(--text3);">PR_ID, Project_ID, Road_ID, KM, Work_Description, Amount</span></div>
+      <div style="padding:10px;background:var(--bg);border-radius:6px;">📓 <strong>4_Documents</strong><br><span style="font-size:11px;color:var(--text3);">Doc_ID, Project_ID, Category_No, File_Name, Drive_Link</span></div>
+      <div style="padding:10px;background:var(--bg);border-radius:6px;">📔 <strong>5_Letters</strong><br><span style="font-size:11px;color:var(--text3);">Letter_ID, Project_ID, Letter_No, Direction, Reply_Received</span></div>
+      <div style="padding:10px;background:var(--bg);border-radius:6px;">📕 <strong>6_Finance_Ledger</strong><br><span style="font-size:11px;color:var(--text3);">Txn_ID, Project_ID, Date, Type, Amount, Running_Balance</span></div>
+      <div style="padding:10px;background:var(--bg);border-radius:6px;">📗 <strong>7_Annual_Plan</strong><br><span style="font-size:11px;color:var(--text3);">Plan_ID, Road_ID, Year, <strong>Work_Type</strong>, Proposed_Work, Priority, Status</span></div>
+      <div style="padding:10px;background:var(--bg);border-radius:6px;">📋 <strong>8_Work_Types</strong><br><span style="font-size:11px;color:var(--text3);">Work_Type — कार्य प्रकारों की सूची</span></div>
     </div>
   </div>
 
@@ -2998,7 +2996,7 @@ tr.sec-row-new  td { background: #effcf6; }
   <div class="config-section" id="rt-mgmt-section">
     <div class="config-title">🛣️ मार्ग का प्रकार प्रबंधन</div>
     <div style="margin-bottom:14px;font-size:13px;color:var(--text2);">
-      सभी road types यहाँ manage करें — जोड़ें, नाम बदलें, या हटाएं। ये <strong>9_Road_Types</strong> Sheet में save होंगे।
+      सभी road types यहाँ manage करें — जोड़ें, नाम बदलें, या हटाएं। ये <strong>9_Road_Types</strong> (डेटाबेस) में save होंगे।
     </div>
     <div id="rt-mgmt-list" style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:16px;">
       <div style="padding:12px;color:var(--text3);text-align:center;">⏳ लोड हो रहा है...</div>
@@ -3015,7 +3013,7 @@ tr.sec-row-new  td { background: #effcf6; }
     <div class="config-title">📋 कार्य का प्रकार प्रबंधन</div>
 
     <div style="margin-bottom:14px;font-size:13px;color:var(--text2);">
-      नीचे सभी कार्य प्रकार दिखाए गए हैं। नए जोड़ें — वे <strong>8_Work_Types</strong> Sheet में save होंगे।
+      नीचे सभी कार्य प्रकार दिखाए गए हैं। नए जोड़ें — वे <strong>8_Work_Types</strong> (डेटाबेस) में save होंगे।
     </div>
 
     <div id="wt-list" style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:16px;">
@@ -3033,7 +3031,7 @@ tr.sec-row-new  td { background: #effcf6; }
   <div class="config-section" id="dc-section">
     <div class="config-title">📁 दस्तावेज़ श्रेणी प्रबंधन</div>
     <div style="margin-bottom:14px;font-size:13px;color:var(--text2);">
-      दस्तावेज़ की श्रेणियाँ यहाँ manage करें — Rename, जोड़ें, या हटाएं। ये <strong>10_Doc_Categories</strong> Sheet में save होंगी।
+      दस्तावेज़ की श्रेणियाँ यहाँ manage करें — Rename, जोड़ें, या हटाएं। ये <strong>10_Doc_Categories</strong> (डेटाबेस) में save होंगी।
     </div>
     <div id="dc-list" style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:16px;">
       <div style="padding:12px;color:var(--text3);text-align:center;">⏳ लोड हो रहा है...</div>
@@ -3512,7 +3510,7 @@ tr.sec-row-new  td { background: #effcf6; }
     <div class="modal-header" style="background:linear-gradient(135deg,#1e3a5f,#2d5986);">
       <div>
         <div class="modal-title" id="pf-title">➕ नई परियोजना जोड़ें</div>
-        <div class="modal-sub">3_Projects Sheet में save होगा</div>
+        <div class="modal-sub">3_Projects (डेटाबेस) में save होगा</div>
       </div>
       <div class="modal-close" onclick="closeModal('proj-form-modal')">✕</div>
     </div>
@@ -3774,7 +3772,7 @@ tr.sec-row-new  td { background: #effcf6; }
     <div class="modal-header" style="background:linear-gradient(135deg,var(--navy2),var(--navy3));">
       <div>
         <div class="modal-title" id="road-form-modal-title">➕ नई सड़क जोड़ें</div>
-        <div class="modal-sub">1_Roads_Master Sheet में save होगा</div>
+        <div class="modal-sub">1_Roads_Master (डेटाबेस) में save होगा</div>
       </div>
       <div class="modal-close" onclick="closeModal('road-form-modal')">✕</div>
     </div>
@@ -3934,7 +3932,7 @@ tr.sec-row-new  td { background: #effcf6; }
     <div class="modal-header" style="background:linear-gradient(135deg,var(--navy2),var(--navy3));">
       <div>
         <div class="modal-title" id="sec-form-title">➕ नई Chainage जोड़ें</div>
-        <div class="modal-sub" id="sec-form-sub">2_Road_Sections Sheet में save होगा</div>
+        <div class="modal-sub" id="sec-form-sub">2_Road_Sections (डेटाबेस) में save होगा</div>
       </div>
       <div class="modal-close" onclick="closeModal('sec-form-modal')">✕</div>
     </div>
@@ -4245,7 +4243,7 @@ tr.sec-row-new  td { background: #effcf6; }
       </div>
       <div class="info-box" style="margin-top:12px;">
         <strong>📌 नोट:</strong> यह सड़क चुनी गई परियोजना में <strong>3B_Project_Roads</strong> Sheet में जोड़ी जाएगी।
-        नई परियोजना बनाने के लिए Spreadsheet में <strong>3_Projects</strong> Sheet में सीधे जोड़ें।
+        नई परियोजना बनाने के लिए डेटाबेस के <strong>3_Projects</strong> में सीधे जोड़ें।
       </div>
       <div id="aprj-result" style="margin-top:12px;"></div>
     </div>
@@ -5253,7 +5251,7 @@ function addNewWorkType() {
         populateWorkTypeDropdown();
         renderWorkTypesList();
         input.value = '';
-        statEl.innerHTML = '<div class="status-box success">✅ "'+name+'" सफलतापूर्वक जोड़ा गया — 8_Work_Types Sheet में save हो गया</div>';
+        statEl.innerHTML = '<div class="status-box success">✅ "'+name+'" सफलतापूर्वक जोड़ा गया — 8_Work_Types (डेटाबेस) में save हो गया</div>';
       } else {
         statEl.innerHTML = '<div class="status-box error">❌ '+res.msg+'</div>';
       }
@@ -8232,7 +8230,7 @@ function deletePlanEntryConfirm(planId) {
         D.plan=(D.plan||[]).filter(function(x){return x.Plan_ID!==planId;});
         applyPlanFilter();
         renderRoads();
-        // Background में Google Sheet से असली डेटा sync करें
+        // Background में डेटाबेस (Supabase) से असली डेटा sync करें
         google.script.run
           .withSuccessHandler(function(fresh){
             if (fresh && fresh.plan) {
@@ -13443,7 +13441,7 @@ function rfAddNewType(btn) {
   for (var i = 0; i < sel.options.length; i++) {
     if (sel.options[i].text === val) { sel.value = val; rfCancelNewType(); return; }
   }
-  // 9_Road_Types Sheet में स्थायी रूप से save करें — वरना refresh के बाद यह गायब हो जाएगा
+  // 9_Road_Types (डेटाबेस) में स्थायी रूप से save करें — वरना refresh के बाद यह गायब हो जाएगा
   if (btn) btn.disabled = true;
   inp.disabled = true;
   _opStart();
@@ -13893,7 +13891,7 @@ function submitAddToPlan() {
         renderRoads();
         var planPageActive = document.getElementById('page-annualplan').classList.contains('active');
         if (planPageActive) applyPlanFilter();
-        // Background में Google Sheet से असली डेटा sync करें (Work_Type जैसे fields सर्वर-सत्य से confirm हों)
+        // Background में डेटाबेस (Supabase) से असली डेटा sync करें (Work_Type जैसे fields सर्वर-सत्य से confirm हों)
         google.script.run
           .withSuccessHandler(function(fresh) {
             if (fresh && fresh.plan) {

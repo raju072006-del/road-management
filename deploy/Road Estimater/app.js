@@ -846,7 +846,7 @@
     const savedExtra = [];
     for (const a in sheet.cells) {
       const cell = sheet.cells[a]; const extra = {}; let has = false;
-      for (const k of ["s", "role", "secName", "mref", "lead", "leadText", "itemId"]) { if (cell[k] != null) { extra[k] = cell[k]; has = true; } }
+      for (const k of ["s", "role", "secName", "mref", "lead", "leadText", "itemId", "sumkind", "utilShort"]) { if (cell[k] != null) { extra[k] = cell[k]; has = true; } }
       if (has) { const p = parseAddr(a); if (p) savedExtra.push({ r: p.r, c: p.c, extra }); }
     }
     try {
@@ -1901,60 +1901,156 @@
   }
 
   /* ============== 6a. EXPORT xlsx (links बरकरार) ============== */
-  async function exportEstimateXlsx(est) {
+  // est का हर state.sheet — Bitumen · Rate Analysis · DOM · BOQ · Summary (RMR data-rows है, अलग जुड़ती)
+  function estAllSheetIds(est) {
+    const ids = [];
+    const add = (id) => { if (id && state.sheets[id] && ids.indexOf(id) < 0) ids.push(id); };
+    add(est.bitumenSheetId);                                            // Bitumen Rate Analysis
+    // Rate Analysis — इस estimate के work-group (rmrId|ohGroupId) वाली सभी working शीट
+    const gk = new Set(estWorkGroups(est).map((g) => (g.rmrId || "") + "|" + (g.ohGroupId || "")));
+    for (const id of state.order) { const s = state.sheets[id]; if (s && s.kind === "working" && gk.has((s.rmrId || "") + "|" + (s.ohGroupId || ""))) add(id); }
+    (est.sheetIds || []).forEach(add);                                  // कोई अतिरिक्त चुनी शीट
+    if (est.domSheets) Object.keys(est.domSheets).forEach((k) => add(est.domSheets[k]));   // DOM (समूहवार)
+    if (est.boqSheets) Object.keys(est.boqSheets).forEach((k) => add(est.boqSheets[k]));   // BOQ (समूहवार)
+    (est.subEstimates || []).forEach((s) => { add(s.domSheetId); add(s.boqSheetId); });    // Sub-estimate DOM/BOQ
+    add(est.summarySheetId);                                            // Summary
+    return ids;
+  }
+  // app cell.s (रंग/bold/align) → xlsx-js-style format
+  const XL_THIN = { style: "thin", color: { rgb: "C7CEDA" } };
+  const XL_BD = { top: XL_THIN, bottom: XL_THIN, left: XL_THIN, right: XL_THIN };
+  function xlCellStyle(s, isNum, numVal) {
+    const st = { border: XL_BD, alignment: { vertical: "center", wrapText: true } };   // wrap → सभी लाइनें दिखें
+    const f = { sz: 12 };   // base font थोड़ा बड़ा (A4 print हेतु)
+    if (s) {
+      if (s.bg) st.fill = { patternType: "solid", fgColor: { rgb: String(s.bg).replace(/^#/, "") } };
+      if (s.b) f.bold = true; if (s.i) f.italic = true;
+      if (s.sz) f.sz = Math.max(9, Math.min(s.sz, 24));
+      if (s.fc) f.color = { rgb: String(s.fc).replace(/^#/, "") };
+      if (s.al) st.alignment.horizontal = s.al;
+    }
+    st.font = f;
+    if (!st.alignment.horizontal) st.alignment.horizontal = isNum ? "right" : "left";
+    if (isNum) st.numFmt = (numVal != null && Number.isInteger(numVal)) ? "#,##0" : "#,##0.00";
+    return st;
+  }
+  const xlQuote = (nm) => "'" + String(nm).replace(/'/g, "''") + "'";
+  function xlWsFromSheet(lib, sheet, useStyle, rmrMap) {
+    const ws = {}; let maxR = 0, maxC = 0;
+    const NC = sheet.cols;
+    const off = (sheet.kind === "working" && sheet.title && sheet.title.trim()) ? 1 : 0;   // Analysis का नाम banner
+    const cw = (sheet.colWidths && sheet.colWidths.length) ? sheet.colWidths.slice() : [];
+    const MAXW = 680, totW = cw.reduce((a, b) => a + (b || 80), 0), sc = totW > MAXW ? MAXW / totW : 1;   // A4-फिट स्केल
+    const noteLines = (txt, c) => { const w = Math.max(30, (cw[c] || 80) * sc); const cpl = Math.max(4, Math.floor(w / 8.5)); return Math.max(1, Math.ceil(String(txt).length / cpl)); };
+    const rowLines = {};
+    if (off) {   // title banner (row 0) — sheet.title (item नाम)
+      const ttl = sheet.title.trim();
+      for (let c = 0; c < NC; c++) { const ref = lib.utils.encode_cell({ r: 0, c }); ws[ref] = { t: "s", v: c === 0 ? ttl : "" }; if (useStyle) ws[ref].s = xlCellStyle({ b: 1, al: "center", sz: 13, bg: "2E3A73", fc: "FFFFFF" }, false, null); }
+      rowLines[0] = Math.min(2, noteLines(ttl, 0)); maxC = Math.max(maxC, NC - 1);
+    }
+    for (let r = 0; r < sheet.rows; r++) for (let c = 0; c < sheet.cols; c++) {
+      const cell = sheet.cells[addr(r, c)]; if (!cell) continue;
+      const outR = r + off, ref = lib.utils.encode_cell({ r: outR, c });
+      let o, numVal = null, linked = null, txtLines = null;
+      const mref = cell.mref;
+      if (rmrMap && mref && mref.rmr && rmrMap[mref.rmr]) {   // RMR-linked रेट → cross-sheet formula
+        const link = rmrMap[mref.rmr];
+        const mids = Array.isArray(mref.matIds) ? mref.matIds : (mref.matId != null ? [mref.matId] : []);
+        const refs = mids.map((mid) => { const rr = link.rowByMat[mid]; return rr == null ? null : (xlQuote(link.sheetName) + "!" + lib.utils.encode_cell({ r: rr, c: 7 })); });
+        if (refs.length && refs.every((x) => x)) linked = refs.length === 1 ? refs[0] : ("AVERAGE(" + refs.join(",") + ")");
+      }
+      if (linked) {
+        numVal = mrefRateNum(mref); o = { t: "n", f: linked }; if (numVal != null) o.v = numVal;
+      } else if (cell.f != null) {
+        const cv = computedValue(sheet, r, c);
+        o = { f: (off ? shiftFormula(cell.f, off, 0) : cell.f).replace(/^=/, "") };   // banner से नीचे खिसका → refs +off
+        if (cv && !cv.err && typeof cv.val === "number") { o.t = "n"; o.v = cv.val; numVal = cv.val; }
+        else if (cv && !cv.err && cv.val !== "") { o.t = "s"; o.v = String(cv.val); txtLines = String(cv.val); }
+        else { o.t = "n"; }
+      } else if (typeof cell.v === "number") { o = { t: "n", v: cell.v }; numVal = cell.v; }
+      else { o = { t: "s", v: String(cell.v) }; txtLines = String(cell.v); }
+      if (useStyle) o.s = xlCellStyle(cell.s, numVal != null || !!linked, numVal);
+      ws[ref] = o;
+      if (txtLines) rowLines[outR] = Math.max(rowLines[outR] || 1, noteLines(txtLines, c));
+      maxR = Math.max(maxR, outR); maxC = Math.max(maxC, c);
+    }
+    ws["!ref"] = lib.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(maxR, 0), c: Math.max(maxC, 0) } });
+    if (cw.length) ws["!cols"] = cw.map((w) => ({ wpx: Math.max(30, Math.round((w || 80) * sc)) }));
+    const rowsArr = []; for (let r = 0; r <= maxR; r++) rowsArr[r] = { hpt: Math.max(18, (rowLines[r] || 1) * 16 + 3) };   // wrap-लाइनों अनुसार ऊँचाई
+    ws["!rows"] = rowsArr;
+    const mg = []; if (off) mg.push({ s: { r: 0, c: 0 }, e: { r: 0, c: NC - 1 } });
+    (sheet.merges || []).forEach((m) => mg.push({ s: { r: m.s.r + off, c: m.s.c }, e: { r: m.e.r + off, c: m.e.c } }));
+    if (mg.length) ws["!merges"] = mg;
+    ws["!margins"] = { left: 0.3, right: 0.3, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 };
+    return ws;
+  }
+  function xlWsFromRMR(lib, est, rmr, useStyle, rmrMap, sheetName) {
+    const TITLE = { b: 1, al: "center", sz: 13, bg: "2E3A73", fc: "FFFFFF" };
+    const HEAD = { b: 1, al: "center", bg: "46538F", fc: "FFFFFF" };
+    const headers = ["क्रम", "Material का नाम", "Query का नाम", "दूरी (km)", "Material Rate", "Cartage Rate", "Royalty (−)", "Total Rate Incl. Cartage"];
+    const NC = headers.length, ws = {};
+    const putV = (r, c, v, s) => { const ref = lib.utils.encode_cell({ r, c }); const isN = typeof v === "number"; const o = isN ? { t: "n", v: v } : { t: "s", v: v == null ? "" : String(v) }; if (useStyle) o.s = xlCellStyle(s, isN, isN ? v : null); ws[ref] = o; };
+    const putF = (r, c, f, v, s) => { const ref = lib.utils.encode_cell({ r, c }); const o = { t: "n", f: f }; if (v != null) o.v = v; if (useStyle) o.s = xlCellStyle(s, true, null); ws[ref] = o; };
+    putV(0, 0, "RMR — " + (rmr.name || ""), TITLE);
+    headers.forEach((h, c) => putV(1, c, h, HEAD));
+    const rowByMat = {}, rowLines = {}; let r = 2;
+    (rmr.rows || []).forEach((row, i) => {
+      const mat = rmrMaterial(row);
+      const dist = (row.distance == null || row.distance === "") ? "" : mrNum(row.distance);
+      const cartage = (mrNum(row.distance) > 0) ? round2(rmrCartage(row.distance)) : "";
+      const total = rmrRateForMat(rmr.id, row.matId);
+      rowByMat[row.matId] = r; const rn = r + 1;
+      putV(r, 0, i + 1, { al: "center" });
+      putV(r, 1, mat.material || "", { al: "left" });
+      putV(r, 2, mat.query || "", { al: "left" });
+      putV(r, 3, dist, { al: "right" });
+      putV(r, 4, (mrNum(mat.matRate) || ""), { al: "right" });
+      putV(r, 5, cartage, { al: "right" });
+      putV(r, 6, (mat.royalty ? mrNum(mat.royalty) : ""), { al: "right" });
+      putF(r, 7, "E" + rn + "-G" + rn + "+F" + rn, (total == null ? null : round2(total)), { al: "right", b: 1 });   // Total = Material − Royalty + Cartage (live)
+      rowLines[r] = Math.max(Math.ceil((mat.material || "").length / 30), Math.ceil((mat.query || "").length / 18), 1);
+      r++;
+    });
+    ws["!ref"] = lib.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(r - 1, 1), c: NC - 1 } });
+    ws["!cols"] = [{ wpx: 44 }, { wpx: 220 }, { wpx: 130 }, { wpx: 80 }, { wpx: 100 }, { wpx: 100 }, { wpx: 90 }, { wpx: 150 }];
+    const rrows = []; for (let k = 0; k <= r - 1; k++) rrows[k] = { hpt: Math.max(18, (rowLines[k] || 1) * 16 + 3) };
+    ws["!rows"] = rrows;
+    ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: NC - 1 } }];
+    if (rmrMap) rmrMap[rmr.id] = { sheetName: sheetName, rowByMat: rowByMat };
+    return ws;
+  }
+  async function exportEstimateXlsx(est, ids) {
+    ids = (ids && ids.length) ? ids : (est.sheetIds || []);
     const ok = await window.__sheetjsReady;
     if (!ok || typeof XLSX === "undefined") { alert("Excel engine (SheetJS) load नहीं हुआ — internet जाँचें।"); return; }
-    if (est.sheetIds.length === 0) { alert("पहले कुछ शीट जोड़ें।"); return; }
-
-    const wb = XLSX.utils.book_new();
+    const rmrs = (est.rmrs || []).filter((r) => r && (r.rows || []).length);
+    if (!ids.length && !rmrs.length) { alert("इस Estimate में कोई शीट/RMR नहीं मिली।"); return; }
+    const XS = await loadXlsxStyle();   // रंग/format के लिए (न मिले तो सादा)
+    const lib = XS || XLSX;
+    const wb = lib.utils.book_new();
     const usedNames = {};
-    for (const sid of est.sheetIds) {
-      const sheet = state.sheets[sid];
-      if (!sheet) continue;
-      const ws = {};
-      let maxR = 0, maxC = 0;
-      for (let r = 0; r < sheet.rows; r++) {
-        for (let c = 0; c < sheet.cols; c++) {
-          const cell = sheet.cells[addr(r, c)];
-          if (!cell) continue;
-          const ref = XLSX.utils.encode_cell({ r, c });
-          if (cell.f != null) {
-            const cv = computedValue(sheet, r, c);
-            const o = { f: cell.f.replace(/^=/, "") };
-            if (cv && !cv.err && typeof cv.val === "number") { o.t = "n"; o.v = cv.val; }
-            else if (cv && !cv.err && cv.val !== "") { o.t = "s"; o.v = String(cv.val); }
-            else { o.t = "n"; }
-            ws[ref] = o;
-          } else if (typeof cell.v === "number") ws[ref] = { t: "n", v: cell.v };
-          else ws[ref] = { t: "s", v: String(cell.v) };
-          maxR = Math.max(maxR, r); maxC = Math.max(maxC, c);
-        }
-      }
-      ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(maxR, 0), c: Math.max(maxC, 0) } });
-      // xlsx sheet नाम: max 31 char, special char हटाओ
-      let nm = sheet.name.replace(/[\[\]\*\?\/\\:]/g, "_").slice(0, 31);
-      let base = nm, k = 2;
-      while (usedNames[nm.toLowerCase()]) { nm = base.slice(0, 28) + "_" + k; k++; }
-      usedNames[nm.toLowerCase()] = true;
-      XLSX.utils.book_append_sheet(wb, ws, nm);
-    }
+    const uniqName = (raw) => { let nm = String(raw || "Sheet").replace(/[\[\]\*\?\/\\:]/g, "_").slice(0, 31) || "Sheet"; const base = nm; let k = 2; while (usedNames[nm.toLowerCase()]) { nm = base.slice(0, 28) + "_" + k; k++; } usedNames[nm.toLowerCase()] = true; return nm; };
+    const rmrMap = {};   // rmrId → {sheetName, rowByMat} — Analysis के cross-sheet link हेतु
+    rmrs.forEach((rmr) => { const nm = uniqName(rmr.name || "RMR"); const ws = xlWsFromRMR(lib, est, rmr, !!XS, rmrMap, nm); lib.utils.book_append_sheet(wb, ws, nm); });
+    for (const sid of ids) { const sheet = state.sheets[sid]; if (!sheet) continue; lib.utils.book_append_sheet(wb, xlWsFromSheet(lib, sheet, !!XS, rmrMap), uniqName(sheet.name)); }
     const fname = safeName(est.name) + "_" + dateStamp() + ".xlsx";
-    XLSX.writeFile(wb, fname, { bookType: "xlsx" });
-    status("Excel बना: " + fname + "  (शीट-लिंक workbook के अंदर बने रहेंगे)");
+    lib.writeFile(wb, fname, { bookType: "xlsx" });
+    status("Excel बना: " + fname + (XS ? " — रंग/format व RMR-links सहित" : " (formatting lib नहीं मिली; सादा फाइल)"));
   }
 
   /* ============== 6b. PRINT सभी शीट ============== */
-  function printEstimate(est) {
-    if (est.sheetIds.length === 0) { alert("पहले कुछ शीट जोड़ें।"); return; }
+  function printEstimate(est, ids) {
+    ids = (ids && ids.length) ? ids : (est.sheetIds || []);
+    if (!ids.length) { alert("इस Estimate में कोई शीट नहीं मिली।"); return; }
     const area = document.getElementById("printArea");
     let html = "";
-    est.sheetIds.forEach((sid, idx) => {
+    ids.forEach((sid, idx) => {
       const sheet = state.sheets[sid];
       if (!sheet) return;
       html += "<div class='print-sheet'>";
       const ptitle = (sheet.title && sheet.title.trim()) ? sheet.title.trim() : sheet.name;
       html += "<div class='print-title'>" + escapeHtml(ptitle) + "</div>";
-      html += "<div class='print-head'><div class='pmeta'><span>आकलन: " + escapeHtml(est.name) + "</span><span>शीट " + (idx + 1) + "/" + est.sheetIds.length + " · " + dateStamp() + "</span></div></div>";
+      html += "<div class='print-head'><div class='pmeta'><span>आकलन: " + escapeHtml(est.name) + "</span><span>शीट " + (idx + 1) + "/" + ids.length + " · " + dateStamp() + "</span></div></div>";
       ensureLock(sheet);
       const mm = mergeLookup(sheet);
       html += "<table class='ptable'><colgroup>";
@@ -2953,7 +3049,7 @@
 
   /* ============== APP SHELL: navigation + estimate projects ============== */
   const VIEW_LABELS = {
-    "load": "Load Estimate", "basic-sheet": "Basic Sheet", "basic-analysis": "Basic Analysis",
+    "load": "Estimate Home", "basic-sheet": "Basic Sheet", "basic-analysis": "Basic Analysis",
     "rate-analysis": "Rate Analysis", "dom-boq": "DOM & BOQ", "summary": "Summary",
     "master": "Master Data", "master-cat": "Master Data", "master-edit": "Master Data › Analysis Edit",
     "rmr": "Basic Analysis › RMR", "bitumen": "Basic Analysis › Bitumen", "dom": "DOM & BOQ › DOM", "boq": "DOM & BOQ › BOQ",
@@ -4033,6 +4129,7 @@
     status("Estimate बंद हुआ: " + est.name);
   }
   function renderEstimateProjectList() {
+    renderEstActions();   // loaded estimate का Actions पैनल
     const ul = document.getElementById("estimateProjectList");
     if (!ul) return;
     ul.innerHTML = "";
@@ -4049,18 +4146,30 @@
         "<span class='ei-actions'>" +
           "<button type='button' class='btn xs ei-detail' title='इस Estimate का विवरण सुधारें'>✎ विवरण</button>" +
           "<span class='btn xs ei-open'>खोलें</span>" +
+          "<button type='button' class='btn xs ei-del danger' title='इस Estimate को हटाएँ'>🗑</button>" +
         "</span>";
       li.addEventListener("click", () => {
         setActiveEstimateId(id);
         applyOverheadAll();   // इस estimate के Overhead/Profit % सभी analysis पर
         renderEstimateSelect(); renderEstimate(); updateTopbarEstimate();
-        setActiveView("rate-analysis");
+        setActiveView("basic-sheet");   // Estimate खुलते ही पहले Basic Sheet
         status("Estimate खुला: " + e.name);
       });
       // "विवरण" — edit form खोलो (li का open trigger न हो इसलिए stopPropagation)
       li.querySelector(".ei-detail").addEventListener("click", (ev) => { ev.stopPropagation(); openEstimateForm(id); });
+      li.querySelector(".ei-del").addEventListener("click", (ev) => { ev.stopPropagation(); deleteEstimate(id); });
       ul.appendChild(li);
     }
+  }
+  function deleteEstimate(id) {
+    const e = state.estimates[id]; if (!e) return;
+    if (!confirm("Estimate हटाएँ?\n\n'" + (e.name || "") + "'\n\nयह पूर्ववत नहीं होगा।")) return;
+    delete state.estimates[id];
+    state.estOrder = state.estOrder.filter((x) => x !== id);
+    db.del("estimates", id);
+    if (state.activeEstimateId === id) { setActiveEstimateId(state.estOrder[0] || null); renderEstimateSelect(); renderEstimate(); updateTopbarEstimate(); }
+    renderEstimateProjectList();
+    status("Estimate हटाया: " + (e.name || ""));
   }
   /* ============== MASTER DATA — सभी rate-श्रेणियाँ (एक generic ढाँचा) ==============
      हर पंक्ति का स्थायी id होता है (Analysis इसी id से रेट लेगा), इसलिए version बदलने या
@@ -5639,6 +5748,119 @@
     sheet.rows = r;
     ensureLock(sheet); persistSheet(sheet, true); db.put("estimates", est); buildEngine();
   }
+  // सभी Utility पंक्तियाँ (col-0 marker sumkind='utility') — {r, name(Short)}
+  function summaryUtilityRows(sheet) {
+    const list = [];
+    for (let r = 1; r < sheet.rows; r++) { const c0 = sheet.cells[addr(r, 0)]; if (c0 && c0.sumkind === "utility") list.push({ r: r, name: c0.utilShort || (sheet.cells[addr(r, 1)] || {}).v || "Utility" }); }
+    return list;
+  }
+  // Nett Total = Total Road Cost + सभी Utility; Say Rs = round(Nett Total) — markers से पहचान
+  function summaryRecalcNett(sheet) {
+    const A1 = (r) => r + 1;
+    const roadR = summaryFindMarker(sheet, "roadfinal");
+    const nettR = summaryFindMarker(sheet, "netttotal");
+    const sayR = summaryFindMarker(sheet, "finalsay");
+    const utils = summaryUtilityRows(sheet).map((u) => u.r);
+    if (nettR >= 0 && roadR >= 0) {
+      const parts = ["D" + A1(roadR)].concat(utils.map((u) => "D" + A1(u)));
+      domSetSheetCell(sheet, nettR, 3, "=ROUND(" + parts.join("+") + ",2)");
+      domSetSheetCell(sheet, nettR, 4, "=ROUND(D" + A1(nettR) + "/100000,2)");
+    }
+    if (sayR >= 0 && nettR >= 0) {
+      domSetSheetCell(sheet, sayR, 3, "=ROUND(D" + A1(nettR) + ",-3)");
+      domSetSheetCell(sheet, sayR, 4, "=ROUND(D" + A1(sayR) + "/100000,2)");
+    }
+  }
+  // Utility पंक्तियों की क्रम-संख्या (SN) — ठीक ऊपर वाली numbered पंक्ति से आगे, क्रमवार
+  function summaryRenumberUtils(sheet) {
+    const utils = summaryUtilityRows(sheet).map((u) => u.r).sort((a, b) => a - b);
+    if (!utils.length) return;
+    let base = 0;
+    for (let r = utils[0] - 1; r >= 1; r--) { const v = (sheet.cells[addr(r, 0)] || {}).v; const n = (typeof v === "number") ? v : (typeof v === "string" && /^\d/.test(String(v).trim()) ? parseFloat(v) : NaN); if (isFinite(n)) { base = Math.round(n); break; } }
+    utils.forEach((r, i) => { const a0 = addr(r, 0); const cell = sheet.cells[a0] || (sheet.cells[a0] = { v: "" }); cell.v = base + i + 1; });   // sumkind/utilShort बने रहते हैं
+  }
+  // Utility पंक्ति जोड़ें — पहली Utility पर Road Cost की आखिरी 'Say Rs' लाइन को 'Total Road Cost =' बनाकर
+  //  नीचे [Utility…] → 'Nett Total =' → 'Say Rs. (in Lacs) =' section बनाता है; बाद की Utility उसी section में जुड़ती है
+  function summaryAddUtility() {
+    const est = state.estimates[state.activeEstimateId]; if (!est) return;
+    const shortName = (prompt("Utility का Short Name — Cover पेज पर यही दिखेगा (Summary में detail कुछ भी लिख सकते हैं):", "") || "").trim();
+    if (!shortName) return;
+    const sheet = summaryEnsureSheet(est);
+    if (state.activeSheetId !== sheet.id) openSheet(sheet.id);
+    const A1 = (r) => r + 1;
+    const lblOf = (r) => { const c = sheet.cells[addr(r, 1)]; return (c && typeof c.v === "string") ? c.v : ""; };
+    const markCol0 = (r, kind, short) => { const a = addr(r, 0); if (!sheet.cells[a]) sheet.cells[a] = { v: "" }; sheet.cells[a].sumkind = kind; if (short != null) sheet.cells[a].utilShort = short; };
+    const utilCells = (r) => {
+      domSetSheetCell(sheet, r, 1, shortName);
+      domSetSheetCell(sheet, r, 3, "0");
+      domSetSheetCell(sheet, r, 4, "=IF(D" + A1(r) + "=\"\",\"\",ROUND(D" + A1(r) + "/100000,2))");
+      markCol0(r, "utility", shortName);
+    };
+
+    let nettR = summaryFindMarker(sheet, "netttotal");
+    if (nettR < 0) {
+      // पहली Utility — Road Cost की अंतिम पंक्ति ढूँढो (Say Rs → Nett Amount → कोई भी labeled)
+      let roadR = -1;
+      for (let r = sheet.rows - 1; r >= 1; r--) { if (/Say\s*Rs/i.test(lblOf(r))) { roadR = r; break; } }
+      if (roadR < 0) for (let r = sheet.rows - 1; r >= 1; r--) { if (/Nett\s*Amount/i.test(lblOf(r))) { roadR = r; break; } }
+      if (roadR < 0) for (let r = sheet.rows - 1; r >= 1; r--) { if (lblOf(r).trim()) { roadR = r; break; } }
+      if (roadR < 0) { alert("Road Cost की अंतिम पंक्ति नहीं मिली।"); return; }
+      // 'Say Rs. (in Lacs) =' → 'Total Road Cost =' (मान/formula वही रहते हैं) + roadfinal marker
+      domSetSheetCell(sheet, roadR, 1, "Total Road Cost =");
+      markCol0(roadR, "roadfinal");
+      const sayStyles = []; for (let c = 0; c < SUM_HEADERS.length; c++) { const cc = sheet.cells[addr(roadR, c)]; sayStyles.push(cc && cc.s ? Object.assign({}, cc.s) : null); }
+      persistSheet(sheet, true); buildEngine();
+      if (!structuralBatch("insRow", roadR + 1, 3)) return;   // Utility, Nett Total, Say Rs
+      const uR = roadR + 1, nR = roadR + 2, sR = roadR + 3;
+      utilCells(uR);
+      domSetSheetCell(sheet, nR, 1, "Nett Total =");
+      for (let c = 0; c < SUM_HEADERS.length; c++) domStyle(sheet, nR, c, TOTAL_STYLE);
+      markCol0(nR, "netttotal");
+      domSetSheetCell(sheet, sR, 1, "Say Rs. (in Lacs) =");
+      for (let c = 0; c < SUM_HEADERS.length; c++) domStyle(sheet, sR, c, sayStyles[c] || SUM_SAY_STYLE);
+      markCol0(sR, "finalsay");
+    } else {
+      // बाद की Utility — मौजूदा section में, 'Nett Total =' से ठीक पहले
+      if (!structuralBatch("insRow", nettR, 1)) return;
+      utilCells(nettR);
+    }
+    persistSheet(sheet, true); buildEngine();
+    summaryRecalcNett(sheet);      // Nett Total = Total Road Cost + Σ Utility; Say Rs = round(Nett Total)
+    summaryRenumberUtils(sheet);   // क्रम-संख्या अपने-आप
+    ensureLock(sheet); persistSheet(sheet, true); db.put("estimates", est); buildEngine(); renderGrid();
+    status("Utility जुड़ी: " + shortName + " — 'Cost in Rs.' भरें; Nett Total/Say व Cover अपने-आप");
+  }
+  function summaryRemoveUtility() {
+    const est = state.estimates[state.activeEstimateId]; if (!est) return;
+    const sheet = summaryEnsureSheet(est);
+    if (state.activeSheetId !== sheet.id) openSheet(sheet.id);
+    const utils = summaryUtilityRows(sheet);
+    if (!utils.length) { alert("कोई Utility पंक्ति नहीं है।"); return; }
+    let target = utils[utils.length - 1];
+    if (utils.length > 1) {
+      const ans = prompt("कौन-सी Utility हटाएँ? नंबर लिखें:\n\n" + utils.map((u, i) => (i + 1) + ". " + u.name).join("\n"), String(utils.length));
+      if (ans === null) return;
+      const idx = parseInt(ans, 10) - 1;
+      if (isNaN(idx) || idx < 0 || idx >= utils.length) { alert("अमान्य नंबर।"); return; }
+      target = utils[idx];
+    } else if (!confirm("Utility '" + target.name + "' हटाएँ?")) return;
+    if (!structuralBatch("delRow", target.r, 1, true)) return;
+    persistSheet(sheet, true); buildEngine();
+    if (summaryUtilityRows(sheet).length) {
+      // अभी भी Utility बची — Nett Total/Say व क्रम-संख्या ठीक करो
+      summaryRecalcNett(sheet); summaryRenumberUtils(sheet);
+    } else {
+      // सभी Utility हटीं — section हटाओ: 'Nett Total' व 'Say Rs' पंक्तियाँ delete, 'Total Road Cost' → 'Say Rs. (in Lacs) ='
+      let nR = summaryFindMarker(sheet, "netttotal");
+      if (nR >= 0) { if (!structuralBatch("delRow", nR, 1, true)) return; persistSheet(sheet, true); buildEngine(); }
+      let sR = summaryFindMarker(sheet, "finalsay");
+      if (sR >= 0) { if (!structuralBatch("delRow", sR, 1, true)) return; persistSheet(sheet, true); buildEngine(); }
+      const roadR = summaryFindMarker(sheet, "roadfinal");
+      if (roadR >= 0) { domSetSheetCell(sheet, roadR, 1, "Say Rs. (in Lacs) ="); const a = addr(roadR, 0); if (sheet.cells[a]) delete sheet.cells[a].sumkind; persistSheet(sheet, true); buildEngine(); }
+    }
+    ensureLock(sheet); persistSheet(sheet, true); db.put("estimates", est); buildEngine(); renderGrid();
+    status("Utility हटाई: " + target.name);
+  }
   // Data-zone (BOQ + शेष Sub-Estimate + Total A) को live रखो; calc-zone (Total A के नीचे) ज्यों-का-त्यों
   //  (formula-refs पंक्ति-shift के अनुसार अपने-आप adjust)। marker न हो तो false (छेड़ो मत)।
   function summaryReconcile(est, sheet) {
@@ -5855,32 +6077,52 @@
   function covNum(v) { const n = mrNum(v); return isFinite(n) ? n : 0; }
   function fmtLakh(n) { return Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   // Summary पेज (Item Of Work=col1, Cost in Lacs=col4) से तीन लागतें पढ़ो — मिलें तो
+  // Summary पंक्ति r का Amount (Cost in Lacs → या Cost in Rs.÷1,00,000) — जैसे भी भरा हो
+  function summaryRowLacs(sheet, r) {
+    let num = null;
+    try { const cv = computedValue(sheet, r, 4).val; if (typeof cv === "number" && isFinite(cv)) num = cv; } catch (e) { }
+    if (num == null) { const c4 = sheet.cells[addr(r, 4)]; if (c4 && typeof c4.v === "number" && isFinite(c4.v)) num = c4.v; }
+    if (num == null) { try { const rs = computedValue(sheet, r, 3).val; if (typeof rs === "number" && isFinite(rs) && rs !== 0) num = round2(rs / 100000); } catch (e) { } }
+    if (num == null) { const c3 = sheet.cells[addr(r, 3)]; if (c3 && typeof c3.v === "number" && c3.v) num = round2(c3.v / 100000); }
+    return num;
+  }
+  // कवर का breakdown ठीक Summary जैसा — road(Construction Cost) + Utility पंक्तियाँ (जो Summary पर हैं वही)
   function coverCostsFromSummary(est) {
-    const out = { road: null, pole: null, tree: null };
+    const out = { road: null, utils: [] };   // utils: [{name(Short), amount}]
     const sheet = (est && est.summarySheetId) ? state.sheets[est.summarySheetId] : null;
     if (!sheet) return out;
     const has = (t, keys) => keys.some((k) => t.indexOf(k) >= 0);
     for (let r = 1; r < sheet.rows; r++) {
+      const c0 = sheet.cells[addr(r, 0)];
       const lc = sheet.cells[addr(r, 1)];
       let label = lc ? (lc.f != null ? "" : lc.v) : "";
       label = String(label || "").replace(/\s+/g, " ").trim();
+      if (c0 && c0.sumkind === "utility") {   // marked Utility → Short Name + amount (Summary का detail चाहे कुछ भी हो)
+        out.utils.push({ name: (c0.utilShort || label || "Utility"), amount: summaryRowLacs(sheet, r) || 0 });
+        continue;
+      }
+      if (c0 && c0.sumkind === "roadfinal") {   // 'Total Road Cost =' — Utility होने पर road यही
+        const rn = summaryRowLacs(sheet, r); if (rn != null) out.road = rn;
+        continue;
+      }
+      if (c0 && (c0.sumkind === "netttotal" || c0.sumkind === "finalsay")) continue;   // ये road/utility नहीं
       if (!label) continue;
-      let num = null;
-      try { const cv = computedValue(sheet, r, 4).val; if (typeof cv === "number" && isFinite(cv)) num = cv; } catch (e) { }
+      const num = summaryRowLacs(sheet, r);
       if (num == null) continue;
-      if (out.road == null && has(label, ["मार्ग निर्माण"]) && label.indexOf("कुल") < 0) out.road = num;
-      else if (out.pole == null && has(label, ["विधुत पोल", "विद्युत पोल", "पोल विस्थापन"])) out.pole = num;
-      else if (out.tree == null && has(label, ["पेड़ पातन", "पेड़ कटान", "वृक्ष"])) out.tree = num;
+      // road = Construction Cost (base) — Total(A)/Nett/Say नहीं (roadfinal marker मिले तो वही जीतता है)
+      if (out.road == null && (has(label, ["Construction Cost"]) || (has(label, ["मार्ग निर्माण"]) && !has(label, ["कुल"])))) { out.road = num; continue; }
+      // पुरानी (बिना marker) provision पंक्तियाँ भी Utility की तरह दिखाओ (जो Summary पर हैं वही कवर पर)
+      if (has(label, ["विधुत पोल", "विद्युत पोल", "पोल विस्थापन", "पेड़ पातन", "पेड़ कटान", "वृक्ष"])) out.utils.push({ name: label, amount: num });
     }
     return out;
   }
   // कवर की लागतें — Summary से (मिलें तो), वरना est.cover के पुराने मान (fallback)
   function coverCosts(est, c) {
     const s = coverCostsFromSummary(est);
+    const utils = (s.utils || []).map((u) => ({ name: u.name, amount: round2(u.amount || 0) }));
+    const utilTotal = utils.reduce((a, u) => a + u.amount, 0);
     const road = s.road != null ? s.road : covNum(c.costRoad);
-    const pole = s.pole != null ? s.pole : covNum(c.costPole);
-    const tree = s.tree != null ? s.tree : covNum(c.costTree);
-    return { road: round2(road), pole: round2(pole), tree: round2(tree), total: round2(road + pole + tree) };
+    return { road: round2(road), pole: round2(utilTotal), tree: 0, utils: utils, total: round2(road + utilTotal) };
   }
   // Design A — UP सरकार कवर (HTML)
   function coverRenderUP(est, c) {
@@ -5911,12 +6153,13 @@
         "<div class='cov-row'><span class='cov-lbl'>मार्ग की कुल लम्बाई :&ndash;</span><span class='cov-val big2'>" + esc(c.totalLen || est.length || "—") + "</span><span class='cov-unit'>कि०मी०</span></div>" +
       "</div>" +
       "<div class='cov-cost'><span class='cov-lbl'>कुल लागत :&ndash; रू०</span><span class='cov-cost-val'>" + fmtLakh(total) + "</span><span class='cov-unit'>लाख</span></div>" +
-      "<div class='cov-break'>" +
-        "<div class='cb-row'><span>मार्ग निर्माण की लागत</span><span>" + fmtLakh(cost.road) + " लाख</span></div>" +
-        "<div class='cb-row'><span>विधुत पोल विस्थापन की लागत</span><span>" + fmtLakh(cost.pole) + " लाख</span></div>" +
-        "<div class='cb-row'><span>पेड़ पातन की लागत</span><span>" + fmtLakh(cost.tree) + " लाख</span></div>" +
-        "<div class='cb-row cb-total'><span>मार्ग निर्माण की कुल लागत</span><span>" + fmtLakh(total) + " लाख</span></div>" +
-      "</div>";
+      // Summary पर कोई Utility न हो → breakdown सेक्शन नहीं दिखेगा
+      ((cost.utils && cost.utils.length) ?
+        "<div class='cov-break'>" +
+          "<div class='cb-row'><span>मार्ग निर्माण की लागत</span><span>" + fmtLakh(cost.road) + " लाख</span></div>" +
+          cost.utils.map((u) => "<div class='cb-row'><span>" + esc(u.name) + " की लागत</span><span>" + fmtLakh(u.amount) + " लाख</span></div>").join("") +
+          "<div class='cb-row cb-total'><span>मार्ग निर्माण की कुल लागत</span><span>" + fmtLakh(total) + " लाख</span></div>" +
+        "</div>" : "");
   }
   function coverRender(est, c) { return coverRenderUP(est, c); }   // अभी एक ही design; आगे design-अनुसार switch
   function renderCover() {
@@ -6098,7 +6341,30 @@
       totalLen: c.totalLen || est.length || "",
       costRoad: fmtLakh(cost.road), costPole: fmtLakh(cost.pole), costTree: fmtLakh(cost.tree), costTotal: fmtLakh(cost.total),
       aeName: ae, eeName: c.eeName || c.ee || "", khand: c.khand || "", vritt: c.vritt || "",
+      aagType: c.aagType || "प्रारम्भिक आगणन",
+      approval: ((c.aagType || "").indexOf("विस्तृत") >= 0) ? "तकनीकी" : "प्रशासकीय एवं वित्तीय",
     };
+  }
+  // "प्रारम्भिक/विस्तृत आगणन" व स्वीकृति-प्रकार (प्रशासकीय-वित्तीय/तकनीकी) text → linked span (पुराने प्रतिवेदन में भी)
+  function reportRelinkPhrases(host, est) {
+    const c = ensureCover(est);
+    const aag = c.aagType || "प्रारम्भिक आगणन";
+    const approval = (aag.indexOf("विस्तृत") >= 0) ? "तकनीकी" : "प्रशासकीय एवं वित्तीय";
+    const wrap = (splitRe, isMatch, field, val) => {
+      const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT, null);
+      const targets = []; let n;
+      while ((n = walker.nextNode())) { if (n.parentElement && n.parentElement.closest(".rpt-link")) continue; if (splitRe.test(n.nodeValue)) targets.push(n); }
+      targets.forEach((tn) => {
+        const frag = document.createDocumentFragment();
+        tn.nodeValue.split(splitRe).forEach((p) => {
+          if (isMatch(p)) { const s = document.createElement("span"); s.className = "rpt-link"; s.setAttribute("data-field", field); s.contentEditable = "false"; s.textContent = val; frag.appendChild(s); }
+          else if (p) frag.appendChild(document.createTextNode(p));
+        });
+        tn.parentNode.replaceChild(frag, tn);
+      });
+    };
+    wrap(/(प्रारम्भिक आगणन|विस्तृत आगणन)/, (p) => p === "प्रारम्भिक आगणन" || p === "विस्तृत आगणन", "aagType", aag);
+    wrap(/(प्रशासकीय एवं वित्तीय|तकनीकी)(?=\s*स्वीकृति)/, (p) => p === "प्रशासकीय एवं वित्तीय" || p === "तकनीकी", "approval", approval);
   }
   function reportApplyLinks(host, est) {
     const links = reportLinks(est);
@@ -6107,7 +6373,7 @@
   // ── Report तालिकाएँ: Row insert/delete + auto-Total ──
   function reportActionCell() {
     const td = document.createElement("td"); td.className = "rpt-act"; td.contentEditable = "false";
-    td.innerHTML = "<button type='button' class='rpt-rowins' title='नीचे पंक्ति जोड़ें'>＋</button><button type='button' class='rpt-rowdel' title='पंक्ति हटाएँ'>✕</button>";
+    td.innerHTML = "<button type='button' tabindex='-1' class='rpt-rowins' title='नीचे पंक्ति जोड़ें'>+</button><button type='button' tabindex='-1' class='rpt-rowdel' title='पंक्ति हटाएँ'>×</button>";
     return td;
   }
   function reportNum(td) { const n = parseFloat(String((td && td.textContent) || "").replace(/[^\d.\-]/g, "")); return isFinite(n) ? n : 0; }
@@ -6185,7 +6451,7 @@
     const links = reportLinks(est);
     const L = (f) => "<span class='rpt-link' data-field='" + f + "' contenteditable='false'>" + escapeHtml(links[f] || "") + "</span>";
     const row = (lbl, html) => "<div class='rpt-row'><b class='rpt-lbl'>" + lbl + "</b><div class='rpt-val'>" + html + "</div></div>";
-    const actCell = "<td class='rpt-act' contenteditable='false'><button type='button' class='rpt-rowins' title='नीचे पंक्ति जोड़ें'>＋</button><button type='button' class='rpt-rowdel' title='पंक्ति हटाएँ'>✕</button></td>";
+    const actCell = "<td class='rpt-act' contenteditable='false'><button type='button' tabindex='-1' class='rpt-rowins' title='नीचे पंक्ति जोड़ें'>+</button><button type='button' tabindex='-1' class='rpt-rowdel' title='पंक्ति हटाएँ'>×</button></td>";
     const costRows = ["GSB", "WMM", "DBM-G1 (VG-30)", "DBM-G2 (VG-40)", "BC"].map((n, i) =>
       "<tr><td class='rpt-sn'>" + (i + 1) + "</td><td>" + n + "</td><td></td><td></td><td></td>" + actCell + "</tr>").join("") +
       "<tr class='rpt-total-row'><td></td><td><b>Total =</b></td><td class='rpt-tot' data-col='2'></td><td class='rpt-tot' data-col='3'></td><td class='rpt-tot' data-col='4'></td><td class='rpt-act' contenteditable='false'></td></tr>";
@@ -6199,10 +6465,10 @@
       row("आवश्यकता एवं महत्व :", "यह मार्ग " + L("workName") + " के अंतर्गत आता है। औद्योगिक एवं व्यापारिक दृष्टिकोण से यह मार्ग अत्यंत व्यस्त तथा महत्वपूर्ण है। भारी वाहनों के आवागमन एवं डिवाइडर न होने के कारण इस मार्ग पर आये दिन दुर्घटनाएं होती रहती हैं तथा जाम की स्थिति बनी रहती है। निर्विरोध वाहनों के आवागमन हेतु मार्ग का चौड़ीकरण एवं सुदृढीकरण का कार्य कराया जाना आवश्यक है। मार्ग निर्माण होने के उपरान्त क्षेत्र के विकास में महत्वपूर्ण योगदान होगा।") +
       row("डिजाइन / यातायात का विवरण :", "मार्ग पर यातायात गणना के अनुसार पी0सी0यू0 ______ तथा सी0वी0पी0डी0 ______ है, मार्ग के सी0बी0आर0 ______ के अनुसार यातायात घनत्व ______ के लिए मार्ग का कस्ट डिजाइन किया गया है। स्थल की उपलब्धता के अनुसार मार्ग का चौड़ीकरण ______ मी0 प्रस्तावित किया गया है। उक्त मार्ग की परिकल्पना आई0आर0सी0–37–2018 में निहित प्राविधानों के अनुसार यातायात हेतु डिजाइन किया गया है।") +
       "<table class='rpt-tbl rpt-cost'><thead><tr><th>क्र0</th><th>कस्ट विवरण</th><th>चौड़ीकरण</th><th>सुदृढीकरण</th><th>प्राविधानित कुल</th><th class='rpt-act' contenteditable='false'></th></tr></thead><tbody>" + costRows + "</tbody></table>" +
-      row("प्राविधान :", "इस प्रारम्भिक आगणन में निम्नलिखित कार्य का प्राविधान किया गया है –") +
+      row("प्राविधान :", "इस " + L("aagType") + " में निम्नलिखित कार्य का प्राविधान किया गया है –") +
       "<table class='rpt-tbl2 rpt-prov'><tbody>" + provRows + "</tbody></table>" +
-      row("प्रयुक्त दरें :", "इस प्रारम्भिक आगणन में लगायी गयी दरें अधीक्षण अभियन्ता " + L("vritt") + " द्वारा स्वीकृत एवं MoRTH डाटा बुक पर आधारित विश्लेषित दरें प्रयोग की गयी हैं।") +
-      "<div class='rpt-para'>अतः मार्ग की कुल लम्बाई " + L("totalLen") + " कि0मी0 हेतु, विद्युत पोल शिफ्टिंग की अनुमानित लागत रू0 " + L("costPole") + " लाख, पेड़ पातन की अनुमानित लागत रू0 " + L("costTree") + " लाख व मार्ग निर्माण की लागत रू0 " + L("costRoad") + " लाख सम्मिलित करते हुए कुल निर्माण की लागत रू0 " + L("costTotal") + " लाख का प्रारम्भिक आगणन गठित कर प्रशासकीय एवं वित्तीय स्वीकृति हेतु प्रेषित है।</div>" +
+      row("प्रयुक्त दरें :", "इस " + L("aagType") + " में लगायी गयी दरें अधीक्षण अभियन्ता " + L("vritt") + " द्वारा स्वीकृत एवं MoRTH डाटा बुक पर आधारित विश्लेषित दरें प्रयोग की गयी हैं।") +
+      "<div class='rpt-para'>अतः मार्ग की कुल लम्बाई " + L("totalLen") + " कि0मी0 हेतु, विद्युत पोल शिफ्टिंग की अनुमानित लागत रू0 " + L("costPole") + " लाख, पेड़ पातन की अनुमानित लागत रू0 " + L("costTree") + " लाख व मार्ग निर्माण की लागत रू0 " + L("costRoad") + " लाख सम्मिलित करते हुए कुल निर्माण की लागत रू0 " + L("costTotal") + " लाख का " + L("aagType") + " गठित कर " + L("approval") + " स्वीकृति हेतु प्रेषित है।</div>" +
       "<div class='rpt-sign'>" +
         "<div class='rpt-sign-col'><div class='rpt-sign-nm'>(" + L("aeName") + ")</div><b>सहायक अभियन्ता</b><div>" + L("khand") + "</div></div>" +
         "<div class='rpt-sign-col'><div class='rpt-sign-nm'>(" + L("eeName") + ")</div><b>अधिशासी अभियन्ता</b><div>" + L("khand") + "</div></div>" +
@@ -6221,9 +6487,145 @@
     if (!est) { host.contentEditable = "false"; host.innerHTML = "<div class='cover-empty muted'>पहले कोई Estimate खोलें/चुनें — फिर उसका प्रतिवेदन यहाँ बनेगा।</div>"; return; }
     host.contentEditable = "true";
     host.innerHTML = (est.report && est.report.body) ? est.report.body : reportDefaultHTML(est);
+    reportRelinkPhrases(host, est);  // आगणन-प्रकार व स्वीकृति-प्रकार text → linked
     reportApplyLinks(host, est);   // linked span हमेशा Estimate से ताज़ा
     reportUpgrade(host);           // पुराना format → action-column/total जोड़ो
     reportRecalcAll(host);         // Total ताज़ा
+    // सभी inserted-tables → top-level in-flow (floating/nested पुरानी को सामान्य करो; handle मिले)
+    host.querySelectorAll(".rpt-usertbl").forEach((t) => {
+      t.classList.remove("rpt-float"); t.style.position = ""; t.style.left = ""; t.style.top = ""; t.style.zIndex = "";
+      if (t.parentElement !== host) host.appendChild(t);
+    });
+    requestAnimationFrame(() => { renderReportPageBreaks(); renderReportControls(); });   // पेज-ब्रेक + सेक्शन handles
+  }
+  // Report editor में A4 पेज-ब्रेक दर्शक रेखाएँ (लाल dotted) — छपाई में नहीं आतीं
+  // Right-click formatting menu — helpers
+  let _rptCtxRange = null;
+  function rptHideCtx() { const m = document.getElementById("rptCtx"); if (m) m.style.display = "none"; }
+  function rptRestoreSel() { if (_rptCtxRange) { const s = window.getSelection(); s.removeAllRanges(); s.addRange(_rptCtxRange); } const h = document.getElementById("reportDoc"); if (h) h.focus(); }
+  let _rptPbTimer = null;
+  function renderReportPageBreaks() {
+    const host = document.getElementById("reportDoc"), ov = document.getElementById("rptPageBreaks");
+    if (!host || !ov) return;
+    if (host.contentEditable !== "true") { ov.innerHTML = ""; return; }
+    const total = host.offsetHeight;
+    const PAGE = 1062;   // ~A4 पेज की छपाई-ऊँचाई (approx, 96dpi)
+    let y = PAGE, html = "", n = 1;
+    while (y < total - 24) { html += "<div class='rpt-pb' style='top:" + Math.round(y) + "px'><span>पेज " + n + " समाप्त · पेज " + (n + 1) + " प्रारंभ</span></div>"; y += PAGE; n++; }
+    ov.innerHTML = html;
+  }
+  function scheduleReportPageBreaks() { clearTimeout(_rptPbTimer); _rptPbTimer = setTimeout(renderReportPageBreaks, 220); }
+  // सेक्शन-नियंत्रण (ऊपर/नीचे/हटाएँ) — बाएँ gutter में overlay handles (contenteditable के बाहर)
+  function reportBlocks(host) { return Array.prototype.filter.call(host.children, (el) => el.nodeType === 1 && !el.classList.contains("rpt-title")); }
+  function renderReportControls() {
+    const host = document.getElementById("reportDoc"), ov = document.getElementById("rptSecCtrls");
+    if (!host || !ov) return;
+    if (host.contentEditable !== "true") { ov.innerHTML = ""; return; }
+    const blocks = reportBlocks(host);
+    ov.innerHTML = blocks.map((el, i) => {
+      // इन्सर्ट की गई टेबल → केवल drag + delete; बाकी सेक्शन → ऊपर/नीचे + delete
+      const isUserTbl = el.classList && el.classList.contains("rpt-usertbl");
+      const btns = isUserTbl
+        ? "<button type='button' class='rpt-drag' data-i='" + i + "' title='खींचकर सरकाएँ'>⠿</button>" +
+          "<button type='button' class='rpt-secdel' data-i='" + i + "' title='टेबल हटाएँ'>✕</button>"
+        : "<button type='button' class='rpt-moveup' data-i='" + i + "' title='ऊपर'" + (i === 0 ? " disabled" : "") + ">▲</button>" +
+          "<button type='button' class='rpt-movedown' data-i='" + i + "' title='नीचे'" + (i === blocks.length - 1 ? " disabled" : "") + ">▼</button>" +
+          "<button type='button' class='rpt-secdel' data-i='" + i + "' title='सेक्शन हटाएँ'>✕</button>";
+      return "<div class='rpt-sec-h' style='top:" + el.offsetTop + "px'>" + btns + "</div>";
+    }).join("");
+  }
+  let _rptCtlTimer = null;
+  function scheduleReportControls() { clearTimeout(_rptCtlTimer); _rptCtlTimer = setTimeout(renderReportControls, 220); }
+  function reportMoveSection(i, dir) {
+    const host = document.getElementById("reportDoc"); if (!host) return;
+    const blocks = reportBlocks(host); const el = blocks[i], other = blocks[i + dir];
+    if (!el || !other) return;
+    if (dir < 0) host.insertBefore(el, other); else host.insertBefore(other, el);
+    saveReportNow(); renderReportControls(); scheduleReportPageBreaks();
+  }
+  function reportDelSection(i) {
+    const host = document.getElementById("reportDoc"); if (!host) return;
+    const el = reportBlocks(host)[i]; if (!el) return;
+    if (!confirm("यह सेक्शन हटाएँ?")) return;
+    el.remove(); saveReportNow(); renderReportControls(); scheduleReportPageBreaks();
+  }
+  // इन्सर्ट की गई टेबल को खींचें — ऊपर/नीचे (live reorder, text जगह बनाए) + दाएँ/बाएँ (margin-left)
+  function reportStartDrag(el, startEv) {
+    const host = document.getElementById("reportDoc"); if (!host || !el) return;
+    document.body.classList.add("rpt-dragging-on"); el.classList.add("rpt-dragging");
+    const sx = startEv.clientX, startML = parseFloat(el.style.marginLeft) || 0;
+    const cs = getComputedStyle(host);
+    const contentW = host.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+    let raf = 0;
+    const onMove = (ev) => {
+      // ऊपर/नीचे — live DOM reorder
+      const y = ev.clientY;
+      const blks = reportBlocks(host).filter((b) => b !== el);
+      let target = null;
+      for (const b of blks) { const r = b.getBoundingClientRect(); if (y < r.top + r.height / 2) { target = b; break; } }
+      if (target) { if (el !== target && el.nextSibling !== target) host.insertBefore(el, target); }
+      else if (host.lastElementChild !== el) host.appendChild(el);
+      // दाएँ/बाएँ — margin-left (content-width के अंदर)
+      const avail = Math.max(0, contentW - el.offsetWidth);
+      el.style.marginLeft = Math.max(0, Math.min(startML + (ev.clientX - sx), avail)) + "px";
+      if (!raf) raf = requestAnimationFrame(() => { raf = 0; renderReportControls(); });
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp);
+      document.body.classList.remove("rpt-dragging-on"); el.classList.remove("rpt-dragging");
+      saveReportNow(); renderReportControls(); scheduleReportPageBreaks();
+    };
+    document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", onUp);
+  }
+  // cursor वाला top-level सेक्शन (host का सीधा child) — नया सेक्शन इसके ठीक बाद जोड़ने हेतु
+  function reportCurrentBlock(host) {
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return null;
+    let node = sel.anchorNode;
+    if (!node || !host.contains(node)) return null;
+    if (node.nodeType !== 1) node = node.parentElement;
+    while (node && node.parentElement !== host) node = node.parentElement;
+    return (node && node.parentElement === host && node.nodeType === 1 && !node.classList.contains("rpt-title")) ? node : null;
+  }
+  function reportAddSection() {
+    const host = document.getElementById("reportDoc"); if (!host || host.contentEditable !== "true") return;
+    const div = document.createElement("div"); div.className = "rpt-row";
+    div.innerHTML = "<b class='rpt-lbl'>नया शीर्षक :</b><div class='rpt-val'>यहाँ विवरण लिखें…</div>";
+    const cur = reportCurrentBlock(host);
+    if (cur) host.insertBefore(div, cur.nextSibling);   // cursor वाले सेक्शन के ठीक बाद
+    else { const sign = host.querySelector(".rpt-sign"); if (sign) host.insertBefore(div, sign); else host.appendChild(div); }
+    const lbl = div.querySelector(".rpt-lbl");
+    if (lbl) { host.focus(); const range = document.createRange(); range.selectNodeContents(lbl); const s = window.getSelection(); s.removeAllRanges(); s.addRange(range); }
+    saveReportNow(); renderReportControls(); scheduleReportPageBreaks();
+  }
+  function reportInsertTable() {
+    const host = document.getElementById("reportDoc"); if (!host || host.contentEditable !== "true") return;
+    const spec = prompt("टेबल का आकार — पंक्ति x कॉलम (जैसे 3x4):", "3x4"); if (!spec) return;
+    const m = /(\d+)\s*[x×*]\s*(\d+)/i.exec(spec.trim()); if (!m) { alert("आकार सही नहीं — जैसे 3x4 लिखें।"); return; }
+    const rows = Math.max(1, Math.min(50, +m[1])), cols = Math.max(1, Math.min(20, +m[2]));
+    let inner = "<tbody>";
+    for (let r = 0; r < rows; r++) { inner += "<tr>"; for (let c = 0; c < cols; c++) inner += "<td></td>"; inner += "</tr>"; }
+    inner += "</tbody>";
+    const tbl = document.createElement("table"); tbl.className = "rpt-usertbl"; tbl.innerHTML = inner;
+    const cur = reportCurrentBlock(host);   // in-flow top-level block (drag पर text जगह बनाता है)
+    if (cur) host.insertBefore(tbl, cur.nextSibling);
+    else { const sign = host.querySelector(".rpt-sign"); if (sign) host.insertBefore(tbl, sign); else host.appendChild(tbl); }
+    const first = tbl.querySelector("td");
+    if (first) { host.focus(); const range = document.createRange(); range.selectNodeContents(first); const s = window.getSelection(); s.removeAllRanges(); s.addRange(range); }
+    saveReportNow(); renderReportControls(); scheduleReportPageBreaks();
+  }
+  // Tab — टेबल के अगले/पिछले (editable) cell में जाए (+/× बटन पर नहीं)
+  function reportTabKey(e) {
+    if (e.key !== "Tab") return;
+    const sel = window.getSelection(); if (!sel || !sel.rangeCount) return;
+    let node = sel.anchorNode; let td = node && (node.nodeType === 1 ? node : node.parentElement);
+    td = td && td.closest ? td.closest("td") : null; if (!td) return;
+    const table = td.closest("table"); if (!table) return;
+    e.preventDefault();
+    const cells = Array.prototype.filter.call(table.querySelectorAll("td"), (c) => !c.classList.contains("rpt-act") && c.isContentEditable !== false);
+    const idx = cells.indexOf(td);
+    const nx = e.shiftKey ? cells[idx - 1] : cells[idx + 1];
+    if (nx) { const range = document.createRange(); range.selectNodeContents(nx); const s = window.getSelection(); s.removeAllRanges(); s.addRange(range); }
   }
   function openReportView() {
     if (!state.activeEstimateId) { alert("पहले कोई Estimate खोलें/चुनें (Load Estimate)।"); return; }
@@ -6292,6 +6694,58 @@
   function openReferenceView() {
     if (!state.activeEstimateId) { alert("पहले कोई Estimate खोलें/चुनें (Load Estimate)।"); return; }
     setActiveView("reference");
+  }
+
+  /* ══════════ Estimate Home — Actions (group PDF / Word / Excel / Print) ══════════ */
+  // Report की छपाई-योग्य HTML (linked ताज़ा, edit-नियंत्रण हटाकर)
+  function reportPrintHTML(est) {
+    const tmp = document.createElement("div");
+    tmp.innerHTML = (est.report && est.report.body) ? est.report.body : reportDefaultHTML(est);
+    reportRelinkPhrases(tmp, est); reportApplyLinks(tmp, est);
+    tmp.querySelectorAll(".rpt-act").forEach((el) => el.remove());   // row +/× बटन हटाएँ
+    return tmp.innerHTML;
+  }
+  function referencePrintHTML(est) {
+    const list = ensureReferences(est); if (!list.length) return "";
+    const rows = list.map((r, i) => "<div class='refp-item'><b>" + (i + 1) + ". " + escapeHtml(r.name || "") + "</b>" +
+      (r.note ? " — " + escapeHtml(r.note) : "") +
+      ((r.mime || "").indexOf("image") === 0 ? "<br><img src='" + r.data + "' style='max-width:100%;max-height:230mm;margin-top:6px'>" : "") + "</div>").join("");
+    return "<div class='chk-hd' style='margin-bottom:14px'>Reference फाइलें</div>" + rows;
+  }
+  // Basic Sheet — Cover · Checklist · Index · Report · Reference एक PDF में (Print → Save as PDF)
+  function downloadBasicSheetPDF(est) {
+    const area = document.getElementById("printArea"); if (!area) return;
+    const c = ensureCover(est);
+    const pg = (cls, inner) => "<div class='basic-pdf-page " + cls + " cover-print'>" + inner + "</div>";
+    let html = "";
+    html += pg("cover-doc", coverRender(est, c));
+    html += pg("cover-doc chk-doc", checklistRender(est));
+    html += pg("cover-doc chk-doc idx-doc", indexRender(est));
+    html += pg("cover-doc rpt-doc rpt-print", reportPrintHTML(est));
+    const refH = referencePrintHTML(est); if (refH) html += pg("cover-doc chk-doc", refH);
+    area.innerHTML = html;
+    window.print();
+  }
+  function downloadReportWord(est) {
+    const body = reportPrintHTML(est);
+    const css = "body{font-family:'Noto Sans Devanagari','Nirmala UI',sans-serif;font-size:15px;line-height:1.6}" +
+      "table{border-collapse:collapse}td,th{border:1px solid #000;padding:4px 8px}" +
+      ".rpt-title{text-align:center;font-size:20px;font-weight:bold;text-decoration:underline;margin-bottom:14px}" +
+      ".rpt-row{margin-bottom:10px}.rpt-lbl{font-weight:bold}.rpt-sign{margin-top:40px}";
+    const html = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><style>" + css + "</style></head><body>" + body + "</body></html>";
+    const blob = new Blob(["﻿" + html], { type: "application/msword" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = safeName(est.name) + "_Report.doc"; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 8000);
+    status("Report Word फाइल बनी");
+  }
+  // Estimate Home पर loaded estimate का Actions पैनल
+  function renderEstActions() {
+    const card = document.getElementById("estActionsCard"); if (!card) return;
+    const est = state.estimates[state.activeEstimateId];
+    if (!est) { card.style.display = "none"; return; }
+    card.style.display = "";
+    const nm = document.getElementById("estActName"); if (nm) nm.textContent = est.name || "Loaded Estimate";
   }
 
   function renderSummary() {
@@ -6791,18 +7245,67 @@
     const oIdx = document.getElementById("openIndex"); if (oIdx) oIdx.addEventListener("click", openIndexView);
     const idxBack = document.getElementById("idxBack"); if (idxBack) idxBack.addEventListener("click", () => setActiveView("basic-sheet"));
     const idxPrint = document.getElementById("idxPrint"); if (idxPrint) idxPrint.addEventListener("click", () => { const est = state.estimates[state.activeEstimateId]; if (est) printIndex(est); });
+    // Estimate Home — Actions (group PDF / Word / Excel / Print)
+    const actEst = () => state.estimates[state.activeEstimateId];
+    const aBP = document.getElementById("actBasicPdf"); if (aBP) aBP.addEventListener("click", () => { const e = actEst(); if (!e) return alert("पहले कोई Estimate खोलें।"); downloadBasicSheetPDF(e); });
+    const aRW = document.getElementById("actReportWord"); if (aRW) aRW.addEventListener("click", () => { const e = actEst(); if (!e) return alert("पहले कोई Estimate खोलें।"); downloadReportWord(e); });
+    const aXL = document.getElementById("actExcel"); if (aXL) aXL.addEventListener("click", () => { const e = actEst(); if (!e) return alert("पहले कोई Estimate खोलें।"); exportEstimateXlsx(e, estAllSheetIds(e)); });
+    const aSP = document.getElementById("actSheetsPdf"); if (aSP) aSP.addEventListener("click", () => { const e = actEst(); if (!e) return alert("पहले कोई Estimate खोलें।"); printEstimate(e, estAllSheetIds(e)); });
     // Report — प्रतिवेदन (Basic Sheet)
     const oRpt = document.getElementById("openReport"); if (oRpt) oRpt.addEventListener("click", openReportView);
     const rptBack = document.getElementById("rptBack"); if (rptBack) rptBack.addEventListener("click", () => { saveReportNow(); setActiveView("basic-sheet"); });
     const rptDoc = document.getElementById("reportDoc");
     if (rptDoc) {
-      rptDoc.addEventListener("input", () => { reportRecalcAll(rptDoc); scheduleSaveReport(); });   // cost cell बदले → Total ताज़ा
+      rptDoc.addEventListener("input", () => { reportRecalcAll(rptDoc); scheduleSaveReport(); scheduleReportPageBreaks(); scheduleReportControls(); });
+      rptDoc.addEventListener("keydown", reportTabKey);   // Tab → अगला cell
+      // Right-click → सिलेक्ट टेक्स्ट पर Bold/Italic/Underline/आकार editor
+      rptDoc.addEventListener("contextmenu", (e) => {
+        const sel = window.getSelection();
+        if (!sel || sel.isCollapsed || !String(sel).trim()) { rptHideCtx(); return; }
+        e.preventDefault();
+        _rptCtxRange = sel.getRangeAt(0).cloneRange();
+        const m = document.getElementById("rptCtx"); if (!m) return;
+        m.style.display = "inline-flex";
+        m.style.left = Math.max(6, Math.min(e.clientX, window.innerWidth - m.offsetWidth - 8)) + "px";
+        m.style.top = Math.max(6, Math.min(e.clientY + 2, window.innerHeight - 44)) + "px";
+      });
       rptDoc.addEventListener("click", (e) => {
         const ins = e.target.closest && e.target.closest(".rpt-rowins");
         const del = e.target.closest && e.target.closest(".rpt-rowdel");
         if (ins) { e.preventDefault(); reportInsertRow(ins); }
         else if (del) { e.preventDefault(); reportDeleteRow(del); }
       });
+    }
+    const rptAddSec = document.getElementById("rptAddSec"); if (rptAddSec) rptAddSec.addEventListener("click", reportAddSection);
+    const rptAddTbl = document.getElementById("rptAddTbl"); if (rptAddTbl) rptAddTbl.addEventListener("click", reportInsertTable);
+    const rptCtl = document.getElementById("rptSecCtrls");
+    if (rptCtl) {
+      rptCtl.addEventListener("click", (e) => {
+        const up = e.target.closest(".rpt-moveup"), dn = e.target.closest(".rpt-movedown"), dl = e.target.closest(".rpt-secdel");
+        if (up) reportMoveSection(+up.dataset.i, -1);
+        else if (dn) reportMoveSection(+dn.dataset.i, 1);
+        else if (dl) reportDelSection(+dl.dataset.i);
+      });
+      rptCtl.addEventListener("mousedown", (e) => {
+        const g = e.target.closest(".rpt-drag"); if (!g) return; e.preventDefault();
+        const el = reportBlocks(document.getElementById("reportDoc"))[+g.dataset.i];
+        if (el && el.classList.contains("rpt-usertbl")) reportStartDrag(el, e);
+      });
+    }
+    const rptCtx = document.getElementById("rptCtx");
+    if (rptCtx) {
+      rptCtx.querySelectorAll("button[data-cmd]").forEach((b) => b.addEventListener("mousedown", (e) => {
+        e.preventDefault(); rptRestoreSel();
+        try { document.execCommand(b.dataset.cmd, false, null); } catch (er) {}
+        const s = window.getSelection(); if (s.rangeCount) _rptCtxRange = s.getRangeAt(0).cloneRange();
+        scheduleSaveReport();
+      }));
+      const szSel = document.getElementById("rptCtxSize");
+      if (szSel) szSel.addEventListener("change", () => {
+        if (szSel.value) { rptRestoreSel(); try { document.execCommand("styleWithCSS", false, true); } catch (er) {} document.execCommand("fontSize", false, szSel.value); scheduleSaveReport(); }
+        szSel.value = ""; rptHideCtx();
+      });
+      document.addEventListener("mousedown", (e) => { if (rptCtx.style.display !== "none" && !rptCtx.contains(e.target)) rptHideCtx(); });
     }
     const rptSave = document.getElementById("rptSave"); if (rptSave) rptSave.addEventListener("click", () => { saveReportNow(); status("प्रतिवेदन सहेजा"); });
     const rptReset = document.getElementById("rptReset"); if (rptReset) rptReset.addEventListener("click", () => {
@@ -6847,6 +7350,8 @@
       est.summary = est.summary || {}; est.summary.tpl = ""; db.put("estimates", est);
       renderSummary(); status("तालिका फिर से बनाई (default)");
     });
+    const sUtil = document.getElementById("sumUtility"); if (sUtil) sUtil.addEventListener("click", summaryAddUtility);
+    const sUtilD = document.getElementById("sumUtilityDel"); if (sUtilD) sUtilD.addEventListener("click", summaryRemoveUtility);
     const sTpl = document.getElementById("sumTemplate"); if (sTpl) sTpl.addEventListener("click", openSummaryTemplatePicker);
     const sSave = document.getElementById("sumSaveTpl"); if (sSave) sSave.addEventListener("click", saveSummaryTemplate);
     const dref = document.getElementById("domRefresh");
@@ -6917,10 +7422,12 @@
     });
     const neCreate = document.getElementById("neCreate");
     if (neCreate) neCreate.addEventListener("click", saveEstimateForm);
-    // मशीनरी Leading की दूरी — प्रस्तावित लंबाई से auto-भरे (जब तक user ने खुद न भरा हो)
-    const neLenEl = document.getElementById("neLength"), neMachEl = document.getElementById("neMachLead");
-    if (neLenEl && neMachEl) neLenEl.addEventListener("input", () => { if (neMachEl.value.trim() === "" || neMachEl.dataset.auto === "1") { neMachEl.value = neLenEl.value; neMachEl.dataset.auto = "1"; } });
+    // मशीनरी Leading की दूरी व मार्ग की कुल लम्बाई — प्रस्तावित लंबाई से auto-भरें (जब तक user खुद न भरे)
+    const neLenEl = document.getElementById("neLength"), neMachEl = document.getElementById("neMachLead"), neTotEl = document.getElementById("neCovTotalLen");
+    const mirrorFrom = (el) => { if (el && (el.value.trim() === "" || el.dataset.auto === "1")) { el.value = neLenEl.value; el.dataset.auto = "1"; } };
+    if (neLenEl) neLenEl.addEventListener("input", () => { mirrorFrom(neMachEl); mirrorFrom(neTotEl); });
     if (neMachEl) neMachEl.addEventListener("input", () => { neMachEl.dataset.auto = ""; });
+    if (neTotEl) neTotEl.addEventListener("input", () => { neTotEl.dataset.auto = ""; });
     // लंबाई/दूरी वाले फ़ील्ड — छोड़ते ही 2 दशमलव तक format (जैसे 8.5 → 8.50)
     LEN_FIELDS.forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener("blur", () => { const v = el.value.trim(); if (v === "") return; const n = mrNum(v); if (isFinite(n)) el.value = n.toFixed(2); }); });
     // खंड/वृत्त नाम बदलने पर विभागीय अधिकारी के drop-down उसी कार्यालय के नामों से ताज़ा
@@ -7029,7 +7536,8 @@
     setV("neCovSrishti", cov.srishti || "");
     fillYojanaSelect(cov.yojana || cov.workType || "");   // योजना का नाम — drop-down
     loadYojanaTypes(() => { const s = document.getElementById("neCovYojana"); if (s && document.getElementById("newEstimateForm").style.display !== "none") fillYojanaSelect(s.value || cov.yojana || ""); });
-    setV("neCovTotalLen", cov.totalLen || "");
+    // मार्ग की कुल लम्बाई — default प्रस्तावित लंबाई
+    setV("neCovTotalLen", (cov.totalLen != null && cov.totalLen !== "") ? cov.totalLen : (est && est.length != null ? est.length : ""));
     loadNeOff(cov);
     renderOfficerSection();
     formatLenFields();   // प्रस्तावित/कुल लंबाई, मशीनरी व EW दूरी — 2 दशमलव तक
@@ -7355,7 +7863,7 @@
       aagType: gvC("neCovAagType") || "प्रारम्भिक आगणन",
       kshetra: gvC("neCovKshetra") || DEF_KSHETRA, vritt: gvC("neCovVritt") || DEF_VRITT, khand: gvC("neCovKhand") || DEF_KHAND,
       vidhanSabha: gvC("neCovVidhan"), lokSabha: gvC("neCovLok"), block: gvC("neCovBlock"),
-      srishti: gvC("neCovSrishti"), yojana: gvC("neCovYojana"), totalLen: gvC("neCovTotalLen"),
+      srishti: gvC("neCovSrishti"), yojana: gvC("neCovYojana"), totalLen: gvC("neCovTotalLen") || lenVal,
       eeName: off.eeName, aeList: off.aeList, jeList: off.jeList,
       jePraKhand: off.jePraKhand, jePraVritt: off.jePraVritt, seName: off.seName,
     });
@@ -7377,8 +7885,14 @@
     applyOverheadAll();   // सभी analysis में अपने-अपने group के % से overhead/profit
     scheduleReRate();     // RMR की दूरी बदली हो तो linked analyses की दरें ताज़ा
     renderEstimateSelect(); renderEstimate(); updateTopbarEstimate(); renderEstimateProjectList();
-    setActiveView("rate-analysis");
-    status((isNew ? "नया Estimate बना: " : "Estimate सुधरा: ") + est.name + " · Overhead/Profit लागू");
+    if (isNew) {
+      setActiveView("basic-sheet");   // नया Estimate — Basic Sheet पर
+      status("नया Estimate बना: " + est.name + " · Overhead/Profit लागू");
+    } else {
+      // सुधार — कहीं jump न करें, सिर्फ़ पुष्टि popup
+      status("Estimate सुधरा: " + est.name + " · Overhead/Profit लागू");
+      alert("✔ सुधार हो गया व सहेज लिया गया है।");
+    }
   }
   // सभी estimate की सूची — चुनकर विवरण सुधारें
   function openEditEstimatePicker() {

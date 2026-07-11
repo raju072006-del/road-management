@@ -831,20 +831,20 @@ body{
 
 /* ---------- Print ---------- */
 .print-area{display:none}
-@page{size:A4 portrait; margin:12mm}
+@page{size:A4 portrait; margin:9mm}
 @media print{
   body{background:#fff}
   .app-shell{display:none !important}
   .print-area{display:block}
   .print-sheet{page-break-after:always; padding:0 0 24px}
   .print-sheet:last-child{page-break-after:auto}
-  .print-title{text-align:center; font-size:16px; font-weight:700; text-decoration:underline; margin-bottom:4px; line-height:1.35}
+  .print-title{text-align:center; font-size:17px; font-weight:700; text-decoration:underline; margin-bottom:4px; line-height:1.35}
   .print-head{margin-bottom:8px}
   .print-head .pmeta{font-size:10px; color:#333; display:flex; justify-content:space-between; margin-bottom:4px}
-  table.ptable{border-collapse:collapse; width:100%; table-layout:fixed; font-family:var(--ui); font-size:11px; -webkit-print-color-adjust:exact; print-color-adjust:exact}
-  table.ptable td{border:1px solid #000; padding:3px 5px; text-align:right; vertical-align:top; white-space:normal; word-wrap:break-word; overflow-wrap:anywhere}
+  table.ptable{border-collapse:collapse; width:100%; table-layout:fixed; font-family:var(--ui); font-size:15.5px; -webkit-print-color-adjust:exact; print-color-adjust:exact}
+  table.ptable td{border:1px solid #000; padding:2px 3px; text-align:right; vertical-align:top; white-space:normal; word-wrap:break-word; overflow-wrap:anywhere}
   table.ptable td.t{text-align:left}
-  table.ptable td.merged{text-align:center; font-weight:700; font-size:13px}
+  table.ptable td.merged{text-align:center; font-weight:700; font-size:16px}
   table.ptable tr.pt-head td{background:#3a4a8f; color:#fff; font-weight:600; text-align:center}
   table.ptable tr.pt-foot td{background:#fef4d8; font-weight:700}
 }
@@ -925,7 +925,11 @@ body{
 
 /* Report — प्रतिवेदन (editable + linked) */
 .rpt-hint{font-size:11px; color:var(--muted)}
-.rpt-doc{align-self:flex-start; display:block; min-height:auto; height:auto; overflow:visible; border:none; color:#111; padding:26px 34px 40px;
+.rpt-wrap{position:relative; align-self:flex-start}
+.rpt-pagebreaks{position:absolute; inset:0; pointer-events:none; z-index:6}
+.rpt-pb{position:absolute; left:0; right:0; border-top:1.5px dashed #e02b2b}
+.rpt-pb span{position:absolute; right:8px; top:-9px; background:#fff; color:#e02b2b; font-size:10px; font-weight:600; padding:0 6px; font-family:var(--ui); border:1px solid #f0bcbc; border-radius:5px; white-space:nowrap}
+.rpt-doc{align-self:flex-start; display:block; position:relative; min-height:auto; height:auto; overflow:visible; border:none; color:#111; padding:26px 34px 40px;
   font-family:"Noto Sans Devanagari","Nirmala UI",var(--ui); font-size:15.5px; line-height:1.65}
 .rpt-doc:focus{outline:none}
 .rpt-title{text-align:center; font-size:22px; font-weight:800; text-decoration:underline; margin-bottom:18px}
@@ -946,11 +950,37 @@ body{
 .rpt-sign-nm{font-weight:700; margin-bottom:2px}
 .rpt-sign-col b{display:block}
 .rpt-tot{font-weight:700}
-.rpt-act{width:58px; text-align:center; white-space:nowrap}
-.rpt-act button{border:1px solid var(--line); background:#fff; border-radius:6px; width:23px; height:23px; line-height:1; cursor:pointer; font-size:12px; padding:0; margin:0 1px}
+.rpt-act{width:40px; text-align:center; white-space:nowrap; padding:2px !important}
+.rpt-act button{border:1px solid var(--line); background:#fff; border-radius:4px; width:16px; height:16px; line-height:1; cursor:pointer; font-size:10px; padding:0; margin:0 1px; vertical-align:middle}
 .rpt-act button:hover{background:#eef2fe}
 .rpt-rowins{color:#2e7d32}
 .rpt-rowdel{color:#c0392b}
+/* सेक्शन नियंत्रण (ऊपर/नीचे/हटाएँ) — बाएँ gutter overlay */
+.rpt-secov{position:absolute; inset:0; pointer-events:none; z-index:7}
+.rpt-sec-h{position:absolute; left:4px; display:flex; flex-direction:column; gap:1px; pointer-events:auto}
+.rpt-sec-h button{border:1px solid var(--line); background:#fff; border-radius:4px; width:20px; height:15px; line-height:1; font-size:8px; cursor:pointer; color:#2e3a73; padding:0}
+.rpt-sec-h button:hover:not(:disabled){background:#eef2fe}
+.rpt-sec-h button:disabled{opacity:.3; cursor:default}
+.rpt-sec-h .rpt-secdel{color:#c0392b}
+.rpt-sec-h .rpt-drag{cursor:grab; color:#5563a8; font-size:9px; letter-spacing:-1px}
+.rpt-dragging-on, .rpt-dragging-on *{cursor:grabbing !important; user-select:none}
+.rpt-dragging{opacity:.45; outline:2px dashed var(--sel-border); outline-offset:2px}
+.rpt-dropline{position:absolute; left:0; right:0; height:0; border-top:3px solid var(--sel-border); border-radius:2px; z-index:9; pointer-events:none; box-shadow:0 0 6px rgba(76,102,240,.5)}
+/* इन्सर्ट की गई user-table — चौड़ाई/ऊँचाई content अनुसार auto */
+.rpt-usertbl{border-collapse:collapse; width:auto; margin:8px 0; font-size:14px}
+.rpt-usertbl td{border:1px solid #111; padding:5px 8px; min-width:44px; vertical-align:top}
+/* right-click formatting menu */
+.rpt-ctx{position:fixed; z-index:9999; display:none; align-items:center; gap:4px; background:#fff; border:1px solid var(--line); border-radius:10px; box-shadow:0 8px 28px rgba(20,28,46,.22); padding:5px 7px}
+.rpt-ctx button{width:28px; height:28px; border:1px solid var(--line); background:#fff; border-radius:7px; cursor:pointer; font-size:14px; color:var(--ink); padding:0}
+.rpt-ctx button:hover{background:#eef2fe}
+.rpt-ctx select{height:28px; border:1px solid var(--line); border-radius:7px; font-family:var(--ui); font-size:12px; padding:0 6px; background:#fff; cursor:pointer}
+/* Estimate Home — Actions पैनल */
+#estActionsCard .act-grp{margin-bottom:14px}
+#estActionsCard .act-grp:last-of-type{margin-bottom:0}
+.act-grp-h{font-size:12.5px; font-weight:700; color:#2e3a73; margin:0 0 8px}
+.act-btns{display:flex; flex-direction:column; gap:8px}
+.act-btns .btn{justify-content:flex-start; text-align:left}
+.refp-item{margin-bottom:12px; font-size:14px}
 
 /* Reference फाइलें */
 .ref-top{margin:6px 2px 16px}
@@ -983,6 +1013,8 @@ body{
   .rpt-print .rpt-link{background:none !important; padding:0}
   .rpt-print .rpt-act{display:none}
   .chk-item,.chk-off tbody tr,.chk-off thead,.idx-tbl tbody tr,.rpt-sign,.rpt-tbl2 tr{page-break-inside:avoid}
+  .basic-pdf-page{page-break-after:always}
+  .basic-pdf-page:last-child{page-break-after:auto}
 }
 
 /* ---------- Responsive ---------- */

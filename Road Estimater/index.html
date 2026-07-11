@@ -44,7 +44,7 @@
       </div>
 
       <nav class="side-nav" id="sideNav">
-        <button class="nav-item" data-view="load"><span class="ni-ic">📂</span><span class="ni-tx">Load Estimate</span></button>
+        <button class="nav-item" data-view="load"><span class="ni-ic">📂</span><span class="ni-tx">Estimate Home</span></button>
         <button class="nav-item" data-view="basic-sheet"><span class="ni-ic">📄</span><span class="ni-tx">Basic Sheet</span></button>
         <button class="nav-item" data-view="basic-analysis"><span class="ni-ic">🧪</span><span class="ni-tx">Basic Analysis</span></button>
         <button class="nav-item" data-view="rate-analysis"><span class="ni-ic">📊</span><span class="ni-tx">Rate Analysis</span></button>
@@ -92,7 +92,7 @@
         <!-- ===== 1. LOAD ESTIMATE ===== -->
         <section class="view scroll-view" id="view-load">
           <div class="view-head">
-            <h2>Load Estimate</h2>
+            <h2>Estimate Home</h2>
             <p class="view-sub">नया estimate बनाएँ, पुराना खोलें/कॉपी करें, या नई दरों पर अपडेट करें।</p>
           </div>
 
@@ -180,6 +180,25 @@
             </div>
           </div>
 
+          <div class="panel-card" id="estActionsCard" style="display:none">
+            <h3>📤 <span id="estActName">Loaded Estimate</span> — Actions</h3>
+            <div class="act-grp">
+              <div class="act-grp-h">📄 Basic Sheet (दस्तावेज़)</div>
+              <div class="act-btns">
+                <button class="btn" id="actBasicPdf">📄 Group PDF — Cover · Checklist · Index · Report · Reference</button>
+                <button class="btn" id="actReportWord">📝 Report — Word (.doc)</button>
+              </div>
+            </div>
+            <div class="act-grp">
+              <div class="act-grp-h">📊 Analysis व शीट</div>
+              <div class="act-btns">
+                <button class="btn" id="actExcel">📊 Excel — RMR · Bitumen · Rate Analysis · DOM · BOQ · Summary (रंग/format व links सहित)</button>
+                <button class="btn" id="actSheetsPdf">🖨 PDF — सभी शीट Print</button>
+              </div>
+            </div>
+            <p class="oh-note">किसी <b>एक पेज या Analysis</b> का प्रिन्ट उसी पेज पर दिए <b>🖨</b> बटन से करें। Excel में <b>cell के रंग/bold/alignment</b> ऑनलाइन जैसा ही आता है (formatting engine पहली बार online से लोड होता है)।</p>
+          </div>
+
           <div class="panel-card">
             <h3>मौजूदा Estimates</h3>
             <ul class="estimate-list" id="estimateProjectList"><li class="muted-row">अभी कोई estimate नहीं — ऊपर "नया Estimate" से बनाएँ।</li></ul>
@@ -250,13 +269,30 @@
             <button class="btn sm" id="rptBack">← Basic Sheet</button>
             <b class="dom-head-title">Report — प्रतिवेदन</b>
             <span class="cover-tools">
-              <span class="rpt-hint">🔗 नीला = linked (Estimate से auto)</span>
+              <span class="rpt-hint">🔗 नीला = linked</span>
+              <button class="btn sm" id="rptAddSec" title="नया सेक्शन जोड़ें">＋ सेक्शन</button>
+              <button class="btn sm" id="rptAddTbl" title="टेबल इन्सर्ट करें">＋ टेबल</button>
               <button class="btn sm" id="rptReset" title="फिर से default बनाएँ (edits मिटेंगे)">🔄 फिर से</button>
               <button class="btn sm" id="rptSave">💾 सहेजें</button>
               <button class="btn sm primary" id="rptPrint">🖨 Print / PDF</button>
             </span>
           </div>
-          <div class="cover-stage"><div class="cover-doc rpt-doc" id="reportDoc" spellcheck="false"></div></div>
+          <div class="cover-stage"><div class="rpt-wrap"><div class="cover-doc rpt-doc" id="reportDoc" spellcheck="false"></div><div class="rpt-pagebreaks" id="rptPageBreaks"></div><div class="rpt-secov" id="rptSecCtrls"></div></div></div>
+          <div class="rpt-ctx" id="rptCtx">
+            <button type="button" data-cmd="bold" title="Bold"><b>B</b></button>
+            <button type="button" data-cmd="italic" title="Italic"><i>I</i></button>
+            <button type="button" data-cmd="underline" title="Underline"><u>U</u></button>
+            <select id="rptCtxSize" title="Font आकार">
+              <option value="">आकार</option>
+              <option value="1">बहुत छोटा</option>
+              <option value="2">छोटा</option>
+              <option value="3">सामान्य</option>
+              <option value="4">बड़ा</option>
+              <option value="5">और बड़ा</option>
+              <option value="6">बहुत बड़ा</option>
+              <option value="7">विशाल</option>
+            </select>
+          </div>
         </section>
 
         <!-- ===== 2e. BASIC SHEET › REFERENCE फाइलें ===== -->
@@ -418,6 +454,8 @@
             <span class="sum-toolbar-inline">
               <button class="btn sm primary" id="sumTemplate" title="Template — लोड करें / नया बनाएँ / हटाएँ (हर Template पूरी तालिका का स्वतंत्र snapshot)">📋 Template</button>
               <button class="btn sm" id="sumSaveTpl" title="वर्तमान तालिका को Template के रूप में सहेजें। लोड किया Template है तो उसी को अद्यतन (replace) करता है; वरना नए नाम से।">💾 सहेजें</button>
+              <button class="btn sm" id="sumUtility" title="Nett Amount से ठीक पहले एक 'Utility' पंक्ति जोड़ें (Short Name पूछेगा) — Cover पेज पर वही नाम व Amount दिखेगा">＋ Utility जोड़ें</button>
+              <button class="btn sm" id="sumUtilityDel" title="कोई Utility पंक्ति हटाएँ">− Utility हटाएँ</button>
               <button class="btn sm" id="sumRefresh" title="तालिका फिर से default (auto) बनाएँ — BOQ/Sub-Estimate से ताज़ा (वर्तमान बदलाव मिटेंगे)">🔄 फिर से बनाएँ</button>
             </span>
           </div>

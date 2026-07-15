@@ -2703,7 +2703,7 @@
     return row.desc || "";
   }
   function masterItemRate(cat, row) {
-    if (cat === "material_query") return mrNum(row.query_rate) - mrNum(row.loading); // Final Rate
+    if (cat === "material_query") return mrNum(row.query_rate) - mrNum(row.royalty) - mrNum(row.loading); // Final Rate = Query − Royality − Loading/Unloading
     return mrNum(row.rate);
   }
   function round2(n) { n = mrNum(n); return Math.round((n + Number.EPSILON) * 100) / 100; } // 2 दशमलव
@@ -4199,7 +4199,7 @@
       { key: "query_rate", label: "Query Rate", w: "100px", num: true }, { key: "royalty", label: "Royality", w: "90px", num: true },
       { key: "loading", label: "Loading/Unloading", w: "130px", num: true }, { key: "unit", label: "Unit", w: "72px" },
       { key: "final_rate", label: "Final Rate", w: "100px", num: true,
-        calc: (r) => { if (r.query_rate == null || String(r.query_rate).trim() === "") return ""; return (mrNum(r.query_rate) - mrNum(r.loading)).toFixed(2); } } ] },
+        calc: (r) => { if (r.query_rate == null || String(r.query_rate).trim() === "") return ""; return (mrNum(r.query_rate) - mrNum(r.royalty) - mrNum(r.loading)).toFixed(2); } } ] },   // Final = Query − Royality − Loading/Unloading
     material_sor: { name: "Material SOR Rate", cols: [
       { key: "sn", label: "क्रम", w: "54px", num: true }, { key: "desc", label: "Material Description" },
       { key: "unit", label: "Unit", w: "90px" }, { key: "rate", label: "SOR Rate", w: "120px", num: true } ] },
@@ -4441,6 +4441,7 @@
     ["#mrToolbar", "#mrVersions", "#mrExtra"].forEach((s) => gShow(s, !isBit));
     gShow("#view-master-cat .mr-searchbar", !isBit);
     gShow("#view-master-cat .data-table-wrap", !isBit);
+    const dtw = document.querySelector("#view-master-cat .data-table-wrap"); if (dtw) dtw.classList.toggle("mr-full", mrCat === "material_query");   // Material Query — पूरी तालिका एक साथ (inner scroll हटाओ)
     const brHost = document.getElementById("bitRateHost"); if (brHost) brHost.style.display = isBit ? "" : "none";
     if (isBit) { const hb = document.getElementById("mrHint"); if (hb) hb.innerHTML = "हर <b>प्रभावी Date</b> = एक समूह; उसमें सभी Bitumen प्रकार + Refinery + Rate, और अंत में Bitumen व Emulsion के 2 Reference। Estimate बनाते समय चुनी Date की दरें लोड होती हैं।"; renderBitumenRateCat(); return; }
     const hEl = document.getElementById("mrHint");
@@ -4503,7 +4504,9 @@
   // श्रेणी-विशेष अतिरिक्त UI (Cartage Calculator, Material Query → Query Names सूची)
   function buildMrExtra() {
     const ex = document.getElementById("mrExtra"); if (!ex) return;
-    if (mrCat === "material_query") { buildQueryNamesPanel(ex); return; }
+    const top = document.getElementById("mrExtraTop"); if (top) top.innerHTML = "";   // सिर्फ़ material_query में भरता है
+    if (mrCat === "material_query") { ex.innerHTML = ""; if (top) buildQueryNamesPanel(top); return; }   // Query Names — तालिका के ऊपर
+    if (mrCat === "bitumen_rate") { buildBitumenRatePanel(ex); return; }
     if (mrCat === "bitumen_rate") { buildBitumenRatePanel(ex); return; }
     if (mrCat !== "cartage") { ex.innerHTML = ""; return; }
     const cm = ensureCat("cartage");
@@ -5731,7 +5734,7 @@
     const aIdx = r; setF(r, 1, "Total (A) ="); setF(r, 3, "=ROUND(SUM(D2:D" + r + "),2)"); setF(r, 4, lacs(r));
     for (let c = 0; c < SUM_HEADERS.length; c++) domStyle(sheet, r, c, TOTAL_STYLE); mark(r, "totalA"); r++;
     est.summary = est.summary || {}; est.summary.autoSubIds = leftover.map((s) => s.id);
-    return { aIdx: aIdx, nextR: r };
+    return { aIdx: aIdx, nextR: r, lastSn: sn };
   }
   // पूरी default तालिका — data-zone + (केवल GST, फिर Nett)
   function summaryBuildDefault(est, sheet) {
@@ -5740,7 +5743,7 @@
     const setF = (rr, cc, raw) => domSetSheetCell(sheet, rr, cc, raw);
     const E = (rr) => rr + 1;
     const lacs = (rr) => "=IF(D" + E(rr) + "=\"\",\"\",ROUND(D" + E(rr) + "/100000,2))";
-    setF(r, 1, "Add for GST on civil work"); setF(r, 2, 18);
+    setF(r, 0, (dz.lastSn || 0) + 1); setF(r, 1, "Add for GST on civil work"); setF(r, 2, 18);
     setF(r, 3, "=ROUND(D" + aE + "*C" + E(r) + "/100,2)"); setF(r, 4, lacs(r)); domStyle(sheet, r, 2, { bg: "E7F5E9" });
     const gstE = E(r); r++;
     setF(r, 1, "Nett Amount ="); setF(r, 3, "=ROUND(D" + aE + "+D" + gstE + ",2)"); setF(r, 4, lacs(r));
@@ -5799,24 +5802,23 @@
 
     let nettR = summaryFindMarker(sheet, "netttotal");
     if (nettR < 0) {
-      // पहली Utility — Road Cost की अंतिम पंक्ति ढूँढो (Say Rs → Nett Amount → कोई भी labeled)
+      // पहली Utility — Road Cost की अंतिम पंक्ति ढूँढो (Nett Amount / Say Rs → कोई भी labeled)
       let roadR = -1;
-      for (let r = sheet.rows - 1; r >= 1; r--) { if (/Say\s*Rs/i.test(lblOf(r))) { roadR = r; break; } }
-      if (roadR < 0) for (let r = sheet.rows - 1; r >= 1; r--) { if (/Nett\s*Amount/i.test(lblOf(r))) { roadR = r; break; } }
+      for (let r = sheet.rows - 1; r >= 1; r--) { const l = lblOf(r); if (/Nett\s*Amount/i.test(l) || /Say\s*Rs/i.test(l)) { roadR = r; break; } }
       if (roadR < 0) for (let r = sheet.rows - 1; r >= 1; r--) { if (lblOf(r).trim()) { roadR = r; break; } }
       if (roadR < 0) { alert("Road Cost की अंतिम पंक्ति नहीं मिली।"); return; }
-      // 'Say Rs. (in Lacs) =' → 'Total Road Cost =' (मान/formula वही रहते हैं) + roadfinal marker
+      // अंतिम पंक्ति → 'Total Road Cost =' (मान/formula वही रहते हैं) + roadfinal marker
       domSetSheetCell(sheet, roadR, 1, "Total Road Cost =");
       markCol0(roadR, "roadfinal");
       const sayStyles = []; for (let c = 0; c < SUM_HEADERS.length; c++) { const cc = sheet.cells[addr(roadR, c)]; sayStyles.push(cc && cc.s ? Object.assign({}, cc.s) : null); }
       persistSheet(sheet, true); buildEngine();
-      if (!structuralBatch("insRow", roadR + 1, 3)) return;   // Utility, Nett Total, Say Rs
+      if (!structuralBatch("insRow", roadR + 1, 3)) return;   // Utility, Nett Total, Nett Amount
       const uR = roadR + 1, nR = roadR + 2, sR = roadR + 3;
       utilCells(uR);
       domSetSheetCell(sheet, nR, 1, "Nett Total =");
       for (let c = 0; c < SUM_HEADERS.length; c++) domStyle(sheet, nR, c, TOTAL_STYLE);
       markCol0(nR, "netttotal");
-      domSetSheetCell(sheet, sR, 1, "Say Rs. (in Lacs) =");
+      domSetSheetCell(sheet, sR, 1, "Nett Amount =");   // Summary की अंतिम पंक्ति हमेशा 'Nett Amount ='
       for (let c = 0; c < SUM_HEADERS.length; c++) domStyle(sheet, sR, c, sayStyles[c] || SUM_SAY_STYLE);
       markCol0(sR, "finalsay");
     } else {
@@ -5850,13 +5852,13 @@
       // अभी भी Utility बची — Nett Total/Say व क्रम-संख्या ठीक करो
       summaryRecalcNett(sheet); summaryRenumberUtils(sheet);
     } else {
-      // सभी Utility हटीं — section हटाओ: 'Nett Total' व 'Say Rs' पंक्तियाँ delete, 'Total Road Cost' → 'Say Rs. (in Lacs) ='
+      // सभी Utility हटीं — section हटाओ: 'Nett Total' व अंतिम पंक्ति delete, 'Total Road Cost' → 'Nett Amount ='
       let nR = summaryFindMarker(sheet, "netttotal");
       if (nR >= 0) { if (!structuralBatch("delRow", nR, 1, true)) return; persistSheet(sheet, true); buildEngine(); }
       let sR = summaryFindMarker(sheet, "finalsay");
       if (sR >= 0) { if (!structuralBatch("delRow", sR, 1, true)) return; persistSheet(sheet, true); buildEngine(); }
       const roadR = summaryFindMarker(sheet, "roadfinal");
-      if (roadR >= 0) { domSetSheetCell(sheet, roadR, 1, "Say Rs. (in Lacs) ="); const a = addr(roadR, 0); if (sheet.cells[a]) delete sheet.cells[a].sumkind; persistSheet(sheet, true); buildEngine(); }
+      if (roadR >= 0) { domSetSheetCell(sheet, roadR, 1, "Nett Amount ="); const a = addr(roadR, 0); if (sheet.cells[a]) delete sheet.cells[a].sumkind; persistSheet(sheet, true); buildEngine(); }
     }
     ensureLock(sheet); persistSheet(sheet, true); db.put("estimates", est); buildEngine(); renderGrid();
     status("Utility हटाई: " + target.name);

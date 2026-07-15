@@ -269,6 +269,7 @@ body{
 
 /* ----- Master data editable table ----- */
 .data-table-wrap{background:#fff; border:1px solid var(--line); border-radius:var(--r-md); overflow:auto; box-shadow:var(--shadow); max-height:calc(100vh - 250px)}
+.data-table-wrap.mr-full{max-height:none; overflow:visible}   /* Material Query — कोई inner scroll नहीं; पूरा view/window ही scroll हो, header .scroll-view पर sticky */
 .data-table{border-collapse:separate; border-spacing:0; width:100%; font-size:13px}
 .data-table th{
   background:#f7f9fd; color:#4a5875; font-weight:600; text-align:left; font-size:12px;

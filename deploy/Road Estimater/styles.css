@@ -289,6 +289,30 @@ body{
 .data-table input.num{text-align:right; font-variant-numeric:tabular-nums}
 .data-table input.calc{background:#eef2ff; color:var(--navy-dark); font-weight:700; cursor:default} /* अपने-आप गणना */
 .data-table input[readonly]{cursor:default; color:var(--ink)}
+/* RMR — Material नाम cell: wrap ↔ एक-लाइन toggle */
+.data-table td.rmr-mat{position:relative; padding-right:20px}
+.data-table td.rmr-mat .rmr-wrapbtn{
+  position:absolute; top:3px; right:2px; z-index:2; width:16px; height:16px; line-height:14px;
+  padding:0; border:1px solid var(--line); border-radius:4px; background:#f2f5fc;
+  color:#5a6b8c; font-size:11px; cursor:pointer; opacity:.55; transition:opacity .12s;
+}
+.data-table td.rmr-mat:hover .rmr-wrapbtn{opacity:1}
+.data-table td.rmr-mat.wrapped .rmr-wrapbtn{opacity:1; background:#dfe8ff; color:var(--navy-dark)}
+.data-table div.rmr-matname.wrapname{
+  width:100%; padding:8px 12px; font-family:var(--ui); font-size:13px; color:var(--ink);
+  line-height:1.4; white-space:normal; word-break:break-word; min-height:20px;
+}
+/* Material Description (Master तालिका) — पूरा नाम wrap; कटे नहीं (view व edit दोनों) */
+.data-table td.mr-desc-cell{vertical-align:middle}
+.data-table div.mr-desc-wrap{
+  padding:8px 12px; font-family:var(--ui); font-size:13px; color:var(--ink);
+  line-height:1.4; white-space:normal; word-break:break-word; min-height:20px;
+}
+.data-table textarea.mr-desc-edit{
+  display:block; width:100%; border:none; background:#fffcf2; padding:8px 12px; resize:none; overflow:hidden;
+  font-family:var(--ui); font-size:13px; color:var(--ink); line-height:1.4; white-space:pre-wrap; word-break:break-word;
+}
+.data-table textarea.mr-desc-edit:focus{outline:2px solid var(--sel-border); outline-offset:-2px; background:#fff; border-radius:6px}
 .data-table input:not([readonly]){background:#fffcf2}
 /* Query Name dropdown (Material Query Rate) — input जैसा दिखे */
 .data-table select.mr-qsel{

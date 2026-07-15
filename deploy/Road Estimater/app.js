@@ -4485,6 +4485,10 @@
             html += "<td><select data-i='" + i + "' data-field='" + c.key + "' class='mr-qsel'>" + optList(BITUMEN_TYPES) + "</select></td>";
           } else if (mrCat === "bitumen_rate" && c.key === "refinery" && ed) {   // Refinery — Dropdown (Cartage › Refinery Names)
             html += "<td><select data-i='" + i + "' data-field='" + c.key + "' class='mr-qsel'>" + optList(refineryNameList()) + "</select></td>";
+          } else if (c.key === "desc" && ro) {   // Material Description (view मोड) — पूरा नाम wrap करके दिखाओ, कटे नहीं
+            html += "<td class='mr-desc-cell'><div class='mr-desc-wrap'>" + escapeHtml(val) + "</div></td>";
+          } else if (c.key === "desc") {   // Material Description (edit मोड) — wrap textarea (auto-height)
+            html += "<td class='mr-desc-cell'><textarea data-i='" + i + "' data-field='" + c.key + "' class='mr-desc-edit' rows='1'>" + escapeHtml(val) + "</textarea></td>";
           } else {
             html += "<td><input data-i='" + i + "' data-field='" + c.key + "'" + (cls ? " class='" + cls + "'" : "") + ro +
               " value=\"" + escapeHtml(val) + "\" /></td>";
@@ -4950,10 +4954,10 @@
     let ti = null;
     if (dRow !== 0) {
       let row = dRow < 0 ? tr.previousElementSibling : tr.nextElementSibling;
-      while (row) { const cell = row.children[idx]; const x = cell && cell.querySelector("input[data-field]"); if (x) { ti = x; break; } row = dRow < 0 ? row.previousElementSibling : row.nextElementSibling; }
+      while (row) { const cell = row.children[idx]; const x = cell && cell.querySelector("input[data-field], textarea[data-field]"); if (x) { ti = x; break; } row = dRow < 0 ? row.previousElementSibling : row.nextElementSibling; }
     } else {
       let cell = dCol < 0 ? td.previousElementSibling : td.nextElementSibling;
-      while (cell) { const x = cell.querySelector ? cell.querySelector("input[data-field]") : null; if (x) { ti = x; break; } cell = dCol < 0 ? cell.previousElementSibling : cell.nextElementSibling; }
+      while (cell) { const x = cell.querySelector ? cell.querySelector("input[data-field], textarea[data-field]") : null; if (x) { ti = x; break; } cell = dCol < 0 ? cell.previousElementSibling : cell.nextElementSibling; }
     }
     if (ti) { ti.focus(); const pos = caret === "start" ? 0 : ti.value.length; try { ti.setSelectionRange(pos, pos); } catch (e) {} }
   }
@@ -4968,11 +4972,15 @@
         saveMachine();
       });
     });
-    tb.querySelectorAll("input[data-field]").forEach((inp) => {
+    const autoSizeTA = (t) => { t.style.height = "auto"; t.style.height = (t.scrollHeight + 2) + "px"; };
+    tb.querySelectorAll("input[data-field], textarea[data-field]").forEach((inp) => {
+      const isTA = inp.tagName === "TEXTAREA";
+      if (isTA) autoSizeTA(inp);
       inp.addEventListener("input", () => {
         const v = mrActiveVersion(); if (!v) return;
         const i = +inp.dataset.i, row = v.rows[i];
         row[inp.dataset.field] = inp.value;
+        if (isTA) autoSizeTA(inp);   // लिखते ही ऊँचाई content अनुसार
         // computed (calc) columns उसी पंक्ति में तुरंत अपडेट
         const def = catDef(mrCat);
         if (def.cols.some((c) => c.calc)) {
@@ -4982,6 +4990,7 @@
         saveMachine();
       });
       inp.addEventListener("paste", (e) => mrPasteBlock(inp, e));
+      if (isTA) return;   // multiline desc — तीर/Enter से cell-nav नहीं (text में caret चले)
       inp.addEventListener("keydown", (e) => {
         const k = e.key, L = inp.value.length;
         if (k === "ArrowUp") { e.preventDefault(); mrNav(inp, -1, 0, "end"); }
@@ -7193,7 +7202,12 @@
       const total = rmrRateForMat(rmr.id, row.matId);
       html += "<tr>" +
         "<td><input class='num' readonly value='" + (i + 1) + "' /></td>" +
-        "<td><input readonly value=\"" + escapeHtml(mat.material) + "\" /></td>" +
+        "<td class='rmr-mat" + (row.wrapName ? " wrapped" : "") + "'>" +
+          "<button class='rmr-wrapbtn' data-wrap='" + i + "' title='Material का नाम wrap ↔ एक-लाइन'>⤶</button>" +
+          (row.wrapName
+            ? "<div class='rmr-matname wrapname'>" + escapeHtml(mat.material) + "</div>"
+            : "<input readonly class='rmr-matname' value=\"" + escapeHtml(mat.material) + "\" />") +
+        "</td>" +
         "<td><input readonly value=\"" + escapeHtml(mat.query) + "\" /></td>" +
         "<td><input class='num' " + (rmr.locked ? "readonly " : "") + "data-i='" + i + "' value=\"" + escapeHtml(row.distance == null ? "" : String(row.distance)) + "\" /></td>" +
         "<td><input class='num' readonly value=\"" + nf(mat.matRate) + "\" /></td>" +
@@ -7204,6 +7218,11 @@
     });
     html += "</tbody>";
     tb.innerHTML = html;
+    // Material का नाम — wrap ↔ एक-लाइन toggle (हर row अलग; est में सहेजा)
+    tb.querySelectorAll("button[data-wrap]").forEach((b) => b.addEventListener("click", () => {
+      const i = +b.dataset.wrap; rmr.rows[i].wrapName = !rmr.rows[i].wrapName;
+      db.put("estimates", est); renderRMR();
+    }));
     // दूरी edit → cartage+total live
     tb.querySelectorAll("input[data-i]").forEach((inp) => {
       inp.addEventListener("input", () => {

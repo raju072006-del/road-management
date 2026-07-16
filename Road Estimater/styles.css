@@ -268,8 +268,9 @@ body{
 .mr-count{margin-left:auto; color:var(--muted); font-size:12px; align-self:center}
 
 /* ----- Master data editable table ----- */
-.data-table-wrap{background:#fff; border:1px solid var(--line); border-radius:var(--r-md); overflow:auto; box-shadow:var(--shadow); max-height:calc(100vh - 250px)}
+.data-table-wrap{background:#fff; border:1px solid var(--line); border-radius:var(--r-md); overflow:auto; box-shadow:var(--shadow)}   /* max-height हटाया — app iframe में चलता है जहाँ 100vh भरोसेमंद नहीं (तालिका 2px में सिकुड़ती थी); अब content अनुसार बढ़े, पेज scroll हो */
 .data-table-wrap.mr-full{max-height:none; overflow:visible}   /* Material Query — कोई inner scroll नहीं; पूरा view/window ही scroll हो, header .scroll-view पर sticky */
+.data-table-wrap.rmr-tablewrap{max-height:none; overflow:visible}   /* RMR तालिका — content अनुसार बढ़े (iframe में 100vh छोटा होने पर सिकुड़े नहीं); पेज ही scroll हो */
 .data-table{border-collapse:separate; border-spacing:0; width:100%; font-size:13px}
 .data-table th{
   background:#f7f9fd; color:#4a5875; font-weight:600; text-align:left; font-size:12px;
@@ -313,6 +314,25 @@ body{
   font-family:var(--ui); font-size:13px; color:var(--ink); line-height:1.4; white-space:pre-wrap; word-break:break-word;
 }
 .data-table textarea.mr-desc-edit:focus{outline:2px solid var(--sel-border); outline-offset:-2px; background:#fff; border-radius:6px}
+/* RMR — Cartage Rate विवरण (Query अनुसार) */
+.rmr-cbreak-host{margin-top:16px}
+.cbk-bar{display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:10px}
+.cbk-bar h3{margin:0; font-size:15px; color:var(--ink); font-weight:700}
+.cbk-btns{display:flex; gap:8px}
+.cbk-cards{display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start}   /* हर Query का कार्ड — Left→Right */
+.cbk-card{background:#fff; border:2px solid #1f2430; border-radius:10px; padding:14px 18px; box-shadow:var(--shadow); width:320px; flex:0 0 auto}
+.cbk-wrap{background:#fff; border:2px solid #1f2430; border-radius:8px; padding:16px 22px; max-width:560px; box-shadow:var(--shadow)}
+.cbk-title{text-align:center; font-weight:800; font-size:15.5px; color:#111; margin:0 0 4px}
+.cbk-h2{text-align:center; font-weight:800; font-size:15px; color:#111; margin:11px 0 5px}
+.cbk-km{display:block; font-weight:600; font-size:11.5px; color:#5a6b8c; margin-top:1px}
+.cbk-t{width:100%; border-collapse:collapse; margin-bottom:2px}
+.cbk-t td{padding:3px 2px; font-size:14.5px; color:#1a1f2b}
+.cbk-t td.r{text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; padding-left:14px}
+.cbk-t tr.cbk-tot td{font-weight:800; border-top:1px solid #cfd6e4}
+.cbk-t tr.cbk-net td{font-weight:800; border-top:2px solid #1f2430}
+@media (prefers-color-scheme:dark){
+  .cbk-wrap{background:#fff}
+}
 .data-table input:not([readonly]){background:#fffcf2}
 /* Query Name dropdown (Material Query Rate) — input जैसा दिखे */
 .data-table select.mr-qsel{
@@ -365,6 +385,12 @@ body{
 .bc-row input{width:100%; box-sizing:border-box; padding:9px 12px; border:1.5px solid var(--line); border-radius:10px; font-family:var(--ui); font-size:14px}
 .bc-row label:not(.bc-grow) input{width:140px}
 .bc-row input:focus{outline:none; border-color:var(--sel-border); box-shadow:0 0 0 3.5px rgba(76,102,240,.16)}
+/* Loading/Unloading — 2 rate पंक्तियाँ (label + प्रति-Cum दर) */
+.lu-rates{margin-top:12px; display:flex; flex-direction:column; gap:8px; max-width:440px}
+.lu-row{display:flex; align-items:center; justify-content:space-between; gap:12px}
+.lu-row .lu-lbl{font-size:13.5px; font-weight:600; color:#3d4a63}
+.lu-row input{width:150px; box-sizing:border-box; text-align:right; padding:9px 12px; border:1.5px solid var(--line); border-radius:10px; font-family:var(--ui); font-size:14px; font-variant-numeric:tabular-nums}
+.lu-row input:focus{outline:none; border-color:var(--sel-border); box-shadow:0 0 0 3.5px rgba(76,102,240,.16)}
 /* Estimate form — Bitumen Cartage विवरण की पंक्तियाँ */
 .bit-rows{display:flex; flex-direction:column; gap:8px; margin:8px 0 4px}
 .bit-card{display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; background:#f7f8fc; border:1px solid #e8ebf1; border-radius:10px; padding:9px 11px}

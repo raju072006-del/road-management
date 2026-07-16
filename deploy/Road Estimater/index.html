@@ -28,7 +28,7 @@
     });
   </script>
 
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=mrnsv4d2" />
 </head>
 <body>
 
@@ -334,8 +334,9 @@
             <div><h2>RMR — Carted Rate of Material</h2><p class="view-sub" id="rmrSub"></p></div>
           </div>
           <div class="master-toolbar" id="rmrToolbar"></div>
-          <div class="data-table-wrap"><table class="data-table" id="rmrTable"></table></div>
-          <p class="hint-box">नया RMR जोड़ने पर loaded <b>Material Query Rate</b> version के सभी material+query अपने-आप आ जाते हैं — आप सिर्फ़ <b>दूरी (km)</b> भरें। <b>Cartage</b> (loaded Cartage Range से) और <b>Total = Material Rate + Cartage</b> अपने-आप।</p>
+          <div class="data-table-wrap rmr-tablewrap"><table class="data-table" id="rmrTable"></table></div>
+          <div id="rmrCartageBreak" class="rmr-cbreak-host"></div>
+          <p class="hint-box">नया RMR जोड़ने पर loaded <b>Material Query Rate</b> version के सभी material+query अपने-आप आ जाते हैं — आप सिर्फ़ <b>दूरी (km)</b> भरें। <b>Cartage Rate = Net Total without CP</b> (slabwise + Cartage Kachha, ÷1.10) अपने-आप; नीचे हर Query का पूरा विवरण (Print व Excel सहित)।</p>
         </section>
 
         <!-- ===== 4. RATE ANALYSIS (कार्यशील ग्रिड यहीं) ===== -->
@@ -564,6 +565,7 @@
     });
   </script>
 
-  <script src="app.js"></script>
+  <!-- हर बार ताज़ा app.js लोड (browser की पुरानी cached copy कभी न परोसे) — local व online दोनों -->
+  <script>document.write('<scr' + 'ipt src="app.js?v=' + Date.now() + '"></scr' + 'ipt>');</script>
 </body>
 </html>

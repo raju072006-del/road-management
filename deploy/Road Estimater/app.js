@@ -2696,14 +2696,18 @@
   */
   const PICKER_CATS = [
     ["labour", "Labour"], ["machine", "Machine (MoRTH)"], ["machine_mord", "Machine (MoRD)"],
-    ["material_query", "Material (Query)"], ["material_sor", "Material SOR"], ["item_sor", "Item SOR"],
+    ["material_query", "Material (Query)"], ["material_loading", "Loading/Unloading"], ["material_sor", "Material SOR"], ["item_sor", "Item SOR"],
   ];
+  // "Loading/Unloading" — virtual category: rows वही Material Query Rate के, पर रेट = प्रति-यूनिट Loading/Unloading charge
+  function loadingChargeDesc() { const cm = state.master["cartage"]; const d = cm && cm.loadingUnloading && cm.loadingUnloading.desc; return (d && d.trim()) || "Loading/Unloading Charges"; }
   function masterItemName(cat, row) {
     if (cat === "item_sor") return (row.itemno ? row.itemno + " — " : "") + (row.desc || "");
+    if (cat === "material_loading") return loadingChargeDesc() + " — " + (row.desc || "");   // किस material का loading, वह भी दिखे
     return row.desc || "";
   }
   function masterItemRate(cat, row) {
     if (cat === "material_query") return mrNum(row.query_rate) - mrNum(row.royalty) - mrNum(row.loading); // Final Rate = Query − Royality − Loading/Unloading
+    if (cat === "material_loading") return mrNum(row.loading);   // प्रति-यूनिट Loading/Unloading charge (km-आधारित नहीं)
     return mrNum(row.rate);
   }
   function round2(n) { n = mrNum(n); return Math.round((n + Number.EPSILON) * 100) / 100; } // 2 दशमलव
@@ -4192,7 +4196,9 @@
       { key: "sn", label: "क्रम", w: "54px", num: true },
       { key: "from_km", label: "From (km)", w: "110px", num: true },
       { key: "to_km", label: "To (km)", w: "110px", num: true },
-      { key: "rate_km", label: "Rate per km (₹)", w: "140px", num: true } ] },
+      { key: "rate_km", label: "Rate per km (₹)", w: "140px", num: true },
+      { key: "cum_rate", label: "Cumulative Rate per Cum", w: "170px", num: true,   // इस To(km) तक कुल cartage (₹/Cum)
+        calc: (r) => { const v = mrActiveVersion(); if (!v || r.to_km == null || String(r.to_km).trim() === "") return ""; return round2(cartageCompute(v.rows, mrNum(r.to_km)).total).toFixed(2); } } ] },
     material_query: { name: "Material Query Rate", cols: [
       { key: "sn", label: "क्रम", w: "54px", num: true }, { key: "desc", label: "Material Description" },
       { key: "query_name", label: "Query Name", w: "130px" },
@@ -4350,10 +4356,11 @@
     const ver = mrActiveVersion();
     const rows = (ver && ver.rows) ? ver.rows : [];
     if (!rows.length) { box.innerHTML = "<div class='muted' style='font-size:12.5px'>इस version में कोई slabwise पंक्ति नहीं — '🔁 DB से…' दबाकर पुनः लोड करें, या ऊपर की तालिका में भरें।</div>"; return; }
-    let h = "<table class='calc-table'><thead><tr><th>क्रम</th><th>From (km)</th><th>To (km)</th><th>Rate per km (₹)</th></tr></thead><tbody>";
+    let h = "<table class='calc-table'><thead><tr><th>क्रम</th><th>From (km)</th><th>To (km)</th><th>Rate per km (₹)</th><th>Cumulative Rate per Cum</th></tr></thead><tbody>";
     rows.forEach((r, i) => {
       const g = (k) => escapeHtml(r[k] == null ? "" : String(r[k]));
-      h += "<tr><td>" + (r.sn != null && String(r.sn).trim() !== "" ? escapeHtml(String(r.sn)) : (i + 1)) + "</td><td>" + g("from_km") + "</td><td>" + g("to_km") + "</td><td>" + g("rate_km") + "</td></tr>";
+      const cum = (r.to_km != null && String(r.to_km).trim() !== "") ? round2(cartageCompute(rows, mrNum(r.to_km)).total).toFixed(2) : "";
+      h += "<tr><td>" + (r.sn != null && String(r.sn).trim() !== "" ? escapeHtml(String(r.sn)) : (i + 1)) + "</td><td>" + g("from_km") + "</td><td>" + g("to_km") + "</td><td>" + g("rate_km") + "</td><td>" + cum + "</td></tr>";
     });
     h += "</tbody></table><div class='view-sub' style='margin-top:6px'>कुल " + rows.length + " पंक्ति · संपादन <b>ऊपर की मुख्य तालिका</b> में करें।</div>";
     box.innerHTML = h;
@@ -4387,7 +4394,7 @@
     db.getAll("master").then((all) => {
       const stored = (all || []).find((x) => x && x.id === "cartage");
       if (stored && stored.versions && stored.versions.length) {
-        stored.description = cm.description; stored.bitumenCartage = cm.bitumenCartage;
+        stored.description = cm.description; stored.bitumenCartage = cm.bitumenCartage; stored.loadingUnloading = cm.loadingUnloading;
         stored.activeVersion = stored.activeVersion || cm.activeVersion;
         stored.loadedVersion = stored.loadedVersion || cm.loadedVersion;
         state.master["cartage"] = stored; db.put("master", stored);
@@ -4438,6 +4445,7 @@
     // Bitumen Rate — पूरी तरह custom UI (date-समूह; प्रकार+Refinery+Rate; add/remove/reorder; 2 reference)
     const isBit = (mrCat === "bitumen_rate");
     const gShow = (sel, on) => { const el = document.querySelector(sel); if (el) el.style.display = on ? "" : "none"; };
+    const topHost = document.getElementById("mrExtraTop"); if (topHost && mrCat !== "material_query") topHost.innerHTML = "";   // Query Names सिर्फ़ Material Query में; अन्य श्रेणी में हटाओ
     ["#mrToolbar", "#mrVersions", "#mrExtra"].forEach((s) => gShow(s, !isBit));
     gShow("#view-master-cat .mr-searchbar", !isBit);
     gShow("#view-master-cat .data-table-wrap", !isBit);
@@ -4517,6 +4525,10 @@
     const cdesc = cm.description || "";
     const rnames = Array.isArray(cm.refineryNames) ? cm.refineryNames : [];
     const bc = cm.bitumenCartage || { desc: "Bitumen Cartage" };
+    const lu = cm.loadingUnloading || {};
+    const luDesc = lu.desc || "";
+    const luLoad = (lu.loadRate != null && lu.loadRate !== "") ? String(lu.loadRate) : "";
+    const luUnload = (lu.unloadRate != null && lu.unloadRate !== "") ? String(lu.unloadRate) : "";
     const av = mrActiveVersion();   // Bitumen Cartage दर इसी (देखी जा रही) version में सहेजी जाती है
     // Including (user भरता है): पहले इस version से, वरना पुराना category-level; Excluding = Including ÷ 1.10 अपने-आप
     const bcIncl = (av && av.bitInclRate != null && String(av.bitInclRate).trim() !== "") ? String(av.bitInclRate)
@@ -4537,6 +4549,18 @@
           "<button class='btn sm' id='cgReload'>🔁 DB से slabwise डाटा पुनः लोड</button>" +
         "</div>" +
         "<div id='cgSlabView' style='display:none; margin-top:10px'></div>" +
+      "</div>" +
+      // (1b) Loading/Unloading Charges — केवल आइटम का Description
+      "<div class='panel-card'>" +
+        "<h3>🏗️ Loading/Unloading Charges</h3>" +
+        "<p class='view-sub' style='margin:0 0 8px'>इस आइटम का नाम/विवरण, और प्रति-Cum <b>Loading</b> व <b>Unloading</b> दरें भरें। Rate Analysis में यही दरें ली जा सकती हैं।</p>" +
+        "<div class='bc-row'>" +
+          "<label class='bc-grow'>Description<input type='text' id='luDesc' placeholder='जैसे: Loading and Unloading of Material' value=\"" + escapeHtml(luDesc) + "\" /></label>" +
+        "</div>" +
+        "<div class='lu-rates'>" +
+          "<div class='lu-row'><span class='lu-lbl'>Loading Charges per Cum</span><input type='text' id='luLoad' class='num' placeholder='₹ / Cum' value=\"" + escapeHtml(luLoad) + "\" /></div>" +
+          "<div class='lu-row'><span class='lu-lbl'>Unloading Charges per Cum</span><input type='text' id='luUnload' class='num' placeholder='₹ / Cum' value=\"" + escapeHtml(luUnload) + "\" /></div>" +
+        "</div>" +
       "</div>" +
       // (2) Bitumen Cartage — अलग आइटम, प्रति-km दर
       "<div class='panel-card'>" +
@@ -4559,6 +4583,12 @@
     // Description व Bitumen Cartage दर — बदलते ही सुरक्षित रूप से save (slabwise rows कभी न मिटें)
     const cgD = document.getElementById("cgDesc");
     if (cgD) cgD.addEventListener("change", () => { cm.description = cgD.value.trim(); saveCartageMeta(); status("Cartage Description सहेजा"); });
+    const luD = document.getElementById("luDesc");
+    if (luD) luD.addEventListener("change", () => { cm.loadingUnloading = Object.assign({}, cm.loadingUnloading, { desc: luD.value.trim() }); saveCartageMeta(); status("Loading/Unloading Description सहेजा"); });
+    const luLoadEl = document.getElementById("luLoad");
+    if (luLoadEl) luLoadEl.addEventListener("change", () => { const v = mrNum(luLoadEl.value); cm.loadingUnloading = Object.assign({}, cm.loadingUnloading, { loadRate: v > 0 ? v : "" }); saveCartageMeta(); status("Loading Charges सहेजा: ₹" + nf(v) + "/Cum"); });
+    const luUnloadEl = document.getElementById("luUnload");
+    if (luUnloadEl) luUnloadEl.addEventListener("change", () => { const v = mrNum(luUnloadEl.value); cm.loadingUnloading = Object.assign({}, cm.loadingUnloading, { unloadRate: v > 0 ? v : "" }); saveCartageMeta(); status("Unloading Charges सहेजा: ₹" + nf(v) + "/Cum"); });
     const bcInclEl = document.getElementById("bcRateIncl"), bcExclEl = document.getElementById("bcRateExcl");
     const recompute = () => { const v = mrNum(bcInclEl.value); if (bcExclEl) bcExclEl.value = v > 0 ? round2(v / 1.10).toFixed(2) : ""; };
     const saveBc = () => {
@@ -4981,12 +5011,11 @@
         const i = +inp.dataset.i, row = v.rows[i];
         row[inp.dataset.field] = inp.value;
         if (isTA) autoSizeTA(inp);   // लिखते ही ऊँचाई content अनुसार
-        // computed (calc) columns उसी पंक्ति में तुरंत अपडेट
+        // computed (calc) columns तुरंत अपडेट — cumulative जैसे cross-row calc के लिए सभी पंक्तियाँ फिर से
         const def = catDef(mrCat);
-        if (def.cols.some((c) => c.calc)) {
-          const tr = inp.closest("tr");
-          def.cols.forEach((c) => { if (c.calc && tr) { const ci = tr.querySelector("input[data-field='" + c.key + "']"); if (ci) ci.value = c.calc(row); } });
-        }
+        def.cols.forEach((c) => { if (!c.calc) return;
+          tb.querySelectorAll("input[data-field='" + c.key + "']").forEach((ci) => { const rr = v.rows[+ci.dataset.i]; if (rr) ci.value = c.calc(rr); });
+        });
         saveMachine();
       });
       inp.addEventListener("paste", (e) => mrPasteBlock(inp, e));
@@ -5255,16 +5284,50 @@
   let rmrActiveId = null;
 
   function loadedVersionRows(cat) {
+    if (cat === "material_loading") cat = "material_query";   // Loading/Unloading — वही Material Query Rate की loaded rows
     const m = state.master[cat];
     if (!m || !m.loadedVersion) return null;
     const v = m.versions.find((x) => x.date === m.loadedVersion);
     return v ? v.rows : null;
   }
+  // ── Cartage Rate (RMR) — slabwise + Cartage Kachha + Net Total without CP ──
+  const CART_KACHHA_PCT = 33.33;   // Cartage Kachha अंश
+  const CART_CP_DIV = 1.10;        // Contractor Profit हटाने हेतु (÷1.10)
+  // Aggregate का पहले किमी का Cartage Rate (loaded Cartage Range से 1 km हेतु)
+  function cartageFirstKmRate() { const rows = loadedVersionRows("cartage"); return (rows && rows.length) ? round2(cartageCompute(rows, 1).total) : 0; }
+  // Loading व Unloading (प्रति-Cum) — Cartage Rate के "Loading/Unloading Charges" card से
+  function cartageLoadUnload() { const cm = state.master["cartage"]; const lu = (cm && cm.loadingUnloading) || {}; return { load: mrNum(lu.loadRate), unload: mrNum(lu.unloadRate), desc: (lu.desc || "").trim() }; }
+  // किसी दूरी (km) का पूरा Cartage विवरण (attach किए प्रारूप अनुसार)
+  function cartageBreakdown(distance) {
+    const km = mrNum(distance);
+    const rows = loadedVersionRows("cartage") || [];
+    const cc = cartageCompute(rows, km);
+    const slabTotal = round2(cc.total);
+    const firstKm = cartageFirstKmRate();
+    const lu = cartageLoadUnload();
+    const kachhaBase = round2(firstKm - lu.load - lu.unload);
+    const kachha = firstKm > 0 ? round2(kachhaBase * CART_KACHHA_PCT / 100) : 0;
+    const total = round2(slabTotal + kachha);
+    const netWithoutCP = round2(total / CART_CP_DIV);
+    // compact slab lines — हर किमी0 न दिखाकर: अंतिम पूर्ण boundary तक cumulative (एक लाइन) + बचा हुआ किमी0
+    const bounds = rows.map((r) => mrNum(r.to_km)).filter((t) => t > 0).sort((a, b) => a - b);
+    let lastB = 0;
+    for (const b of bounds) { if (b <= km) lastB = b; else break; }
+    const cumAtLastB = round2(cartageCompute(rows, lastB).total);
+    const remKm = round2(km - lastB);
+    const remAmt = round2(slabTotal - cumAtLastB);
+    const compactParts = [];
+    if (lastB > 0) compactParts.push({ from: 1, to: lastB, amt: cumAtLastB, cumulative: true });
+    if (remKm > 0) compactParts.push({ from: (lastB > 0 ? lastB + 1 : 1), to: km, km: remKm, rate: round2(remAmt / remKm), amt: remAmt, cumulative: false });
+    if (!compactParts.length && slabTotal !== 0) compactParts.push({ from: 1, to: km, amt: slabTotal, cumulative: true });
+    return { km, parts: cc.parts, compactParts, slabTotal, firstKm, load: lu.load, unload: lu.unload, kachhaBase, kachhaPct: CART_KACHHA_PCT, kachha, total, netWithoutCP };
+  }
+  // RMR की Cartage Rate = Net Total without CP (attach किए calculation से)
   function rmrCartage(distance) {
     const km = mrNum(distance);
     if (km <= 0) return 0;
-    const rows = loadedVersionRows("cartage");
-    return rows ? cartageCompute(rows, km).total : 0;
+    if (!(loadedVersionRows("cartage") || []).length) return 0;
+    return cartageBreakdown(distance).netWithoutCP;
   }
   // RMR पंक्ति के material का ताज़ा डाटा loaded Material Query Rate से (matId द्वारा); न मिले तो snapshot
   function rmrMaterial(row) {
@@ -7124,6 +7187,7 @@
     const tbar = document.getElementById("rmrToolbar");
     const tb = document.getElementById("rmrTable");
     if (!tb) return;
+    const cbh = document.getElementById("rmrCartageBreak"); if (cbh) cbh.innerHTML = "";   // पुराना विवरण साफ़ (नीचे फिर भरेगा)
     if (!est) {
       if (sub) sub.textContent = "कोई estimate लोड नहीं";
       if (tbar) tbar.innerHTML = "";
@@ -7190,34 +7254,39 @@
       return;
     }
 
-    let html = "<thead><tr>" +
+    const thead = "<thead><tr>" +
       "<th style='width:50px'>क्रम</th><th>Material का नाम</th><th style='width:130px'>Query का नाम</th>" +
       "<th style='width:96px'>दूरी (km)</th><th style='width:104px'>Material Rate</th>" +
       "<th style='width:104px'>Cartage Rate</th><th style='width:96px'>Royalty (−)</th>" +
-      "<th style='width:150px'>Total Rate Incl. Cartage</th></tr></thead><tbody>";
-    rmr.rows.forEach((row, i) => {
-      const mat = rmrMaterial(row);
-      const cartage = rmrCartage(row.distance);
-      // Total बिल्कुल वही जो Rate Analysis को मिलता है (एक ही स्रोत — कभी अलग न हो)
-      const total = rmrRateForMat(rmr.id, row.matId);
-      html += "<tr>" +
-        "<td><input class='num' readonly value='" + (i + 1) + "' /></td>" +
-        "<td class='rmr-mat" + (row.wrapName ? " wrapped" : "") + "'>" +
-          "<button class='rmr-wrapbtn' data-wrap='" + i + "' title='Material का नाम wrap ↔ एक-लाइन'>⤶</button>" +
-          (row.wrapName
-            ? "<div class='rmr-matname wrapname'>" + escapeHtml(mat.material) + "</div>"
-            : "<input readonly class='rmr-matname' value=\"" + escapeHtml(mat.material) + "\" />") +
-        "</td>" +
-        "<td><input readonly value=\"" + escapeHtml(mat.query) + "\" /></td>" +
-        "<td><input class='num' " + (rmr.locked ? "readonly " : "") + "data-i='" + i + "' value=\"" + escapeHtml(row.distance == null ? "" : String(row.distance)) + "\" /></td>" +
-        "<td><input class='num' readonly value=\"" + nf(mat.matRate) + "\" /></td>" +
-        "<td><input class='num calc' readonly value=\"" + (mrNum(row.distance) > 0 ? nf(cartage) : "") + "\" /></td>" +
-        "<td><input class='num' readonly value=\"" + (mat.royalty ? nf(mat.royalty) : "") + "\" /></td>" +
-        "<td><input class='num calc' readonly value=\"" + (total == null ? "" : nf(total)) + "\" /></td>" +
-        "</tr>";
+      "<th style='width:150px'>Total Rate Incl. Cartage</th></tr></thead>";
+    let body = "";
+    (rmr.rows || []).forEach((row, i) => {
+      try {
+        const mat = rmrMaterial(row);
+        const cartage = rmrCartage(row.distance);
+        // Total बिल्कुल वही जो Rate Analysis को मिलता है (एक ही स्रोत — कभी अलग न हो)
+        const total = rmrRateForMat(rmr.id, row.matId);
+        body += "<tr>" +
+          "<td><input class='num' readonly value='" + (i + 1) + "' /></td>" +
+          "<td class='rmr-mat" + (row.wrapName ? " wrapped" : "") + "'>" +
+            "<button class='rmr-wrapbtn' data-wrap='" + i + "' title='Material का नाम wrap ↔ एक-लाइन'>⤶</button>" +
+            (row.wrapName
+              ? "<div class='rmr-matname wrapname'>" + escapeHtml(mat.material) + "</div>"
+              : "<input readonly class='rmr-matname' value=\"" + escapeHtml(mat.material) + "\" />") +
+          "</td>" +
+          "<td><input readonly value=\"" + escapeHtml(mat.query) + "\" /></td>" +
+          "<td><input class='num' " + (rmr.locked ? "readonly " : "") + "data-i='" + i + "' value=\"" + escapeHtml(row.distance == null ? "" : String(row.distance)) + "\" /></td>" +
+          "<td><input class='num' readonly value=\"" + nf(mat.matRate) + "\" /></td>" +
+          "<td><input class='num calc' readonly value=\"" + (mrNum(row.distance) > 0 ? nf(cartage) : "") + "\" /></td>" +
+          "<td><input class='num' readonly value=\"" + (mat.royalty ? nf(mat.royalty) : "") + "\" /></td>" +
+          "<td><input class='num calc' readonly value=\"" + (total == null ? "" : nf(total)) + "\" /></td>" +
+          "</tr>";
+      } catch (e) {   // किसी एक पंक्ति में गड़बड़ हो तो भी बाकी तालिका बने
+        body += "<tr><td><input class='num' readonly value='" + (i + 1) + "' /></td><td colspan='7' class='dt-empty'>इस material की गणना में त्रुटि (" + escapeHtml(String(e && e.message || e)) + ")</td></tr>";
+      }
     });
-    html += "</tbody>";
-    tb.innerHTML = html;
+    if (!body) body = "<tr><td colspan='8' class='dt-empty'>इस RMR में कोई material नहीं — <b>📏 Query दूरी</b> भरें या Material Query Rate Load करें।</td></tr>";
+    tb.innerHTML = thead + "<tbody>" + body + "</tbody>";
     // Material का नाम — wrap ↔ एक-लाइन toggle (हर row अलग; est में सहेजा)
     tb.querySelectorAll("button[data-wrap]").forEach((b) => b.addEventListener("click", () => {
       const i = +b.dataset.wrap; rmr.rows[i].wrapName = !rmr.rows[i].wrapName;
@@ -7237,6 +7306,153 @@
       });
       inp.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === "ArrowDown") { e.preventDefault(); const n = tb.querySelector("input[data-i='" + (+inp.dataset.i + 1) + "']"); if (n) { n.focus(); n.select(); } } else if (e.key === "ArrowUp") { e.preventDefault(); const p = tb.querySelector("input[data-i='" + (+inp.dataset.i - 1) + "']"); if (p) { p.focus(); p.select(); } } });
     });
+    try { renderRMRCartageBreak(rmr); } catch (e) { const h = document.getElementById("rmrCartageBreak"); if (h) h.innerHTML = ""; }   // तालिका के नीचे — Cartage Rate विवरण (त्रुटि हो तो तालिका पर असर न पड़े)
+  }
+
+  // RMR की सभी Query (हर की अपनी दूरी) — कार्य-समूह (Estimate विवरण) की सभी Query, फिर rows की बची Query
+  function rmrUniqueQueries(rmr) {
+    const seen = {}, out = [];
+    const add = (q, d) => { const qn = (q == null ? "" : String(q)).trim(); if (!qn || qn === "__noquery__" || mrNum(d) <= 0) return; if (qn in seen) return; seen[qn] = true; out.push({ query: qn, distance: d }); };
+    // 1) कार्य-समूह की सभी Query — queryDist से (चाहे उस Query का material हो या न हो)
+    const qd = rmr && rmr.queryDist;
+    if (qd && typeof qd === "object") Object.keys(qd).forEach((q) => add(q, qd[q]));
+    // 2) rows में बची Query (queryDist में न हों)
+    ((rmr && rmr.rows) || []).forEach((row) => { const mat = rmrMaterial(row); add(mat.query || row.query, row.distance); });
+    return out;
+  }
+  // एक Query का Cartage विवरण — attach किए प्रारूप का HTML
+  function cartageBreakHTML(block) {
+    const bd = block.bd;
+    let rows = "";
+    (bd.compactParts || []).forEach((p) => {
+      const label = p.cumulative
+        ? nf(p.from) + " to " + nf(p.to) + " तक (cumulative)"
+        : nf(p.from) + " to " + nf(p.to) + " (" + nf(p.km) + " km &times; " + nf(p.rate) + ")";
+      rows += "<tr><td>" + label + "</td><td class='r'>" + nf(round2(p.amt)) + "</td></tr>";
+    });
+    return "<div class='cbk-card'>" +
+      "<div class='cbk-title'>(Cartage Rate as per UPPWD SOR)</div>" +
+      "<div class='cbk-h2'>Cartage (" + escapeHtml(block.query) + ")" +
+        "<span class='cbk-km'>दूरी " + nf(bd.km) + " km</span></div>" +
+      "<table class='cbk-t'>" + rows +
+        "<tr class='cbk-tot'><td>Total</td><td class='r'>" + nf(bd.slabTotal) + "</td></tr>" +
+      "</table>" +
+      "<div class='cbk-h2'>Cartage Kachha</div>" +
+      "<table class='cbk-t'>" +
+        "<tr><td>(" + nf(bd.firstKm) + " - " + nf(bd.load) + " - " + nf(bd.unload) + ") &times; " + nf(bd.kachhaPct) + "%</td><td class='r'>" + nf(bd.kachha) + "</td></tr>" +
+        "<tr class='cbk-tot'><td>Total</td><td class='r'>" + nf(bd.total) + "</td></tr>" +
+        "<tr class='cbk-net'><td>Net Total without CP</td><td class='r'>" + nf(bd.netWithoutCP) + "</td></tr>" +
+      "</table></div>";
+  }
+  function renderRMRCartageBreak(rmr) {
+    const host = document.getElementById("rmrCartageBreak"); if (!host) return;
+    const qs = rmr ? rmrUniqueQueries(rmr) : [];
+    if (!qs.length) { host.innerHTML = ""; return; }
+    const blocks = qs.map((q) => ({ query: q.query, distance: q.distance, bd: cartageBreakdown(q.distance) }));
+    host.innerHTML =
+      "<div class='cbk-bar'><h3>Cartage Rate — विवरण (Query अनुसार) · " + blocks.length + " Query</h3>" +
+      "<div class='cbk-btns'><button class='btn sm' id='cbkPrint'>🖨 पूरा RMR Print</button><button class='btn sm' id='cbkXlsx'>⬇ Cartage Excel</button></div></div>" +
+      "<div class='cbk-cards'>" + blocks.map(cartageBreakHTML).join("") + "</div>";
+    const pb = document.getElementById("cbkPrint"); if (pb) pb.addEventListener("click", () => printCartageBreak(rmr, blocks));
+    const xb = document.getElementById("cbkXlsx"); if (xb) xb.addEventListener("click", () => exportCartageBreakXlsx(rmr, blocks));
+  }
+  function printCartageBreak(rmr, blocks) {
+    const est = state.estimates[state.activeEstimateId];
+    // Material तालिका (पूरा RMR सेक्शन print में) — वही मान जो स्क्रीन पर
+    let matRows = "";
+    ((rmr && rmr.rows) || []).forEach((row, i) => {
+      const mat = rmrMaterial(row);
+      const cartage = rmrCartage(row.distance);
+      const total = rmrRateForMat(rmr.id, row.matId);
+      matRows += "<tr>" +
+        "<td class='c'>" + (i + 1) + "</td>" +
+        "<td>" + escapeHtml(mat.material) + "</td>" +
+        "<td>" + escapeHtml(mat.query) + "</td>" +
+        "<td class='r'>" + (row.distance == null ? "" : escapeHtml(String(row.distance))) + "</td>" +
+        "<td class='r'>" + nf(mat.matRate) + "</td>" +
+        "<td class='r'>" + (mrNum(row.distance) > 0 ? nf(cartage) : "") + "</td>" +
+        "<td class='r'>" + (mat.royalty ? nf(mat.royalty) : "") + "</td>" +
+        "<td class='r'><b>" + (total == null ? "" : nf(total)) + "</b></td>" +
+        "</tr>";
+    });
+    const matTable = "<table class='mat'><thead><tr>" +
+      "<th>क्रम</th><th>Material का नाम</th><th>Query</th><th>दूरी (km)</th><th>Material Rate</th><th>Cartage Rate</th><th>Royalty (−)</th><th>Total Rate Incl. Cartage</th>" +
+      "</tr></thead><tbody>" + matRows + "</tbody></table>";
+    const css =
+      "*{font-family:Arial,'Segoe UI',sans-serif;box-sizing:border-box} body{margin:0;padding:16px}" +
+      "h1{font-size:18px; text-align:center; margin:0 0 2px} h2{font-size:13px; text-align:center; margin:0 0 12px; color:#333; font-weight:600}" +
+      "h3.sec{font-size:15px; margin:18px 0 10px; font-weight:800}" +
+      "table.mat{width:100%; border-collapse:collapse; margin-bottom:6px}" +
+      "table.mat th,table.mat td{border:1px solid #000; padding:4px 6px; font-size:12px}" +
+      "table.mat th{background:#eee; text-align:center; font-size:11px}" +
+      "table.mat td.c{text-align:center} table.mat td.r{text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap}" +
+      ".cbk-cards{display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start}" +
+      ".cbk-card{border:2px solid #000; border-radius:6px; padding:12px 18px; width:320px}" +
+      ".cbk-title{text-align:center; font-weight:800; font-size:15px; margin:0 0 4px}" +
+      ".cbk-h2{text-align:center; font-weight:800; font-size:14px; margin:10px 0 4px}" +
+      ".cbk-km{display:block; font-weight:600; font-size:11px; color:#333}" +
+      ".cbk-t{width:100%; border-collapse:collapse} .cbk-t td{padding:3px 2px; font-size:13px}" +
+      ".cbk-t td.r{text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap}" +
+      ".cbk-tot td{font-weight:800; border-top:1px solid #999} .cbk-net td{font-weight:800; border-top:2px solid #000}";
+    const body =
+      "<h1>" + escapeHtml(est ? est.name : "") + "</h1>" +
+      "<h2>RMR — Carted Rate of Material" + (rmr ? " · " + escapeHtml(rmr.name) : "") + "</h2>" +
+      matTable +
+      "<h3 class='sec'>Cartage Rate — विवरण (Query अनुसार)</h3>" +
+      "<div class='cbk-cards'>" + blocks.map(cartageBreakHTML).join("") + "</div>";
+    const w = window.open("", "_blank");
+    if (!w) { alert("Popup रोक दिया गया — कृपया इस साइट के लिए popup अनुमति दें।"); return; }
+    w.document.write("<html><head><title>RMR — " + escapeHtml((est ? est.name + " · " : "") + (rmr ? rmr.name : "")) + "</title><style>" + css + "</style></head><body>" + body + "</body></html>");
+    w.document.close(); w.focus(); setTimeout(() => { try { w.print(); } catch (e) {} }, 350);
+  }
+  async function exportCartageBreakXlsx(rmr, blocks) {
+    const ok = await window.__sheetjsReady;
+    if (!ok || typeof XLSX === "undefined") { alert("Excel engine (SheetJS) load नहीं हुआ — internet जाँचें।"); return; }
+    const XS = await loadXlsxStyle(); const lib = XS || XLSX;
+    const aoa = [], meta = [];
+    aoa.push(["(Cartage Rate as per UPPWD SOR)", ""]); meta.push("title");
+    blocks.forEach((b) => {
+      const bd = b.bd;
+      aoa.push(["Cartage (" + b.query + ")", ""]); meta.push("h2");
+      (bd.compactParts || []).forEach((p) => {
+        const label = p.cumulative ? (nf(p.from) + " to " + nf(p.to) + " (cumulative)") : (nf(p.from) + " to " + nf(p.to) + " (" + nf(p.km) + " km x " + nf(p.rate) + ")");
+        aoa.push([label, round2(p.amt)]); meta.push("row");
+      });
+      aoa.push(["Total", bd.slabTotal]); meta.push("tot");
+      aoa.push(["Cartage Kachha", ""]); meta.push("h2");
+      aoa.push(["(" + nf(bd.firstKm) + " - " + nf(bd.load) + " - " + nf(bd.unload) + ") × " + nf(bd.kachhaPct) + "%", bd.kachha]); meta.push("row");
+      aoa.push(["Total", bd.total]); meta.push("tot");
+      aoa.push(["Net Total without CP", bd.netWithoutCP]); meta.push("net");
+    });
+    const NR = aoa.length, NC = 2;
+    const cen = { alignment: { horizontal: "center" }, font: { bold: true, sz: 13 } };
+    const cenBig = { alignment: { horizontal: "center" }, font: { bold: true, sz: 14 } };
+    const base = { font: { sz: 12 } };
+    const numR = { alignment: { horizontal: "right" }, font: { sz: 12 } };
+    const bold = { font: { bold: true, sz: 12 } };
+    const boldR = { alignment: { horizontal: "right" }, font: { bold: true, sz: 12 } };
+    const styleFor = (r, c) => {
+      const t = meta[r];
+      if (t === "title") return cenBig;
+      if (t === "h2") return cen;
+      if (t === "tot" || t === "net") return c === 1 ? boldR : bold;
+      return c === 1 ? numR : base;
+    };
+    const ws = {};
+    for (let r = 0; r < NR; r++) for (let c = 0; c < NC; c++) {
+      const val = aoa[r][c]; const ref = lib.utils.encode_cell({ r, c });
+      let cell = (typeof val === "number") ? { t: "n", v: val } : { t: "s", v: val == null ? "" : String(val) };
+      if (XS) cell.s = styleFor(r, c);
+      ws[ref] = cell;
+    }
+    ws["!ref"] = lib.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: NR - 1, c: NC - 1 } });
+    ws["!cols"] = [{ wpx: 300 }, { wpx: 110 }];
+    ws["!merges"] = meta.map((t, r) => (t === "title" || t === "h2") ? { s: { r, c: 0 }, e: { r, c: 1 } } : null).filter(Boolean);
+    const wb = lib.utils.book_new();
+    lib.utils.book_append_sheet(wb, ws, "Cartage Rate");
+    const safe = ((est) => (est ? est.name + "_" : ""))(state.estimates[state.activeEstimateId]) + (rmr ? rmr.name : "RMR");
+    lib.writeFile(wb, "Cartage_Rate_" + safe.replace(/[^\wऀ-ॿ.-]+/g, "_") + ".xlsx", { bookType: "xlsx" });
+    status("Cartage Rate विवरण Excel download हुआ");
   }
 
   function wireRMR() {

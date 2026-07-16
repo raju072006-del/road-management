@@ -71,6 +71,10 @@ const guard = SO.replace('>', ' data-guard>') +
   'try{if(!sessionStorage.getItem("rms_token")){document.documentElement.style.visibility="hidden";location.replace("../");}}catch(e){document.documentElement.style.visibility="hidden";location.replace("../");}' +
   SC;
 est = est.replace(/<head>/i, '<head>\n' + guard);
+// cache-busting — हर build पर app.js/styles.css का version बदलो ताकि browser पुरानी cached फ़ाइल न परोसे
+const ver = Date.now().toString(36);
+est = est.replace(/src="app\.js"/g, 'src="app.js?v=' + ver + '"');
+est = est.replace(/href="styles\.css"/g, 'href="styles.css?v=' + ver + '"');
 fs.writeFileSync(estIdx, est, 'utf8');
 console.log('[2/2] deploy\\ ताज़ा — index.html + Road Estimater (login-guard सहित)');
 console.log('OK ✔');

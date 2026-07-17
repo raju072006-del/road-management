@@ -41,6 +41,7 @@
           <h1>Road Estimator</h1>
           <span class="brand-sub">सड़क आकलन प्रणाली</span>
         </div>
+        <button class="nav-mini-toggle" id="navMiniToggle" title="मेनू छोटा/बड़ा करें" aria-label="मेनू छोटा/बड़ा करें">«</button>
       </div>
 
       <nav class="side-nav" id="sideNav">
@@ -340,13 +341,14 @@
 
         <!-- ===== 4. RATE ANALYSIS (कार्यशील ग्रिड यहीं) ===== -->
         <section class="view" id="view-rate-analysis">
-          <div class="layout">
+          <div class="layout" id="raLayout">
             <!-- LEFT: Sheet list -->
             <aside class="panel sheets-panel">
               <div class="panel-head">
                 <h2>लोड किए Analysis</h2>
                 <div class="ph-actions">
                   <button class="btn primary sm" id="btnLoadAnalysis" title="Master Analysis Section से एक Analysis load करें">📂 Load</button>
+                  <button class="aside-toggle" id="asideCollapse" title="सूची छुपाएँ — ग्रिड को पूरी जगह दें" aria-label="सूची छुपाएँ">⟨</button>
                 </div>
               </div>
               <div class="proj-size-bar" id="projSizeBar" title="MoRTH project size — बदलने पर सभी loaded MoRTH analysis उसी size के variant में बदल जाएँगे">
@@ -359,6 +361,9 @@
               <div class="sheet-count" id="sheetCount">0 शीट</div>
               <ul class="sheet-list" id="sheetList"></ul>
             </aside>
+
+            <!-- collapsed होने पर बाईं धार पर — फिर से खोलने का tab -->
+            <button class="aside-expand" id="asideExpand" title="Analysis सूची दिखाएँ" aria-label="Analysis सूची दिखाएँ"><span class="ae-ic">⟩</span><span class="ae-tx">Analysis सूची</span></button>
 
             <!-- CENTER: Grid editor (Master edit के समय इसे #masterEditHost में move किया जाता है) -->
             <section class="panel editor-panel" id="editorPanel">
@@ -373,6 +378,7 @@
                   <button class="btn sm" id="btnDelRow" disabled title="चुने हुए cell की पंक्ति हटाएँ">− Row</button>
                   <button class="btn sm" id="btnAddSubhead" disabled title="नया उपशीर्षक (Labour/Material जैसा) जोड़ें — a,b,c अपने-आप">+ उपशीर्षक</button>
                   <button class="btn sm" id="btnDelSubhead" disabled title="cursor जिस उपशीर्षक में है उसे पूरा हटाएँ">− उपशीर्षक</button>
+                  <button class="btn sm" id="btnAddRoyalty" disabled title="Material के अनुसार 'Add Royality' उपशीर्षक जोड़ें (royalty RMR/Primary से linked; delete '− उपशीर्षक' से)">＋ Royality</button>
                   <button class="btn sm danger" id="btnDelSheet" disabled>शीट हटाएँ</button>
                   <button class="btn sm" id="btnSheetExcel" disabled title="Excel अपलोड (import) / नमूना Excel डाउनलोड">⬆ Excel ▾</button>
                 </div>

@@ -77,7 +77,24 @@ body{
   display:flex; flex-direction:column; z-index:20;
   border-right:1px solid rgba(255,255,255,.06);
   box-shadow:4px 0 24px rgba(10,14,30,.18);
+  transition:width .2s var(--ease);
 }
+/* मेनू mini (icon-only) — ग्रिड को और जगह */
+.nav-mini-toggle{
+  flex:none; margin-left:auto; width:25px; height:25px; border-radius:7px;
+  border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.06); color:#aeb8d4;
+  cursor:pointer; font-size:13px; line-height:1; display:flex; align-items:center; justify-content:center;
+  transition:all .14s var(--ease);
+}
+.nav-mini-toggle:hover{background:rgba(255,255,255,.14); color:#fff}
+.app-shell.nav-mini .sidebar{width:66px}
+.app-shell.nav-mini .sidebar .ni-tx,
+.app-shell.nav-mini .sidebar-brand .brand-text,
+.app-shell.nav-mini .sidebar-foot{display:none}
+.app-shell.nav-mini .sidebar-brand{justify-content:center; gap:6px; padding:14px 6px}
+.app-shell.nav-mini .sidebar-brand .emblem{display:none}
+.app-shell.nav-mini .nav-item{justify-content:center; padding:12px 8px}
+.app-shell.nav-mini .nav-mini-toggle{margin:0; transform:rotate(180deg)}
 .sidebar-brand{display:flex; align-items:center; gap:12px; padding:18px 16px 16px; border-bottom:1px solid rgba(255,255,255,.07)}
 .sidebar-brand .brand-text h1{font-size:15.5px; margin:0; color:#fff; font-weight:800; letter-spacing:.2px}
 .sidebar-brand .brand-sub{font-size:11px; color:#7f8db0}
@@ -633,9 +650,30 @@ body{
 /* ---------- Layout ---------- */
 .layout{
   flex:1; display:grid;
-  grid-template-columns:306px 1fr;
-  gap:1px; background:var(--line); overflow:hidden; min-height:0;
+  grid-template-columns:288px 1fr;
+  gap:1px; background:var(--line); overflow:hidden; min-height:0; position:relative;
+  transition:grid-template-columns .22s var(--ease);
 }
+/* ग्रिड को पूरी जगह — Analysis सूची पैनल collapse */
+.layout.ra-aside-collapsed{grid-template-columns:0 1fr}
+.layout.ra-aside-collapsed > .sheets-panel{opacity:0; visibility:hidden; pointer-events:none}
+.aside-toggle{
+  flex:none; width:27px; height:27px; border-radius:8px; border:1px solid var(--line);
+  background:#fff; color:#6a7488; font-size:13px; cursor:pointer; display:flex; align-items:center; justify-content:center;
+  transition:all .14s var(--ease);
+}
+.aside-toggle:hover{background:#eef2ff; color:var(--navy-dark); border-color:#c3ceff}
+.aside-expand{
+  display:none; position:absolute; left:0; top:50%; transform:translateY(-50%); z-index:6;
+  flex-direction:column; align-items:center; gap:9px; padding:15px 8px;
+  background:linear-gradient(180deg,#4c66f0,#3a4a8f); color:#fff; border:none; cursor:pointer;
+  border-radius:0 13px 13px 0; box-shadow:0 5px 18px rgba(20,28,46,.28);
+  transition:filter .14s var(--ease), box-shadow .14s var(--ease);
+}
+.aside-expand:hover{filter:brightness(1.08); box-shadow:0 7px 22px rgba(20,28,46,.34)}
+.aside-expand .ae-ic{font-size:15px; font-weight:800}
+.aside-expand .ae-tx{writing-mode:vertical-rl; text-orientation:mixed; font-size:12px; font-weight:700; letter-spacing:.05em}
+.layout.ra-aside-collapsed .aside-expand{display:flex}
 .panel{background:var(--panel); display:flex; flex-direction:column; min-height:0; overflow:hidden}
 .panel-head{
   display:flex; align-items:center; justify-content:space-between;
@@ -778,7 +816,7 @@ body{
 
 .grid-wrap{flex:1; overflow:auto; position:relative}
 .grid{border-collapse:collapse; font-family:var(--ui); font-size:12.5px; line-height:1.35; table-layout:auto; color:var(--ink); user-select:none}
-.grid th,.grid td{border:1px solid #e6eaf2; height:26px; position:relative}
+.grid th,.grid td{border:1px solid #c3ccdb; height:26px; position:relative}   /* काम करते समय भी grid लाइनें साफ़ दिखें */
 .grid th{
   background:var(--head-cell); color:#67748e; font-weight:600; text-align:center; font-size:11.5px;
   position:sticky; top:0; z-index:2; user-select:none;

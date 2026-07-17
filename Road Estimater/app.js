@@ -423,6 +423,7 @@
   const SECTOT_STYLE = { b: 1, bg: "F2F7FC" };
   const TOTAL_STYLE = { b: 1, bg: "FFF2CC" };
   const OHCP_STYLE = { b: 1, bg: "FDEFDC" };          // Overhead / Contractor Profit पंक्ति
+  const TAKEOUT_STYLE = { b: 1, bg: "FFF9C4", fc: "5A4B00" };   // "Taking output =" की Quantity/Unit — भरने हेतु अलग रंग (हल्का पीला)
   const ITEM_ROWS_PER_SECTION = 3;
   const ANALYSIS_PREAMBLE_ROWS = 4;   // पहले section (Labour) से ऊपर खाली पंक्तियाँ
 
@@ -516,7 +517,33 @@
     r++;
     cells[addr(r, 2)] = { v: "Total", s: Object.assign({}, TOTAL_STYLE), role: "grandtot" };
     r++;
+    // "Taking output =" पंक्ति (अंतिम preamble row = display row 5): C=label, D=Quantity, E=Unit —
+    //  D/E को अलग रंग/format ताकि Analysis बनाते समय ये ही भरे जाएँ (formula-link insert/delete पर slip-proof — HF refs adjust)
+    const toR = ANALYSIS_PREAMBLE_ROWS;   // r=4 → display row 5
+    cells[addr(toR, 2)] = { v: "Taking output =", s: { b: 1, al: "left" } };
+    cells[addr(toR, 3)] = { v: "", s: Object.assign({}, TAKEOUT_STYLE, { al: "right" }) };    // D5 = Quantity
+    cells[addr(toR, 4)] = { v: "", s: Object.assign({}, TAKEOUT_STYLE, { al: "center" }) };   // E5 = Unit
     return { cells, merges, rows: r, cols };
+  }
+  // पुराने Analysis में भी row 5 (Taking output) का format — C5 label + D5/E5 अलग रंग (value बरकरार; slip-proof HF वैसे ही)
+  //  सुरक्षित: सिर्फ़ analysis (master/working) शीट, और row 5 जब खाली/taking-output जैसा हो तभी; idempotent
+  function migrateTakingOutput() {
+    const r = ANALYSIS_PREAMBLE_ROWS;   // display row 5
+    const re = /taking|output|out\s*put|unit\s*=|इकाई|मात्रा|आउटपुट/i;
+    let changed = 0;
+    for (const id of state.order) {
+      const s = state.sheets[id];
+      if (!s || (s.kind !== "master" && s.kind !== "working")) continue;
+      if (!(s.rows > ANALYSIS_PREAMBLE_ROWS)) continue;
+      const cC = s.cells[addr(r, 2)];
+      const cv = cC ? (cC.f != null ? "" : (cC.v == null ? "" : String(cC.v))) : "";
+      if (cv.trim() && !re.test(cv)) continue;   // इस शीट का row 5 taking-output जैसा नहीं — छेड़ो मत
+      const c2 = s.cells[addr(r, 2)] || (s.cells[addr(r, 2)] = { v: "" }); delete c2.f; c2.v = "Taking output ="; c2.s = { b: 1, al: "left" };
+      const c3 = s.cells[addr(r, 3)] || (s.cells[addr(r, 3)] = { v: "" }); c3.s = Object.assign({}, TAKEOUT_STYLE, { al: "right" });
+      const c4 = s.cells[addr(r, 4)] || (s.cells[addr(r, 4)] = { v: "" }); c4.s = Object.assign({}, TAKEOUT_STYLE, { al: "center" });
+      db.put("sheets", s); changed++;
+    }
+    return changed;
   }
 
   function createSheet(base, title, opts) {
@@ -732,7 +759,7 @@
       if (prevStyle && !sheet.cells[a].s) sheet.cells[a].s = prevStyle;
       if (prevRole) sheet.cells[a].role = prevRole;
       if (prevSec != null) sheet.cells[a].secName = prevSec;
-      if (prevMref && raw.trim() !== "") sheet.cells[a].mref = prevMref; // खाली न हो तो link बना रहे
+      if (prevMref && raw.trim() !== "" && prevMref.field !== "royalty") sheet.cells[a].mref = prevMref; // खाली न हो तो link बना रहे (royalty manually भरने पर unlink → manual मान टिके)
     }
     setEngineCell(sheet, r, c, raw);
     persistSheet(sheet);
@@ -891,6 +918,27 @@
     refreshEstimateSheetPicker();
     const did = { insRow: "पंक्ति जोड़ी", delRow: "पंक्ति हटाई", insCol: "कॉलम जोड़ा", delCol: "कॉलम हटाया" }[kind];
     status(did + " — सभी शीट-links अपने-आप समायोजित (slip नहीं हुए)");
+  }
+  // चुनी हुई कई पंक्तियाँ (r1..r2) एक साथ हटाओ — lock/section छोड़कर, नीचे से ऊपर (index-shift से बचने), slip-proof
+  function deleteRowRange(r1, r2) {
+    const sheet = state.sheets[state.activeSheetId]; if (!sheet) return;
+    ensureLock(sheet);
+    if (r1 > r2) { const t = r1; r1 = r2; r2 = t; }
+    const dels = [];
+    for (let rr = r1; rr <= r2; rr++) {
+      if (isLockedRow(sheet, rr)) continue;                       // header/footer lock — न हटाएँ
+      const mc = sheet.cells[addr(rr, 2)]; if (mc && mc.role) continue;   // section/total — न हटाएँ
+      dels.push(rr);
+    }
+    if (!dels.length) { alert("चुनी हुई पंक्तियों में कोई हटाने योग्य item-पंक्ति नहीं (सब lock/section हैं)।"); return; }
+    const skipped = (r2 - r1 + 1) - dels.length;
+    if (!confirm("क्या चुनी हुई " + dels.length + " पंक्तियाँ हटाएँ?" + (skipped ? "\n(" + skipped + " lock/section पंक्तियाँ छोड़ दी जाएँगी)" : ""))) return;
+    pushUndo("all");
+    for (let i = dels.length - 1; i >= 0; i--) structuralBatch("delRow", dels[i], 1, true);   // नीचे से ऊपर, silent
+    rebuildAnalysisTotals(sheet);
+    renderGrid();
+    refreshEstimateSheetPicker();
+    status(dels.length + " पंक्तियाँ हटाई — सभी शीट-links अपने-आप समायोजित (slip नहीं हुए)");
   }
 
   /* ===== Analysis subheads (Labour/Machinery/…) — add/delete + section totals ===== */
@@ -1055,6 +1103,57 @@
     renderGrid(); scrollToActive();
     status("उपशीर्षक हटाया: " + nm);
   }
+  // क्या active row किसी "Add Royality" section में है? (picker royalty-mode के लिए)
+  function inRoyaltySection(sheet, r) {
+    const info = analysisScan(sheet);
+    const sec = info.sections.find((s) => r >= s.head && r <= (s.tot >= 0 ? s.tot : s.itemEnd));
+    return !!(sec && /royal|रॉयल|रायल्टी/i.test((sheet.cells[addr(sec.head, 2)] || {}).secName || ""));
+  }
+  // "Add Royality" उपशीर्षक — Material section के हर material को copy करके royalty पंक्तियाँ बनाए:
+  //  नाम material से sync; Quantity material की E से link (=E{mr}); Royalty दर RMR/Primary की royalty से link (कई का औसत भी — point 2)
+  function addRoyaltySection() {
+    const sheet = state.sheets[state.activeSheetId]; if (!sheet) return;
+    const info = analysisScan(sheet);
+    if (info.subRow < 0) { alert("इस analysis में उपशीर्षक-ढाँचा नहीं है।"); return; }
+    if (info.sections.some((s) => /royal|रॉयल|रायल्टी/i.test((sheet.cells[addr(s.head, 2)] || {}).secName || ""))) { alert("इस Analysis में पहले से 'Add Royality' उपशीर्षक है।"); return; }
+    const matSec = info.sections.find((s) => /material|माल|सामग्री/i.test((sheet.cells[addr(s.head, 2)] || {}).secName || ""));
+    if (!matSec) { alert("इस Analysis में 'Material' उपशीर्षक नहीं मिला — Royality उसी के अनुसार बनता है।"); return; }
+    const matRows = [];
+    for (let r = matSec.itemStart; r <= matSec.itemEnd; r++) {
+      const nc = sheet.cells[addr(r, 2)];
+      const nm = nc ? (nc.f != null ? "" : (nc.v == null ? "" : String(nc.v))) : "";
+      if (nm.trim()) matRows.push(r);
+    }
+    if (!matRows.length) { alert("Material section में कोई material नहीं मिला।"); return; }
+    const n = matRows.length, at = info.subRow, block = 2 + n;   // Sub Total से ठीक पहले; header + n items + sectot
+    pushUndo("all");
+    if (!structuralBatch("insRow", at, block, true)) { undoStack.pop(); return; }
+    const headR = at, totR = at + 1 + n;
+    sheet.cells[addr(headR, 2)] = { v: "", s: Object.assign({}, SEC_STYLE), role: "sec", secName: "Add Royality" };
+    sheet.merges.push({ s: { r: headR, c: 2 }, e: { r: headR, c: sheet.cols - 1 } });
+    matRows.forEach((mr, i) => {
+      const rr = headR + 1 + i;
+      const nameCell = sheet.cells[addr(mr, 2)], unitCell = sheet.cells[addr(mr, 3)], rateCell = sheet.cells[addr(mr, 5)];
+      const nm = nameCell ? (nameCell.f != null ? "" : (nameCell.v == null ? "" : String(nameCell.v))) : "";
+      domSetSheetCell(sheet, rr, 2, nm);
+      if (nameCell && nameCell.mref) (sheet.cells[addr(rr, 2)] || (sheet.cells[addr(rr, 2)] = { v: nm })).mref = Object.assign({}, nameCell.mref);   // नाम material से sync
+      const un = unitCell ? (unitCell.f != null ? "" : (unitCell.v == null ? "" : String(unitCell.v))) : "";
+      if (un) domSetSheetCell(sheet, rr, 3, un);
+      domSetSheetCell(sheet, rr, 4, "=" + addr(mr, 4));   // Quantity — material की E से link (slip-proof)
+      let roVal = null, roMref = null;
+      if (rateCell && rateCell.mref && rateCell.mref.field === "rate") { roMref = Object.assign({}, rateCell.mref, { field: "royalty" }); roVal = mrefRoyaltyNum(roMref); }
+      domSetSheetCell(sheet, rr, 5, roVal != null ? nf(roVal) : "0");   // Royalty दर — RMR/Primary से; न हो तो manual 0
+      if (roMref) (sheet.cells[addr(rr, 5)] || (sheet.cells[addr(rr, 5)] = { v: 0 })).mref = roMref;
+      domSetSheetCell(sheet, rr, 6, amtFormula(rr));   // Amount = Quantity × Royalty
+    });
+    sheet.cells[addr(totR, 2)] = { v: "", s: Object.assign({}, SECTOT_STYLE), role: "sectot" };
+    sheet.cells[addr(totR, 6)] = { s: Object.assign({}, SECTOT_STYLE) };
+    rebuildAnalysisTotals(sheet);
+    ensureLock(sheet); persistSheet(sheet); if (hfReady) buildEngine();
+    state.activeCell = { r: headR + 1, c: 5 };
+    renderGrid(); scrollToActive();
+    status("'Add Royality' उपशीर्षक जुड़ा — " + n + " material की royalty (RMR/Primary से linked; इसी क्रम में delete '− उपशीर्षक' से)");
+  }
 
   /* ===== एक-बार का Format सुधार — पुराने analysis को नए ढाँचे (section totals + Sub Total + Total) में ===== */
   function rowWithRole(sheet, role) { for (let r = 0; r < sheet.rows; r++) { const c = sheet.cells[addr(r, 2)]; if (c && c.role === role) return r; } return -1; }
@@ -1183,7 +1282,7 @@
   }
 
   function setEditorEnabled(on) {
-    ["sheetTitleInput", "sheetNameInput", "btnAddRow", "btnDelRow", "btnAddSubhead", "btnDelSubhead", "btnDelSheet", "btnSheetExcel", "btnMasterItem", "formulaInput", "btnLinkRef"].forEach((idn) => {
+    ["sheetTitleInput", "sheetNameInput", "btnAddRow", "btnDelRow", "btnAddSubhead", "btnDelSubhead", "btnAddRoyalty", "btnDelSheet", "btnSheetExcel", "btnMasterItem", "formulaInput", "btnLinkRef"].forEach((idn) => {
       const el = document.getElementById(idn);
       if (el) el.disabled = !on;
     });
@@ -1917,7 +2016,7 @@
     return ids;
   }
   // app cell.s (रंग/bold/align) → xlsx-js-style format
-  const XL_THIN = { style: "thin", color: { rgb: "C7CEDA" } };
+  const XL_THIN = { style: "thin", color: { rgb: "808A9B" } };   // print में साफ़ दिखे (थोड़ा गहरा)
   const XL_BD = { top: XL_THIN, bottom: XL_THIN, left: XL_THIN, right: XL_THIN };
   function xlCellStyle(s, isNum, numVal) {
     const st = { border: XL_BD, alignment: { vertical: "center", wrapText: true } };   // wrap → सभी लाइनें दिखें
@@ -1953,14 +2052,16 @@
       const outR = r + off, ref = lib.utils.encode_cell({ r: outR, c });
       let o, numVal = null, linked = null, txtLines = null;
       const mref = cell.mref;
-      if (rmrMap && mref && mref.rmr && rmrMap[mref.rmr]) {   // RMR-linked रेट → cross-sheet formula
+      const isRoy = !!(mref && mref.field === "royalty");
+      if (rmrMap && mref && mref.rmr && rmrMap[mref.rmr]) {   // RMR-linked रेट/royalty → cross-sheet formula
         const link = rmrMap[mref.rmr];
+        const colIdx = isRoy ? 6 : 7;   // RMR की Royalty(−) कॉलम = 6, Total Rate Incl. Cartage = 7
         const mids = Array.isArray(mref.matIds) ? mref.matIds : (mref.matId != null ? [mref.matId] : []);
-        const refs = mids.map((mid) => { const rr = link.rowByMat[mid]; return rr == null ? null : (xlQuote(link.sheetName) + "!" + lib.utils.encode_cell({ r: rr, c: 7 })); });
+        const refs = mids.map((mid) => { const rr = link.rowByMat[mid]; return rr == null ? null : (xlQuote(link.sheetName) + "!" + lib.utils.encode_cell({ r: rr, c: colIdx })); });
         if (refs.length && refs.every((x) => x)) linked = refs.length === 1 ? refs[0] : ("AVERAGE(" + refs.join(",") + ")");
       }
       if (linked) {
-        numVal = mrefRateNum(mref); o = { t: "n", f: linked }; if (numVal != null) o.v = numVal;
+        numVal = isRoy ? mrefRoyaltyNum(mref) : mrefRateNum(mref); o = { t: "n", f: linked }; if (numVal != null) o.v = numVal;
       } else if (cell.f != null) {
         const cv = computedValue(sheet, r, c);
         o = { f: (off ? shiftFormula(cell.f, off, 0) : cell.f).replace(/^=/, "") };   // banner से नीचे खिसका → refs +off
@@ -1981,6 +2082,17 @@
     const mg = []; if (off) mg.push({ s: { r: 0, c: 0 }, e: { r: 0, c: NC - 1 } });
     (sheet.merges || []).forEach((m) => mg.push({ s: { r: m.s.r + off, c: m.s.c }, e: { r: m.e.r + off, c: m.e.c } }));
     if (mg.length) ws["!merges"] = mg;
+    // हर खाली सेल पर भी border — print में पूरा grid साफ़/भरा दिखे (merge-ढके सेल छोड़कर)
+    if (useStyle) {
+      const covered = new Set();
+      mg.forEach((m) => { for (let rr = m.s.r; rr <= m.e.r; rr++) for (let cc = m.s.c; cc <= m.e.c; cc++) if (!(rr === m.s.r && cc === m.s.c)) covered.add(rr + "_" + cc); });
+      const emptyS = xlCellStyle(null, false, null);
+      for (let r = 0; r <= maxR; r++) for (let c = 0; c <= maxC; c++) {
+        const ref = lib.utils.encode_cell({ r: r, c: c });
+        if (ws[ref] || covered.has(r + "_" + c)) continue;
+        ws[ref] = { t: "s", v: "", s: emptyS };
+      }
+    }
     ws["!margins"] = { left: 0.3, right: 0.3, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 };
     return ws;
   }
@@ -2605,7 +2717,7 @@
       }
       // "Master से…" व "Lead" सिर्फ़ Analysis शीट पर — DOM/BOQ पर नहीं
       if (!isDomBoq) {
-        items.push({ label: c === 5 ? "🔍  Master से केवल रेट भरें" : "🔍  Master से आइटम (नाम+रेट) जोड़ें", action: () => openMasterPicker() });
+        items.push({ label: (c === 5 && inRoyaltySection(sheet, r)) ? "🔍  Master से Royality भरें (नाम+royalty)" : (c === 5 ? "🔍  Master से केवल रेट भरें" : "🔍  Master से आइटम (नाम+रेट) जोड़ें"), action: () => openMasterPicker() });
         if (c === 4 && !isLockedRow(sheet, r) && !(sheet.cells[addr(r, 2)] || {}).role) {
           items.push({ label: ((sheet.cells[addr(r, 4)] || {}).lead ? "🧮  Lead बदलें" : "🧮  Lead जोड़ें") + " (Value1 × Length/4 + Value2)", action: () => openLeadDialog() });
         }
@@ -2621,7 +2733,12 @@
         }
         items.push({ label: "⬆  ऊपर नई पंक्ति डालें", action: () => structuralEdit("insRow", r) });
         items.push({ label: "⬇  नीचे नई पंक्ति डालें", action: () => structuralEdit("insRow", r + 1) });
-        items.push({ label: "🗑  पंक्ति " + (r + 1) + " हटाएँ", action: () => structuralEdit("delRow", r), cls: "danger" });
+        const selR = selRange();
+        if (selR.r2 > selR.r1) {   // कई पंक्तियाँ चुनी हैं → सभी हटाएँ
+          items.push({ label: "🗑  चुनी हुई " + (selR.r2 - selR.r1 + 1) + " पंक्तियाँ हटाएँ", action: () => deleteRowRange(selR.r1, selR.r2), cls: "danger" });
+        } else {
+          items.push({ label: "🗑  पंक्ति " + (r + 1) + " हटाएँ", action: () => structuralEdit("delRow", r), cls: "danger" });
+        }
       }
       // कॉलम insert/delete जान-बूझकर हटाया — Analysis के fixed कॉलम (C=Description, F=Rate, G=Amount) न खिसकें
       showMenu(e.clientX, e.clientY, items);
@@ -2740,6 +2857,33 @@
     const mat = rmrMaterial(row);
     return round2(mat.matRate - mat.royalty + rmrCartage(row.distance));   // Total Rate Incl. Cartage
   }
+  function rmrRoyaltyForMat(rmrId, matId) {
+    const rmr = findRmrById(rmrId); if (!rmr) return null;
+    const row = rmr.rows.find((x) => x.matId === matId); if (!row) return null;
+    return round2(rmrMaterial(row).royalty);
+  }
+  // किसी master item का royalty दर (सिर्फ़ material में; labour/machine/sor में 0)
+  function masterItemRoyalty(cat, row) {
+    if (cat === "material_query" || cat === "material_loading") return mrNum(row.royalty);
+    return 0;
+  }
+  // mref का royalty — RMR-linked हो तो RMR की royalty दर; वरना Primary Rate की royalty (कई हों तो औसत — point 2 का ध्यान)
+  function mrefRoyaltyNum(mref) {
+    if (!mref) return null;
+    if (mref.rmr) {
+      if (Array.isArray(mref.matIds)) {
+        const vs = mref.matIds.map((id) => rmrRoyaltyForMat(mref.rmr, id)).filter((x) => x != null);
+        return vs.length ? round2(vs.reduce((a, b) => a + b, 0) / vs.length) : null;
+      }
+      return rmrRoyaltyForMat(mref.rmr, mref.matId);
+    }
+    if (Array.isArray(mref.rowIds)) {
+      const vs = mref.rowIds.map((id) => { const rr = masterRowById(mref.cat, id); return rr ? masterItemRoyalty(mref.cat, rr) : null; }).filter((x) => x != null);
+      return vs.length ? round2(vs.reduce((a, b) => a + b, 0) / vs.length) : null;
+    }
+    const rr = masterRowById(mref.cat, mref.rowId);
+    return rr ? round2(masterItemRoyalty(mref.cat, rr)) : null;
+  }
 
   /* ===== Primary Rate → Analysis live-update =====
      insertMasterItem से जुड़े cells पर mref {cat,rowId,field} रहता है। Primary Rate की
@@ -2767,6 +2911,10 @@
           const num = mrefRateNum(cell.mref);   // single या कई items का औसत (2 दशमलव)
           if (num == null) continue;
           // बचा हुआ formula हटाओ — नहीं तो grid formula का मान दिखाएगा, linked rate नहीं (इसलिए "हरा पर अपडेट नहीं")
+          if (cell.f != null || mrNum(cell.v) !== num) { delete cell.f; cell.v = num; changed = true; }
+        } else if (cell.mref.field === "royalty") {
+          const num = mrefRoyaltyNum(cell.mref);   // RMR/Primary की royalty (कई हों तो औसत)
+          if (num == null) continue;
           if (cell.f != null || mrNum(cell.v) !== num) { delete cell.f; cell.v = num; changed = true; }
         }
       }
@@ -2888,6 +3036,24 @@
     selectCell(r, 4); scrollToActive();
     status(rowsSel.length + " items का औसत रेट भरा: ₹" + nf(avg) + " — Primary Rate से linked");
   }
+  // Royality section — चुने material(s) की Royality दर F में भरो (field:"royalty"; कई हों तो औसत — point 2)
+  function fillRoyaltyLink(cat, rowsSel) {
+    const sheet = state.sheets[state.activeSheetId]; if (!sheet || !rowsSel.length) return;
+    const r = state.activeCell.r;
+    if (isLockedRow(sheet, r) || (sheet.cells[addr(r, 2)] || {}).role) { alert("यह section/total/header पंक्ति है।"); return; }
+    pushUndo("sheet");
+    if (sheet.cols < 7) { sheet.cols = 7; ensureLock(sheet); buildEngine(); }
+    const vals = rowsSel.map((row) => mrNum(masterItemRoyalty(cat, row)));
+    const avg = round2(vals.reduce((a, b) => a + b, 0) / vals.length);
+    setCell(sheet, r, 5, nf(avg));
+    if (sheet.cells[addr(r, 5)]) sheet.cells[addr(r, 5)].mref = rowsSel.length === 1
+      ? { cat: cat, rowId: rowsSel[0].id, field: "royalty" }
+      : { cat: cat, rowIds: rowsSel.map((x) => x.id), field: "royalty", agg: "avg" };
+    setCell(sheet, r, 6, amtFormula(r));
+    persistSheet(sheet); buildEngine(); renderGrid();
+    selectCell(r, 5); scrollToActive();
+    status(rowsSel.length === 1 ? ("Royalty भरी: ₹" + nf(avg) + " — Primary/RMR से linked") : (rowsSel.length + " material की औसत Royalty: ₹" + nf(avg)));
+  }
 
   /* ===== Lead — Quantity = Value1 × Road Length/4 + Value2 (Machinery आदि) ===== */
   // compact (बिना space) — "4.856x13.20/4+2.654"; Value2 न हो तो "+..." नहीं
@@ -2976,14 +3142,19 @@
   function openMasterPicker() {
     const sheet = state.sheets[state.activeSheetId]; if (!sheet) return;
     const r = state.activeCell.r;
-    const mode = (state.activeCell.c === 5) ? "rate" : "both";   // Rate कॉलम → केवल रेट
-    // इस rate-cell में पहले से कोई (single/औसत) link हो तो उसी category + चुने items दिखाओ
+    const isRoyalty = (state.activeCell.c === 5) && inRoyaltySection(sheet, r);   // Royality section की F-cell → royalty भरो
+    const mode = (state.activeCell.c === 5) ? "rate" : "both";   // Rate कॉलम → checkbox (single/औसत)
+    const fieldNm = isRoyalty ? "royalty" : "rate";
+    const valFn = (cat, row) => isRoyalty ? masterItemRoyalty(cat, row) : masterItemRate(cat, row);   // दिखाने/भरने का मान
+    // इस cell में पहले से link हो तो उसी category + चुने items दिखाओ
     const rcell = sheet.cells[addr(r, 5)];
-    const existing = (rcell && rcell.mref && rcell.mref.field === "rate") ? rcell.mref : null;
-    const autoCat = existing ? existing.cat : pickerCatForRow(sheet, r);   // section अनुसार category
+    const existing = (rcell && rcell.mref && rcell.mref.field === fieldNm) ? rcell.mref : null;
+    const autoCat = existing ? existing.cat : (isRoyalty ? "material_query" : pickerCatForRow(sheet, r));   // section अनुसार category
     const overlay = document.createElement("div");
     overlay.className = "modal-overlay";
-    const subTxt = mode === "rate"
+    const subTxt = isRoyalty
+      ? "Material चुनें (एक या कई) — उसकी <b>Royality दर</b> भरेगी (नाम+royalty दिखते हैं)। कई चुनने पर <b>औसत royalty</b>। Primary/RMR से linked रहेगी।"
+      : mode === "rate"
       ? ("loaded version से item चुनें (एक या कई) — <b>केवल रेट</b> भरेगा (नाम अपरिवर्तित)। कई चुनने पर उनका <b>औसत रेट</b>। रेट Primary Rate से linked रहेगा।" +
          (existing ? "<br>✓ <b>पहले से चुने items (checked) का ही औसत इस cell में है</b> — बदलकर फिर भरें।" : ""))
       : "loaded version से item चुनें — <b>नाम+Unit+Rate</b> भर जाएँगे, Amount=मात्रा×Rate; आप मात्रा भरें।";
@@ -2992,7 +3163,7 @@
       : "<div class='row'><button class='btn' id='pkClose'>बंद करें</button></div>";
     overlay.innerHTML =
       "<div class='modal wide'>" +
-      "<h3>🔍 Master से " + (mode === "rate" ? "रेट" : "जोड़ें") + " — पंक्ति " + (r + 1) + " में</h3>" +
+      "<h3>🔍 Master से " + (isRoyalty ? "Royality" : (mode === "rate" ? "रेट" : "जोड़ें")) + " — पंक्ति " + (r + 1) + " में</h3>" +
       "<p class='sub'>" + subTxt + "</p>" +
       "<div class='picker-bar'><select id='pkCat'>" + PICKER_CATS.map((c) => "<option value='" + c[0] + "'" + (c[0] === autoCat ? " selected" : "") + ">" + c[1] + "</option>").join("") + "</select>" +
       "<input id='pkSearch' type='search' placeholder='नाम से खोजें…' /></div>" +
@@ -3007,9 +3178,10 @@
       const info = overlay.querySelector("#pkSelInfo"), fill = overlay.querySelector("#pkFill");
       const rows = selectedRows();
       if (!rows.length) { info.textContent = "कोई item नहीं चुना"; fill.disabled = true; return; }
-      const rates = rows.map((x) => mrNum(masterItemRate(catEl.value, x)));
+      const rates = rows.map((x) => mrNum(valFn(catEl.value, x)));
       const avg = round2(rates.reduce((a, b) => a + b, 0) / rates.length);
-      info.innerHTML = rows.length === 1 ? ("1 चुना · रेट <b>₹" + nf(round2(rates[0])) + "</b>") : (rows.length + " चुने · औसत <b>₹" + nf(avg) + "</b>");
+      const lbl = isRoyalty ? "Royalty" : "रेट";
+      info.innerHTML = rows.length === 1 ? ("1 चुना · " + lbl + " <b>₹" + nf(round2(rates[0])) + "</b>") : (rows.length + " चुने · औसत " + lbl + " <b>₹" + nf(avg) + "</b>");
       fill.disabled = false;
     };
     const renderList = () => {
@@ -3021,7 +3193,7 @@
       if (mode === "rate") {
         listEl.innerHTML = matches.slice(0, 300).map((row) =>
           "<label class='pk-item pk-check'><input type='checkbox' data-id='" + row.id + "'" + (selected.has(row.id) ? " checked" : "") + " /><span class='pk-nm'>" + escapeHtml(masterItemName(cat, row)) +
-          "</span><span class='pk-meta'>" + escapeHtml(row.unit || "") + " · ₹" + nf(round2(masterItemRate(cat, row))) + "</span></label>").join("");
+          "</span><span class='pk-meta'>" + (isRoyalty ? "" : escapeHtml(row.unit || "") + " · ") + "₹" + nf(round2(valFn(cat, row))) + (isRoyalty ? " royalty" : "") + "</span></label>").join("");
         listEl.querySelectorAll("input[type=checkbox]").forEach((chk) => chk.addEventListener("change", () => { if (chk.checked) selected.add(chk.dataset.id); else selected.delete(chk.dataset.id); updateFooter(); }));
         updateFooter();
       } else {
@@ -3040,7 +3212,8 @@
       overlay.querySelector("#pkFill").addEventListener("click", () => {
         const rows = selectedRows(); if (!rows.length) return;
         const cat = catEl.value;
-        if (rows.length === 1) insertMasterItem(cat, rows[0], "rate"); else insertMasterItemAvg(cat, rows);
+        if (isRoyalty) fillRoyaltyLink(cat, rows);
+        else if (rows.length === 1) insertMasterItem(cat, rows[0], "rate"); else insertMasterItemAvg(cat, rows);
         overlay.remove();
       });
     }
@@ -7672,6 +7845,22 @@
       const sb = document.getElementById("sidebar");
       if (sb) sb.addEventListener("click", (e) => { if (e.target.closest(".nav-item")) closeNav(); });
     })();
+    // ── Rate Analysis: Analysis-सूची पैनल collapse (ग्रिड को पूरी जगह) ──
+    (function () {
+      const layout = document.getElementById("raLayout"); if (!layout) return;
+      const col = document.getElementById("asideCollapse"), exp = document.getElementById("asideExpand");
+      const setA = (on) => { layout.classList.toggle("ra-aside-collapsed", on); try { localStorage.setItem("re_ra_aside", on ? "1" : "0"); } catch (e) {} };
+      if (col) col.addEventListener("click", () => setA(true));
+      if (exp) exp.addEventListener("click", () => setA(false));
+      try { if (localStorage.getItem("re_ra_aside") === "1") layout.classList.add("ra-aside-collapsed"); } catch (e) {}
+    })();
+    // ── मुख्य मेनू mini (icon-only) toggle — और जगह ──
+    (function () {
+      const shell = document.querySelector(".app-shell"); const t = document.getElementById("navMiniToggle");
+      if (!shell || !t) return;
+      t.addEventListener("click", () => { const on = shell.classList.toggle("nav-mini"); try { localStorage.setItem("re_nav_mini", on ? "1" : "0"); } catch (e) {} });
+      try { if (localStorage.getItem("re_nav_mini") === "1") shell.classList.add("nav-mini"); } catch (e) {}
+    })();
     document.querySelectorAll(".nav-item").forEach((n) => n.addEventListener("click", () => setActiveView(n.dataset.view)));
     document.querySelectorAll("[data-todo]").forEach((b) =>
       b.addEventListener("click", () => status("\"" + b.getAttribute("data-todo") + "\" — यह हिस्सा अगली बार बनाएँगे (frame तैयार है)।")));
@@ -8209,6 +8398,7 @@
     document.getElementById("btnDelRow").addEventListener("click", delActiveRow);
     document.getElementById("btnAddSubhead").addEventListener("click", addSubhead);
     document.getElementById("btnDelSubhead").addEventListener("click", deleteActiveSubhead);
+    { const brl = document.getElementById("btnAddRoyalty"); if (brl) brl.addEventListener("click", addRoyaltySection); }
     document.getElementById("btnDelSheet").addEventListener("click", deleteActiveSheet);
     document.getElementById("sheetSearch").addEventListener("input", renderSheetList);
 
@@ -8279,6 +8469,7 @@
     let dragging = false, dragMoved = false;
     grid.addEventListener("mousedown", (e) => {
       const td = e.target.closest("td[data-r]"); if (!td) return;
+      if (e.button !== 0) return;       // right/middle click — मौजूदा चयन न बदलें (context menu संभालेगा)
       if (armed && armed.refExpected()) { e.preventDefault(); return; } // click handler reference डालेगा
       if (armed && armed.surface === "bar") return;                      // click commit करेगा
       const r = +td.dataset.r, c = +td.dataset.c;
@@ -8400,6 +8591,7 @@
         if (c.source !== m.source || c.itemKey !== m.itemKey) { c.source = m.source; c.size = m.size; c.itemKey = m.itemKey; c.itemName = m.itemName; db.put("sheets", c); }
       }
     }
+    migrateTakingOutput();   // पुराने Analysis के row 5 (Taking output) में C5 label + D5/E5 format
     for (const e of estimates) { state.estimates[e.id] = e; state.estOrder.push(e.id); }
     // Chapters का cloud-record अलग है — उसे state.master में न डालें, CHAPTERS में लागू करें
     let _chaptersFromCloud = false;

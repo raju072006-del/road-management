@@ -746,11 +746,18 @@ body{
 .lap-ck.on{background:#def7ec; color:#046c4e}
 .lap-ck.off{background:#fff5e0; color:#8a5b00}
 
+/* लोड किए Analysis — ▲ ▼ × तीनों एक छोटी column में (कम जगह) */
+.sl-acts{flex:none; display:flex; flex-direction:column; gap:2px; align-self:center}
+.sl-mv{width:16px; height:11px; padding:0; border:1px solid #d4dae6; border-radius:3px; background:#f2f5fc; color:#7a8397; font-size:7px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .12s var(--ease)}
+.sl-mv:hover{background:#dfe8ff; color:var(--navy-dark); border-color:#c3ceff}
 .sl-x{flex:none; width:22px; height:22px; border-radius:7px; border:1px solid transparent;
   background:none; color:#9aa3b4; font-size:16px; line-height:1; cursor:pointer;
   display:flex; align-items:center; justify-content:center; transition:all .14s var(--ease)}
 .sheet-list li.sl-card:hover .sl-x{color:#7a8397}
 .sl-x:hover{background:#fdeaea; color:#c0392b; border-color:#f5c6c6}
+/* × भी छोटी — ▲▼ के साथ एक ही column में */
+.sl-acts .sl-x{width:16px; height:13px; border-radius:3px; font-size:12px; border:1px solid #f0d0d0; color:#c67}
+.sl-acts .sl-x:hover{background:#fdeaea; color:#c0392b; border-color:#f5c6c6}
 .sheet-list li.muted-row{list-style:none; text-align:center; color:var(--muted); font-size:12.5px; line-height:1.5;
   padding:16px 14px; background:var(--line-soft); border:1px dashed var(--line); border-radius:12px; cursor:default}
 /* कार्य-समूह header (Rate Analysis बाईं सूची) — accordion */
@@ -1267,6 +1274,7 @@ body{
 .lap-item.sel{background:#eef2fe}
 .lap-item.sel::before{content:"✓"; color:#fff; font-size:11px; font-weight:900; line-height:15px; text-align:center; background:var(--navy); border-color:var(--navy)}
 .lap-nm{font-weight:600; font-size:13px; font-family:var(--mono,var(--ui))}
+.lap-sn{display:inline-block; font-weight:800; font-size:11px; color:#3d4db4; background:#eef2fe; border:1px solid #dbe3fb; border-radius:6px; padding:0 6px; margin-right:2px; font-variant-numeric:tabular-nums; vertical-align:middle}
 .lap-tt{font-size:11.5px; color:var(--muted)}
 
 /* सेट (template) bar + footer */

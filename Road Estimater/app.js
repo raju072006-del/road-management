@@ -424,6 +424,8 @@
   const TOTAL_STYLE = { b: 1, bg: "FFF2CC" };
   const OHCP_STYLE = { b: 1, bg: "FDEFDC" };          // Overhead / Contractor Profit पंक्ति
   const TAKEOUT_STYLE = { b: 1, bg: "FFF9C4", fc: "5A4B00" };   // "Taking output =" की Quantity/Unit — भरने हेतु अलग रंग (हल्का पीला)
+  const PERUNIT_STYLE = { b: 1, bg: "F2F7FC" };                  // Rate per Unit = Total ÷ Quantity
+  const FINALRATE_STYLE = { b: 1, bg: "D7E2F5" };               // Say Rs. = FLOOR(rate, 0.10) — Analysis का final Rate
   const ITEM_ROWS_PER_SECTION = 3;
   const ANALYSIS_PREAMBLE_ROWS = 4;   // पहले section (Labour) से ऊपर खाली पंक्तियाँ
 
@@ -517,6 +519,12 @@
     r++;
     cells[addr(r, 2)] = { v: "Total", s: Object.assign({}, TOTAL_STYLE), role: "grandtot" };
     r++;
+    cells[addr(r, 2)] = { v: "Rate per Unit =", s: Object.assign({}, PERUNIT_STYLE), role: "perunit" };
+    cells[addr(r, 6)] = { s: Object.assign({}, PERUNIT_STYLE) };
+    r++;
+    cells[addr(r, 2)] = { v: "Say Rs. =", s: Object.assign({}, FINALRATE_STYLE), role: "finalrate" };
+    cells[addr(r, 6)] = { s: Object.assign({}, FINALRATE_STYLE) };
+    r++;
     // "Taking output =" पंक्ति (अंतिम preamble row = display row 5): C=label, D=Quantity, E=Unit —
     //  D/E को अलग रंग/format ताकि Analysis बनाते समय ये ही भरे जाएँ (formula-link insert/delete पर slip-proof — HF refs adjust)
     const toR = ANALYSIS_PREAMBLE_ROWS;   // r=4 → display row 5
@@ -544,6 +552,37 @@
       db.put("sheets", s); changed++;
     }
     return changed;
+  }
+  // पुराने Analysis में grand Total के बाद "Rate per Unit =" व "Say Rs. =" (final rate) पंक्तियाँ जोड़ो (idempotent; HF ज़रूरी)
+  // grand Total के बाद "Rate per Unit =" + "Say Rs. =" पंक्तियाँ जोड़ो (न हों तो) — cells सीधे (HF की ज़रूरत नहीं)
+  function ensureFinalRateRows(s) {
+    if (!s) return false;
+    const info = analysisScan(s);
+    if (info.grandRow < 0 || info.finalRow >= 0) return false;   // structured नहीं / पहले से है
+    const gr = info.grandRow;
+    for (let r = s.rows - 1; r > gr; r--) for (let c = 0; c < s.cols; c++) {   // grandtot के बाद की पंक्तियाँ 2 नीचे
+      const from = addr(r, c), to = addr(r + 2, c);
+      if (s.cells[from]) { s.cells[to] = s.cells[from]; delete s.cells[from]; } else delete s.cells[to];
+    }
+    s.cells[addr(gr + 1, 2)] = { v: "Rate per Unit =", s: Object.assign({}, PERUNIT_STYLE), role: "perunit" };
+    s.cells[addr(gr + 1, 6)] = { s: Object.assign({}, PERUNIT_STYLE) };
+    s.cells[addr(gr + 2, 2)] = { v: "Say Rs. =", s: Object.assign({}, FINALRATE_STYLE), role: "finalrate" };
+    s.cells[addr(gr + 2, 6)] = { s: Object.assign({}, FINALRATE_STYLE) };
+    s.rows += 2;
+    return true;
+  }
+  function migrateFinalRateRows() {
+    let n = 0;
+    _suppressEngine = true;
+    try {
+      for (const id of state.order.slice()) {
+        const s = state.sheets[id];
+        if (!s || (s.kind !== "master" && s.kind !== "working")) continue;
+        if (ensureFinalRateRows(s)) { rebuildAnalysisTotals(s); persistSheet(s, true); n++; }
+      }
+    } finally { _suppressEngine = false; }
+    if (hfReady) buildEngine();
+    return n;
   }
 
   function createSheet(base, title, opts) {
@@ -944,7 +983,7 @@
   /* ===== Analysis subheads (Labour/Machinery/…) — add/delete + section totals ===== */
   // विशेष पंक्तियाँ scan करके ढाँचा लौटाओ
   function analysisScan(sheet) {
-    const sections = []; let subRow = -1, grandRow = -1, ohRow = -1, cpRow = -1, ohcpRow = -1, cur = null;
+    const sections = []; let subRow = -1, grandRow = -1, ohRow = -1, cpRow = -1, ohcpRow = -1, perRow = -1, finalRow = -1, cur = null;
     for (let r = 0; r < sheet.rows; r++) {
       const cell = sheet.cells[addr(r, 2)];
       const role = cell && cell.role;
@@ -955,9 +994,21 @@
       else if (role === "profit") cpRow = r;
       else if (role === "ohcp") ohcpRow = r;
       else if (role === "grandtot") { if (cur) { sections.push(cur); cur = null; } grandRow = r; }
+      else if (role === "perunit") perRow = r;
+      else if (role === "finalrate") finalRow = r;
     }
     if (cur) sections.push(cur);
-    return { sections, subRow, grandRow, ohRow, cpRow, ohcpRow };
+    return { sections, subRow, grandRow, ohRow, cpRow, ohcpRow, perRow, finalRow };
+  }
+  function isRoyaltySec(sheet, sec) { return /royal|रॉयल|रायल्टी/i.test((sheet.cells[addr(sec.head, 2)] || {}).secName || ""); }
+  // "Taking output =" पंक्ति का Quantity-cell (D) — नाम से खोजो ताकि row जोड़ने/हटाने पर संदर्भ slip न करे
+  function takingOutputQtyRef(sheet) {
+    for (let r = 0; r < sheet.rows; r++) {
+      const c = sheet.cells[addr(r, 2)];
+      const v = c ? (c.f != null ? "" : (c.v == null ? "" : String(c.v))) : "";
+      if (/taking\s*out\s*put/i.test(v)) return addr(r, 3);
+    }
+    return addr(ANALYSIS_PREAMBLE_ROWS, 3);   // fallback D5
   }
   function isStructuredAnalysis(sheet) { return analysisScan(sheet).subRow >= 0; }
   // formula cell लिखो (style बचाकर) — role/markers साफ़ रखते हुए
@@ -981,8 +1032,10 @@
         putFormula(sheet, sec.tot, 6, rng);
       }
     });
+    const hasRoy = info.sections.some((s) => isRoyaltySec(sheet, s));
     if (info.subRow >= 0) {
-      const parts = info.sections.filter((s) => s.tot >= 0).map((s) => addr(s.tot, 6));
+      const sc = sheet.cells[addr(info.subRow, 2)] || (sheet.cells[addr(info.subRow, 2)] = {}); sc.v = "Sub Total without Royality ="; sc.role = "subtot";
+      const parts = info.sections.filter((s) => s.tot >= 0 && !isRoyaltySec(sheet, s)).map((s) => addr(s.tot, 6));   // Royalty को Sub Total में न लो (OH/CP उस पर न लगे)
       putFormula(sheet, info.subRow, 6, parts.length ? "=ROUND(" + parts.join("+") + ",2)" : "=0");
     }
     // Overhead / Contractor Profit — A = Sub Total पर (सब 2 दशमलव); % इस sheet के OH group से
@@ -1011,10 +1064,26 @@
         grandParts.push(addr(info.cpRow, 6));
       }
     }
+    // Royalty section (हो तो) — grand Total में जोड़ो (OH/CP उस पर नहीं)
+    const roySec = info.sections.find((s) => isRoyaltySec(sheet, s) && s.tot >= 0);
     if (info.grandRow >= 0) {
-      const gc = sheet.cells[addr(info.grandRow, 2)]; if (gc) { gc.v = "Total"; gc.role = "grandtot"; }
-      putFormula(sheet, info.grandRow, 6, grandParts.length ? "=ROUND(" + grandParts.join("+") + ",2)" : "=0");
+      const gc = sheet.cells[addr(info.grandRow, 2)] || (sheet.cells[addr(info.grandRow, 2)] = {}); gc.v = hasRoy ? "Total incl Royality =" : "Total ="; gc.role = "grandtot";
+      const gParts = grandParts.slice(); if (roySec) gParts.push(addr(roySec.tot, 6));
+      putFormula(sheet, info.grandRow, 6, gParts.length ? "=ROUND(" + gParts.join("+") + ",2)" : "=0");
     }
+    // Rate per Unit = Total ÷ Quantity;  Say Rs. = FLOOR(rate, 0.10) — Analysis का final Rate
+    const qtyRef = takingOutputQtyRef(sheet);   // "Taking output =" पंक्ति का D (row जोड़ने/हटाने पर भी सही — slip नहीं)
+    if (info.perRow >= 0 && info.grandRow >= 0) {
+      const pc = sheet.cells[addr(info.perRow, 2)] || (sheet.cells[addr(info.perRow, 2)] = {}); pc.v = "Rate per Unit ="; pc.role = "perunit";
+      putFormula(sheet, info.perRow, 6, "=IFERROR(ROUND(" + addr(info.grandRow, 6) + "/" + qtyRef + ",4),\"\")");
+    }
+    if (info.finalRow >= 0 && info.perRow >= 0) {
+      const fc = sheet.cells[addr(info.finalRow, 2)] || (sheet.cells[addr(info.finalRow, 2)] = {}); fc.v = "Say Rs. ="; fc.role = "finalrate";
+      putFormula(sheet, info.finalRow, 6, "=IFERROR(FLOOR(" + addr(info.perRow, 6) + ",0.1),\"\")");
+    }
+    // lock: Royalty हो तो सिर्फ़ Total/perunit/finalrate lock (royalty items editable रहें); वरना Sub Total से नीचे सब
+    const lockFrom = roySec ? (info.grandRow >= 0 ? info.grandRow : info.subRow) : (info.subRow >= 0 ? info.subRow : -1);
+    if (lockFrom >= 0) sheet.lockBottom = Math.max(1, sheet.rows - lockFrom);
     persistSheet(sheet);
     if (hfReady && !_suppressEngine) buildEngine();
   }
@@ -1111,11 +1180,28 @@
   }
   // "Add Royality" उपशीर्षक — Material section के हर material को copy करके royalty पंक्तियाँ बनाए:
   //  नाम material से sync; Quantity material की E से link (=E{mr}); Royalty दर RMR/Primary की royalty से link (कई का औसत भी — point 2)
+  // ＋ Royality बटन — न हो तो जोड़ो, हो तो हटाओ (toggle)
+  function toggleRoyaltySection() {
+    const sheet = state.sheets[state.activeSheetId]; if (!sheet) return;
+    const info = analysisScan(sheet);
+    const roy = info.sections.find((s) => /royal|रॉयल|रायल्टी/i.test((sheet.cells[addr(s.head, 2)] || {}).secName || ""));
+    if (roy) removeRoyaltySection(sheet, roy); else addRoyaltySection();
+  }
+  function removeRoyaltySection(sheet, roy) {
+    if (!confirm("'Add Royality' उपशीर्षक हटाएँ? (इसकी सभी पंक्तियाँ हट जाएँगी)")) return;
+    const start = roy.head, end = roy.tot >= 0 ? roy.tot : roy.itemEnd;
+    pushUndo("all");
+    if (!structuralBatch("delRow", start, end - start + 1, true)) { undoStack.pop(); return; }
+    rebuildAnalysisTotals(sheet);
+    ensureLock(sheet); persistSheet(sheet); if (hfReady) buildEngine();
+    renderGrid(); scrollToActive();
+    status("'Add Royality' उपशीर्षक हटाया");
+  }
   function addRoyaltySection() {
     const sheet = state.sheets[state.activeSheetId]; if (!sheet) return;
     const info = analysisScan(sheet);
     if (info.subRow < 0) { alert("इस analysis में उपशीर्षक-ढाँचा नहीं है।"); return; }
-    if (info.sections.some((s) => /royal|रॉयल|रायल्टी/i.test((sheet.cells[addr(s.head, 2)] || {}).secName || ""))) { alert("इस Analysis में पहले से 'Add Royality' उपशीर्षक है।"); return; }
+    if (info.sections.some((s) => /royal|रॉयल|रायल्टी/i.test((sheet.cells[addr(s.head, 2)] || {}).secName || ""))) { alert("इस Analysis में पहले से 'Add Royality' उपशीर्षक है — हटाने के लिए फिर से ＋ Royality दबाएँ।"); return; }
     const matSec = info.sections.find((s) => /material|माल|सामग्री/i.test((sheet.cells[addr(s.head, 2)] || {}).secName || ""));
     if (!matSec) { alert("इस Analysis में 'Material' उपशीर्षक नहीं मिला — Royality उसी के अनुसार बनता है।"); return; }
     const matRows = [];
@@ -1125,7 +1211,8 @@
       if (nm.trim()) matRows.push(r);
     }
     if (!matRows.length) { alert("Material section में कोई material नहीं मिला।"); return; }
-    const n = matRows.length, at = info.subRow, block = 2 + n;   // Sub Total से ठीक पहले; header + n items + sectot
+    if (info.grandRow < 0) { alert("Total पंक्ति नहीं मिली।"); return; }
+    const n = matRows.length, at = info.grandRow, block = 2 + n;   // Contractor Profit के बाद, Total से ठीक पहले; header + n items + sectot
     pushUndo("all");
     if (!structuralBatch("insRow", at, block, true)) { undoStack.pop(); return; }
     const headR = at, totR = at + 1 + n;
@@ -2520,12 +2607,18 @@
     if (sizeLabel) chips += "<span class='sl-chip size'>📐 " + escapeHtml(sizeLabel) + "</span>";
     if (!isWork) chips += "<span class='sl-chip master' title='Master Analysis — सीधा बदलाव'>🗄️ master</span>";
     // RMR/Overhead अब समूह-header से पता चलते हैं — card पर दोहराना नहीं (साफ़ दिखे)
-    const xBtn = isWork ? "<button class='sl-x' title='यहाँ से हटाएँ — Master Data की मूल शीट सुरक्षित रहेगी'>×</button>" : "";
+    const acts = isWork
+      ? "<div class='sl-acts'>" +
+          "<button class='sl-mv up' title='ऊपर ले जाएँ — DOM & BOQ में भी इसी क्रम में'>▲</button>" +
+          "<button class='sl-mv down' title='नीचे ले जाएँ'>▼</button>" +
+          "<button class='sl-x' title='यहाँ से हटाएँ — Master Data की मूल शीट सुरक्षित रहेगी'>×</button>" +
+        "</div>"
+      : "";
     li.innerHTML =
       "<div class='sl-body'>" +
         "<div class='sl-row1'><span class='sl-title'>" + escapeHtml(s.name) + "</span><span class='sl-code " + srcCls + "'>" + srcLabel + "</span>" + srcTick + "</div>" +
         (chips ? "<div class='sl-chips'>" + chips + "</div>" : "") +
-      "</div>" + xBtn;
+      "</div>" + acts;
     if (desc) li.title = desc;
     li.addEventListener("mousedown", (e) => { if (armed && armed.refExpected()) e.preventDefault(); });
     li.addEventListener("click", () => {
@@ -2539,6 +2632,10 @@
       state.activeSheetId = id; renderSheetList(); renderGrid();
       deleteActiveSheet();
     });
+    const mvUp = li.querySelector(".sl-mv.up");
+    if (mvUp) mvUp.addEventListener("click", (e) => { e.stopPropagation(); const est = state.estimates[state.activeEstimateId]; if (est && moveEstimateItem(est, id, -1)) renderSheetList(); });
+    const mvDn = li.querySelector(".sl-mv.down");
+    if (mvDn) mvDn.addEventListener("click", (e) => { e.stopPropagation(); const est = state.estimates[state.activeEstimateId]; if (est && moveEstimateItem(est, id, 1)) renderSheetList(); });
     li.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       const menu = [];
@@ -2902,7 +2999,11 @@
       for (const a in sheet.cells) {
         const cell = sheet.cells[a];
         if (!cell || !cell.mref) continue;
-        if (cell.mref.field === "name") {
+        if (cell.mref.bitumen) {   // Bitumen row — Estimate के Bitumen Final Rate (Say Rs) से live
+          const be = estOfWorkingSheet(sheet);
+          const num = be ? bitumenRateByType(be, cell.mref.bitumen) : null;
+          if (num != null && (cell.f != null || mrNum(cell.v) !== num)) { delete cell.f; cell.v = num; changed = true; }
+        } else if (cell.mref.field === "name") {
           const row = masterRowById(cell.mref.cat, cell.mref.rowId);
           if (!row) continue; // master row मौजूद नहीं → वैसा ही रहने दो
           const nm = masterItemName(cell.mref.cat, row);
@@ -3894,6 +3995,55 @@
     }
     return { linked: linked, missing: missing };
   }
+  /* ===== Bitumen — Analysis के bitumen row को Estimate के Bitumen Final Rate (Say Rs) से link ===== */
+  function bitumenEntriesOf(est) {   // Estimate विवरण के असली Bitumen entries (न हों तो खाली → linking नहीं)
+    return (est && Array.isArray(est.bitumenCartage)) ? est.bitumenCartage.filter((x) => x && String(x.type || "").trim() && mrNum(x.rate) > 0) : [];
+  }
+  function bitNorm(s) { return String(s == null ? "" : s).toLowerCase().replace(/[^a-z0-9]/g, ""); }
+  // किसी bitumen entry का Final Rate (Bitumen शीट का "Say Rs" = FLOOR(Basic+Cartage, 0.10))
+  function bitumenSayFor(est, entry) {
+    const basic = mrNum(entry.rate), dist = mrNum(entry.dist);
+    const totalDist = (String(entry.side || "Both Side") === "Both Side") ? dist * 2 : dist;
+    const cartage = totalDist * bitumenCartageRate();
+    const total = round2(basic + cartage);
+    return Math.floor(total * 10) / 10;   // FLOOR(value, 0.10)
+  }
+  function bitumenRateByType(est, typeName) {
+    const t = bitNorm(typeName); if (!t) return null;
+    const ent = bitumenEntriesOf(est).find((e) => bitNorm(e.type) === t) || bitumenEntriesOf(est).find((e) => { const et = bitNorm(e.type); return et && (t.includes(et) || et.includes(t)); });
+    return ent ? bitumenSayFor(est, ent) : null;
+  }
+  // cell-नाम किसी bitumen/emulsion type से मेल खाता है? → उस entry का type लौटाओ
+  function bitumenTypeMatch(name, est) {
+    if (!/bitumen|emulsion|बिटु|इमल्शन|बिटूमेन/i.test(String(name || ""))) return null;
+    const n = bitNorm(name); if (!n) return null;
+    let best = null;
+    bitumenEntriesOf(est).forEach((e) => { const et = bitNorm(e.type); if (et && (n.includes(et) || et.includes(n))) { if (!best || et.length > bitNorm(best).length) best = e.type; } });
+    return best;
+  }
+  // किसी working sheet का estimate (उसके rmrId से; न मिले तो active)
+  function estOfWorkingSheet(sheet) {
+    if (sheet && sheet.rmrId) { for (const eid of state.estOrder) { const e = state.estimates[eid]; if (e && (e.rmrs || []).some((r) => r.id === sheet.rmrId)) return e; } }
+    return state.estimates[state.activeEstimateId] || null;
+  }
+  // Analysis में bitumen वाली पंक्तियाँ ढूँढकर उनकी दर Estimate के Bitumen Final Rate से link करो
+  function linkBitumenToEstimate(copy, est) {
+    if (!est) return { linked: 0 };
+    let linked = 0;
+    for (let r = 0; r < copy.rows; r++) {
+      if ((copy.cells[addr(r, 2)] || {}).role) continue;   // section/total नहीं
+      const nc = copy.cells[addr(r, 2)];
+      const nm = nc ? (nc.f != null ? "" : (nc.v == null ? "" : String(nc.v))) : "";
+      const type = bitumenTypeMatch(nm, est); if (!type) continue;
+      const val = bitumenRateByType(est, type); if (val == null) continue;
+      const fa = addr(r, 5), prevS = (copy.cells[fa] || {}).s;
+      copy.cells[fa] = { v: val, mref: { bitumen: type, field: "rate" } };
+      if (prevS) copy.cells[fa].s = prevS;
+      copy.cells[addr(r, 6)] = Object.assign({}, copy.cells[addr(r, 6)], { f: amtFormula(r) });   // Amount = Qty × Rate
+      linked++;
+    }
+    return { linked: linked };
+  }
   function loadAnalysisToWorkspace(masterId) {
     const m = state.sheets[masterId]; if (!m) return;
     // Analysis अभी Checked नहीं है → insert से पहले चेतावनी (फिर भी insert का विकल्प)
@@ -3990,6 +4140,8 @@
     copy.ohGroupId = ohGroupId || null;
     if (rmr) copy.title = (copy.title ? copy.title + "  " : "") + "[RMR: " + rmr.name + "]";
     if (rmrId) repointMaterialToRmr(copy, rmrId);
+    linkBitumenToEstimate(copy, state.estimates[state.activeEstimateId]);   // Bitumen → Estimate Final Rate
+    ensureFinalRateRows(copy);   // Rate per Unit + Say Rs. (final rate) पंक्तियाँ हों
     return copy;
   }
   // main + चुनी हुई dependency शीटें एक साथ load; आपस के references copy-नामों पर re-point
@@ -4062,6 +4214,8 @@
     copy.ohGroupId = ohGroupId || null;   // Overhead/Profit इसी group के % से
     if (rmr) copy.title = (copy.title ? copy.title + "  " : "") + "[RMR: " + rmr.name + "]";   // RMR नाम analysis पर
     const rl = rmrId ? repointMaterialToRmr(copy, rmrId) : null;
+    const bl = linkBitumenToEstimate(copy, state.estimates[state.activeEstimateId]);   // Bitumen row → Estimate का Bitumen Final Rate
+    ensureFinalRateRows(copy);   // Rate per Unit + Say Rs. (final rate) पंक्तियाँ हों
     state.sheets[copy.id] = copy; state.order.push(copy.id);
     if (hfReady) { try { hf.addSheet(copy.name); hf.setSheetContent(hfSheetId(copy.name), sheetMatrix(copy)); } catch (e) { buildEngine(); } }
     db.put("sheets", copy);
@@ -4073,7 +4227,8 @@
     const est2 = state.estimates[state.activeEstimateId];
     const grp = est2 ? estOhGroups(est2).find((g) => g.id === ohGroupId) : null;
     const rmrMsg = rl ? (" · RMR material: " + rl.linked + " linked" + (rl.missing ? ", " + rl.missing + " नहीं मिला ⚠" : " ✓")) : "";
-    status("Analysis load हुआ" + (rmr ? " · RMR: " + rmr.name : "") + (grp && grp.remark ? " · OH group: " + grp.remark : "") + rmrMsg + " — " + copy.name);
+    const bitMsg = (bl && bl.linked) ? (" · Bitumen: " + bl.linked + " linked ✓") : "";
+    status("Analysis load हुआ" + (rmr ? " · RMR: " + rmr.name : "") + (grp && grp.remark ? " · OH group: " + grp.remark : "") + rmrMsg + bitMsg + " — " + copy.name);
   }
   // MoRTH item को मौजूदा project size में load करो (वह size न हो तो उपलब्ध से)
   function loadMorthItem(itemKey) {
@@ -4169,12 +4324,12 @@
       let listHtml = "";
       if (_loadSrc === "mord") {
         const all = sourceMasters("mord");
-        listHtml = buildPickerGroups(all.map((s) => ({ loadId: s.id, name: s.name, sub: s.title, group: chapterKeyOf(s), checked: !!s.checked })), "mord");
+        listHtml = buildPickerGroups(all.map((s) => ({ loadId: s.id, name: s.name, sub: s.title, group: chapterKeyOf(s), checked: !!s.checked, serial: s.serial })), "mord");
       } else {
         const byKey = {};
         for (const s of sourceMasters("morth")) { if (!byKey[s.itemKey]) { byKey[s.itemKey] = { group: chapterKeyOf(s), name: s.itemName || s.name, variants: {} }; } byKey[s.itemKey].variants[s.size] = s; }
         const items = [];
-        for (const k in byKey) { const it = byKey[k]; const v = it.variants[projectSize] || it.variants.large || it.variants.medium || it.variants.small; if (v) items.push({ loadId: v.id, name: it.name, sub: sizeName(v.size) + (v.size !== projectSize ? " (इस item का " + sizeName(projectSize) + " नहीं)" : ""), group: it.group, checked: !!v.checked }); }
+        for (const k in byKey) { const it = byKey[k]; const v = it.variants[projectSize] || it.variants.large || it.variants.medium || it.variants.small; if (v) items.push({ loadId: v.id, name: it.name, sub: sizeName(v.size) + (v.size !== projectSize ? " (इस item का " + sizeName(projectSize) + " नहीं)" : ""), group: it.group, checked: !!v.checked, serial: v.serial }); }
         listHtml = buildPickerGroups(items, "morth");
       }
       listEl.innerHTML = listHtml || "<div class='ag-empty muted'>अभी कोई master analysis नहीं — Master Data में बनाएँ।</div>";
@@ -4227,7 +4382,9 @@
         const ckBadge = e.checked
           ? "<span class='lap-ck on' title='Checked (जाँची हुई)'>✓ Checked</span>"
           : "<span class='lap-ck off' title='अभी Checked नहीं'>⚠ Uncheck</span>";
-        html += "<button class='lap-item' data-load='" + e.loadId + "'><span class='lap-nm'>" + escapeHtml(e.name) + ckBadge + "</span>" + (e.sub ? "<span class='lap-tt'>" + escapeHtml(e.sub) + "</span>" : "") + "</button>";
+        const snTxt = (e.serial != null && String(e.serial).trim() !== "") ? String(e.serial).trim() : "";
+        const snBadge = snTxt ? "<span class='lap-sn'>" + escapeHtml(snTxt) + "</span> " : "";   // क्रम संख्या — नाम से पहले (search में भी आता है)
+        html += "<button class='lap-item' data-load='" + e.loadId + "'><span class='lap-nm'>" + snBadge + escapeHtml(e.name) + ckBadge + "</span>" + (e.sub ? "<span class='lap-tt'>" + escapeHtml(e.sub) + "</span>" : "") + "</button>";
       }
       html += "</div>";
     }
@@ -5581,7 +5738,7 @@
     let rt = findByText(/\bsay\b/i);
     if (rt == null) rt = findByText(/rate\s*per/i);
     if (rt == null) { for (let r = R - 1; r >= 0 && rt == null; r--) rt = rowNum(r); }
-    if (rt != null) rate = Math.round(rt * 100) / 100;
+    if (rt != null) rate = Math.floor(rt * 10) / 10;   // फाइनल Say — FLOOR(value, 0.10)
     return { rate, unit };
   }
   // DOM/BOQ views अभी जिस कार्य-समूह के लिए हैं (default: मुख्य)
@@ -6173,7 +6330,7 @@
   /* ══════════ Bitumen / Emulsion — Rate Analysis (पूरी Excel शीट) ══════════
      कॉलम: A=SN, B=Rate, C=Bitumen(VG-40), D=Bitumen 60-70(VG-30), E=Bitumen 80-100(VG-10),
             F=Emulsion(SS-1) Bulk, G=Emulsion(SS-2) Bulk */
-  const BIT_FMT_VER = 3;   // Bitumen Analysis format-संस्करण — बढ़ाने पर पुरानी शीटें auto-rebuild
+  const BIT_FMT_VER = 4;   // Bitumen Analysis format-संस्करण — बढ़ाने पर पुरानी शीटें auto-rebuild (v4: Say = FLOOR 0.10)
   function bitColWidths() { return [40, 230, 110, 130, 130, 108, 120, 150, 130, 104]; }   // 10 कॉलम
   // Bitumen Cartage — Including Contractor Profit दर, हमेशा Primary Rate की LOADED cartage version से
   //  (loaded version में न हो तो category-level fallback, वरना default 2.09)
@@ -6281,7 +6438,7 @@
       set(r, 6, bcRate, { al: "center" });                                               // G Cartage Rate (₹/km)
       set(r, 7, "=ROUND(F" + e + "*G" + e + ",2)", { al: "right" });                     // H Total Cartage = कुल दूरी × दर
       set(r, 8, "=ROUND(C" + e + "+H" + e + ",2)", { b: 1, bg: TOT, al: "right" });       // I Total Amount = Basic + Cartage
-      set(r, 9, "=INT(I" + e + "/10)*10", { b: 1, bg: SAY, al: "right" });                // J Say Rs. (नीचे 10 के गुणक तक)
+      set(r, 9, "=FLOOR(I" + e + ",0.1)", { b: 1, bg: SAY, al: "right" });                 // J Say Rs. — FLOOR(value, 0.10)
       r++;
     });
     sheet.rows = r;
@@ -8398,7 +8555,7 @@
     document.getElementById("btnDelRow").addEventListener("click", delActiveRow);
     document.getElementById("btnAddSubhead").addEventListener("click", addSubhead);
     document.getElementById("btnDelSubhead").addEventListener("click", deleteActiveSubhead);
-    { const brl = document.getElementById("btnAddRoyalty"); if (brl) brl.addEventListener("click", addRoyaltySection); }
+    { const brl = document.getElementById("btnAddRoyalty"); if (brl) brl.addEventListener("click", toggleRoyaltySection); }
     document.getElementById("btnDelSheet").addEventListener("click", deleteActiveSheet);
     document.getElementById("sheetSearch").addEventListener("input", renderSheetList);
 
@@ -8614,6 +8771,7 @@
     try { await window.__hfReady; } catch (e) {}  // engine async लोड होता है — build से पहले तैयार होने दो
     buildEngine();
     setEngineStatus();
+    migrateFinalRateRows(); // पुराने Analysis में "Rate per Unit" + "Say Rs." (final rate) पंक्तियाँ जोड़ो
     autoLinkMasterRates();  // पुराने analyses के correct master-रेट cells को link कर दो (पीला हटे)
     reRateAllAnalyses();    // Primary Rate से जुड़े analyses को loaded दरों पर ताज़ा कर दो
 

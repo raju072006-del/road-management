@@ -4350,20 +4350,62 @@
     return m.versions.find((v) => v.date === m.activeVersion) || m.versions[0];
   }
   function saveMachine() { saveCat(mrCat); }
-  // Cartage की slabwise पंक्तियाँ (active version) पैनल में दिखाओ (read-only झलक; संपादन ऊपर की तालिका में)
+  // Cartage की slabwise पंक्तियाँ (active version) पैनल में दिखाओ — Edit मोड में यहीं संपादन (From/To/Rate + पंक्ति जोड़ें/हटाएँ), ऊपर की मुख्य तालिका से sync
   function renderCartageSlabView() {
     const box = document.getElementById("cgSlabView"); if (!box) return;
     const ver = mrActiveVersion();
     const rows = (ver && ver.rows) ? ver.rows : [];
-    if (!rows.length) { box.innerHTML = "<div class='muted' style='font-size:12.5px'>इस version में कोई slabwise पंक्ति नहीं — '🔁 DB से…' दबाकर पुनः लोड करें, या ऊपर की तालिका में भरें।</div>"; return; }
-    let h = "<table class='calc-table'><thead><tr><th>क्रम</th><th>From (km)</th><th>To (km)</th><th>Rate per km (₹)</th><th>Cumulative Rate per Cum</th></tr></thead><tbody>";
+    const editing = mrEditAll;
+    if (!rows.length && !editing) { box.innerHTML = "<div class='muted' style='font-size:12.5px'>इस version में कोई slabwise पंक्ति नहीं — '🔁 DB से…' दबाकर पुनः लोड करें, या ऊपर की तालिका में भरें।</div>"; return; }
+    const cumStr = (r, rws) => (r.to_km != null && String(r.to_km).trim() !== "") ? round2(cartageCompute(rws, mrNum(r.to_km)).total).toFixed(2) : "";
+    let h = "<table class='calc-table cg-slab'><thead><tr><th>क्रम</th><th>From (km)</th><th>To (km)</th><th>Rate per km (₹)</th><th>Cumulative Rate per Cum</th>" + (editing ? "<th>क्रिया</th>" : "") + "</tr></thead><tbody>";
     rows.forEach((r, i) => {
       const g = (k) => escapeHtml(r[k] == null ? "" : String(r[k]));
-      const cum = (r.to_km != null && String(r.to_km).trim() !== "") ? round2(cartageCompute(rows, mrNum(r.to_km)).total).toFixed(2) : "";
-      h += "<tr><td>" + (r.sn != null && String(r.sn).trim() !== "" ? escapeHtml(String(r.sn)) : (i + 1)) + "</td><td>" + g("from_km") + "</td><td>" + g("to_km") + "</td><td>" + g("rate_km") + "</td><td>" + cum + "</td></tr>";
+      if (editing) {
+        h += "<tr>" +
+          "<td>" + (i + 1) + "</td>" +
+          "<td><input class='num cg-in' data-i='" + i + "' data-f='from_km' value=\"" + g("from_km") + "\" /></td>" +
+          "<td><input class='num cg-in' data-i='" + i + "' data-f='to_km' value=\"" + g("to_km") + "\" /></td>" +
+          "<td><input class='num cg-in' data-i='" + i + "' data-f='rate_km' value=\"" + g("rate_km") + "\" /></td>" +
+          "<td class='cg-cum'>" + cumStr(r, rows) + "</td>" +
+          "<td class='cg-act'><button class='mini' data-cgact='ins' data-i='" + i + "' title='नीचे पंक्ति डालें'>⊕</button><button class='mini danger' data-cgact='del' data-i='" + i + "' title='हटाएँ'>🗑</button></td>" +
+          "</tr>";
+      } else {
+        h += "<tr><td>" + (r.sn != null && String(r.sn).trim() !== "" ? escapeHtml(String(r.sn)) : (i + 1)) + "</td><td>" + g("from_km") + "</td><td>" + g("to_km") + "</td><td>" + g("rate_km") + "</td><td>" + cumStr(r, rows) + "</td></tr>";
+      }
     });
-    h += "</tbody></table><div class='view-sub' style='margin-top:6px'>कुल " + rows.length + " पंक्ति · संपादन <b>ऊपर की मुख्य तालिका</b> में करें।</div>";
+    h += "</tbody></table>";
+    h += editing
+      ? "<div style='margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap'><button class='btn sm primary' id='cgSlabAdd'>+ पंक्ति जोड़ें</button><span class='view-sub' style='margin:0'>बदलाव अपने-आप सुरक्षित; ऊपर की मुख्य तालिका से जुड़े</span></div>"
+      : "<div class='view-sub' style='margin-top:6px'>कुल " + rows.length + " पंक्ति · संपादन के लिए ऊपर <b>✎ सभी Edit करें</b> दबाएँ।</div>";
     box.innerHTML = h;
+    if (!editing) return;
+    const recomputeCum = () => {
+      const v = mrActiveVersion(); if (!v) return;
+      box.querySelectorAll("td.cg-cum").forEach((td, idx) => { const r2 = v.rows[idx]; td.textContent = r2 ? cumStr(r2, v.rows) : ""; });
+      const mt = document.getElementById("mrTable");
+      if (mt) mt.querySelectorAll("input[data-field='cum_rate']").forEach((ci) => { const r2 = v.rows[+ci.dataset.i]; if (r2) ci.value = cumStr(r2, v.rows); });
+    };
+    box.querySelectorAll("input.cg-in").forEach((inp) => {
+      inp.addEventListener("input", () => {
+        const v = mrActiveVersion(); if (!v) return;
+        const r2 = v.rows[+inp.dataset.i]; if (!r2) return;
+        r2[inp.dataset.f] = inp.value;
+        const mt = document.getElementById("mrTable");   // मुख्य तालिका का वही cell भी sync
+        if (mt) { const mi = mt.querySelector("input[data-i='" + inp.dataset.i + "'][data-field='" + inp.dataset.f + "']"); if (mi) mi.value = inp.value; }
+        recomputeCum();
+        saveMachine();
+      });
+    });
+    box.querySelectorAll("button[data-cgact]").forEach((b) => b.addEventListener("click", () => {
+      const v = mrActiveVersion(); if (!v) return;
+      const i = +b.dataset.i;
+      if (b.dataset.cgact === "ins") v.rows.splice(i + 1, 0, mrNewRow());
+      else if (b.dataset.cgact === "del") { if (!confirm("यह slab पंक्ति हटाएँ?")) return; v.rows.splice(i, 1); }
+      saveMachine(); renderMachineRate();
+    }));
+    const add = document.getElementById("cgSlabAdd");
+    if (add) add.addEventListener("click", () => { const v = mrActiveVersion(); if (!v) return; v.rows.push(mrNewRow()); saveMachine(); renderMachineRate(); });
   }
   // Cartage की slabwise पंक्तियाँ स्थानीय DB से पुनः लोड करो (तालिका खाली दिखने पर recovery + diagnostic)
   function reloadCartageFromDB() {
@@ -4540,18 +4582,17 @@
       : "कोई version नहीं — पहले एक Cartage version बनाएँ/Load करें।";
     ex.innerHTML =
       // (1) slabwise आइटम का Description — एक ही बार
-      "<div class='panel-card'>" +
+      "<div class='panel-card pc-slab'>" +
         "<h3>📝 Cartage आइटम (slabwise) — Description</h3>" +
         "<p class='view-sub' style='margin:0 0 8px'>slabwise दरें (From/To/Rate per km) <b>ऊपर की तालिका</b> में हैं — यह बॉक्स सिर्फ़ उस एक आइटम का नाम है (जैसे: Aggregate and Coarse Sand)।</p>" +
         "<input type='text' id='cgDesc' class='mr-item-desc' placeholder='जैसे: Aggregate and Coarse Sand' value=\"" + escapeHtml(cdesc) + "\" />" +
         "<div style='margin-top:8px; display:flex; gap:8px; flex-wrap:wrap'>" +
           "<button class='btn sm' id='cgShowSlab'>📋 Slabwise डाटा दिखाएं</button>" +
-          "<button class='btn sm' id='cgReload'>🔁 DB से slabwise डाटा पुनः लोड</button>" +
         "</div>" +
         "<div id='cgSlabView' style='display:none; margin-top:10px'></div>" +
       "</div>" +
       // (1b) Loading/Unloading Charges — केवल आइटम का Description
-      "<div class='panel-card'>" +
+      "<div class='panel-card pc-loadunload'>" +
         "<h3>🏗️ Loading/Unloading Charges</h3>" +
         "<p class='view-sub' style='margin:0 0 8px'>इस आइटम का नाम/विवरण, और प्रति-Cum <b>Loading</b> व <b>Unloading</b> दरें भरें। Rate Analysis में यही दरें ली जा सकती हैं।</p>" +
         "<div class='bc-row'>" +
@@ -4563,7 +4604,7 @@
         "</div>" +
       "</div>" +
       // (2) Bitumen Cartage — अलग आइटम, प्रति-km दर
-      "<div class='panel-card'>" +
+      "<div class='panel-card pc-bitcartage'>" +
         "<h3>🛢️ Bitumen Cartage — प्रति-km दर</h3>" +
         "<p class='view-sub' style='margin:0 0 8px'>“Rate Including Contractor Profit” भरें — “Excluding” = Including ÷ 1.10 (2 दशमलव) अपने-आप। यही <b>Excluding</b> मान <b>Bitumen Rate Analysis</b> की Cartage Rate में जाता है (Primary Rate की <b>Loaded</b> version से live-linked)।</p>" +
         "<div class='bc-row'>" +
@@ -4603,25 +4644,24 @@
     };
     const bcD = document.getElementById("bcDesc"); if (bcD) bcD.addEventListener("change", saveBc);
     if (bcInclEl) { bcInclEl.addEventListener("input", recompute); bcInclEl.addEventListener("change", saveBc); }
-    const cgReload = document.getElementById("cgReload"); if (cgReload) cgReload.addEventListener("click", reloadCartageFromDB);
     const cgShow = document.getElementById("cgShowSlab");
     if (cgShow) cgShow.addEventListener("click", () => {
       const box = document.getElementById("cgSlabView"); if (!box) return;
       if (box.style.display === "none") { box.style.display = "block"; renderCartageSlabView(); cgShow.textContent = "🔽 Slabwise डाटा छिपाएं"; }
       else { box.style.display = "none"; cgShow.textContent = "📋 Slabwise डाटा दिखाएं"; }
     });
+    // ✎ सभी Edit on होते ही Slabwise डाटा अपने-आप खुल जाए (संपादन ऊपर की तालिका में on रहता है)
+    if (mrEditAll) { const box = document.getElementById("cgSlabView"); if (box) { box.style.display = "block"; renderCartageSlabView(); if (cgShow) cgShow.textContent = "🔽 Slabwise डाटा छिपाएं"; } }
     const run = () => {
       const ver = mrActiveVersion();
       const res = document.getElementById("cgResult");
       const km = mrNum(document.getElementById("cgKm").value);
       if (!ver || !ver.rows.length) { res.className = "calc-result muted"; res.textContent = "पहले Range data भरें।"; return; }
       if (km <= 0) { res.className = "calc-result muted"; res.textContent = "सही दूरी (km) डालें।"; return; }
-      const r = cartageCompute(ver.rows, km);
-      let h = "<table class='calc-table'><thead><tr><th>खंड (km)</th><th>लंबाई</th><th>दर/km</th><th>राशि (₹)</th></tr></thead><tbody>";
-      r.parts.forEach((p) => { h += "<tr><td>" + nf(p.lower) + "–" + nf(p.upper) + (p.extend ? " *" : "") + "</td><td>" + nf(p.len) + "</td><td>" + nf(p.rate) + "</td><td>" + nf(p.amt) + "</td></tr>"; });
-      h += "</tbody></table><div class='calc-total'>कुल Cartage (" + nf(km) + " km) = <b>₹ " + nf(r.total) + "</b></div>";
-      if (r.parts.some((p) => p.extend)) h += "<div class='calc-note'>* आख़िरी slab की दर इससे आगे भी लागू मानी गई।</div>";
-      res.className = "calc-result"; res.innerHTML = h;
+      // RMR वाले Cartage कार्ड जैसा ही पूरा विवरण (compact slab + Cartage Kachha + Net Total without CP)
+      const bd = cartageBreakdown(km);
+      res.className = "calc-result";
+      res.innerHTML = "<div class='cbk-cards'>" + cartageBreakHTML({ query: "गणना", distance: km, bd: bd }) + "</div>";
     };
     const btn = document.getElementById("cgCalc"); if (btn) btn.addEventListener("click", run);
     const inp = document.getElementById("cgKm"); if (inp) inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); run(); } });
@@ -7323,25 +7363,25 @@
   // एक Query का Cartage विवरण — attach किए प्रारूप का HTML
   function cartageBreakHTML(block) {
     const bd = block.bd;
+    const f2 = (n) => mrNum(n).toFixed(2);   // Amount कॉलम — हमेशा 2 दशमलव
     let rows = "";
     (bd.compactParts || []).forEach((p) => {
       const label = p.cumulative
         ? nf(p.from) + " to " + nf(p.to) + " तक (cumulative)"
         : nf(p.from) + " to " + nf(p.to) + " (" + nf(p.km) + " km &times; " + nf(p.rate) + ")";
-      rows += "<tr><td>" + label + "</td><td class='r'>" + nf(round2(p.amt)) + "</td></tr>";
+      rows += "<tr><td>" + label + "</td><td class='r'>" + f2(p.amt) + "</td></tr>";
     });
     return "<div class='cbk-card'>" +
-      "<div class='cbk-title'>(Cartage Rate as per UPPWD SOR)</div>" +
-      "<div class='cbk-h2'>Cartage (" + escapeHtml(block.query) + ")" +
+      "<div class='cbk-h2'>Cartage Rate (" + escapeHtml(block.query) + ")" +
         "<span class='cbk-km'>दूरी " + nf(bd.km) + " km</span></div>" +
       "<table class='cbk-t'>" + rows +
-        "<tr class='cbk-tot'><td>Total</td><td class='r'>" + nf(bd.slabTotal) + "</td></tr>" +
+        "<tr class='cbk-tot'><td>Total</td><td class='r'>" + f2(bd.slabTotal) + "</td></tr>" +
       "</table>" +
       "<div class='cbk-h2'>Cartage Kachha</div>" +
       "<table class='cbk-t'>" +
-        "<tr><td>(" + nf(bd.firstKm) + " - " + nf(bd.load) + " - " + nf(bd.unload) + ") &times; " + nf(bd.kachhaPct) + "%</td><td class='r'>" + nf(bd.kachha) + "</td></tr>" +
-        "<tr class='cbk-tot'><td>Total</td><td class='r'>" + nf(bd.total) + "</td></tr>" +
-        "<tr class='cbk-net'><td>Net Total without CP</td><td class='r'>" + nf(bd.netWithoutCP) + "</td></tr>" +
+        "<tr><td>(" + nf(bd.firstKm) + " - " + nf(bd.load) + " - " + nf(bd.unload) + ") &times; " + nf(bd.kachhaPct) + "%</td><td class='r'>" + f2(bd.kachha) + "</td></tr>" +
+        "<tr class='cbk-tot'><td>Total</td><td class='r'>" + f2(bd.total) + "</td></tr>" +
+        "<tr class='cbk-net'><td>Net Total without CP</td><td class='r'>" + f2(bd.netWithoutCP) + "</td></tr>" +
       "</table></div>";
   }
   function renderRMRCartageBreak(rmr) {

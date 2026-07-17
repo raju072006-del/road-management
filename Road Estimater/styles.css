@@ -176,6 +176,18 @@ body{
 /* ----- Panel card / forms / lists ----- */
 .panel-card{background:var(--panel); border:1px solid var(--line); border-radius:var(--r-lg); padding:20px; box-shadow:var(--shadow); margin-bottom:16px}
 .panel-card h3{margin:0 0 14px; font-size:15px; color:var(--ink); font-weight:700; letter-spacing:-.01em}
+/* Cartage के तीन कार्ड — अलग-अलग रंग-पहचान (border + heading + हल्का tint) */
+.panel-card.pc-slab{border-left:5px solid #4c66f0; background:#f7f9ff}
+.panel-card.pc-slab h3{color:#2c3fb0}
+.panel-card.pc-loadunload{border-left:5px solid #2e9e5b; background:#f4fbf7}
+.panel-card.pc-loadunload h3{color:#1f7a44}
+.panel-card.pc-bitcartage{border-left:5px solid #d9822b; background:#fffaf2}
+.panel-card.pc-bitcartage h3{color:#b5651d}
+@media (prefers-color-scheme:dark){
+  .panel-card.pc-slab{background:rgba(76,102,240,.10)}
+  .panel-card.pc-loadunload{background:rgba(46,158,91,.10)}
+  .panel-card.pc-bitcartage{background:rgba(217,130,43,.10)}
+}
 .form-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px}
 .form-grid label{display:flex; flex-direction:column; gap:5px; font-size:12px; font-weight:600; color:#3d4a63}
 .form-grid input,.form-grid select{
@@ -391,6 +403,16 @@ body{
 .lu-row .lu-lbl{font-size:13.5px; font-weight:600; color:#3d4a63}
 .lu-row input{width:150px; box-sizing:border-box; text-align:right; padding:9px 12px; border:1.5px solid var(--line); border-radius:10px; font-family:var(--ui); font-size:14px; font-variant-numeric:tabular-nums}
 .lu-row input:focus{outline:none; border-color:var(--sel-border); box-shadow:0 0 0 3.5px rgba(76,102,240,.16)}
+/* Cartage slabwise — Edit मोड (Slabwise डाटा दिखाएं के अंदर) */
+.cg-slab td{padding:3px 5px; vertical-align:middle}
+.cg-slab input.cg-in{width:100%; box-sizing:border-box; padding:6px 8px; border:1.5px solid var(--line); border-radius:7px; background:#fffcf2; font-family:var(--ui); font-size:13px; text-align:right; font-variant-numeric:tabular-nums}
+.cg-slab input.cg-in:focus{outline:none; border-color:var(--sel-border); box-shadow:0 0 0 3px rgba(76,102,240,.16); background:#fff}
+.cg-slab td.cg-cum{text-align:right; font-weight:700; color:var(--navy-dark); background:#eef2ff; font-variant-numeric:tabular-nums}
+.cg-slab td.cg-act{white-space:nowrap; text-align:center}
+.cg-slab .mini{font-size:12px; padding:4px 7px; border:1px solid var(--line); border-radius:6px; background:#f2f5fc; color:#3d4a63; cursor:pointer; margin:0 1px}
+.cg-slab .mini:hover{background:#e6ecfb}
+.cg-slab .mini.danger{color:#c0392b}
+.cg-slab .mini.danger:hover{background:#fdecea}
 /* Estimate form — Bitumen Cartage विवरण की पंक्तियाँ */
 .bit-rows{display:flex; flex-direction:column; gap:8px; margin:8px 0 4px}
 .bit-card{display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; background:#f7f8fc; border:1px solid #e8ebf1; border-radius:10px; padding:9px 11px}

@@ -11,6 +11,41 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet" />
 
+  <!-- Boot loading overlay — CSS व progress API (जल्दी उपलब्ध, styles.css से पहले) -->
+  <style>
+    .boot-loader{position:fixed;inset:0;z-index:99999;background:linear-gradient(160deg,#2b3566,#161c3a);display:flex;align-items:center;justify-content:center;font-family:"Segoe UI",system-ui,sans-serif;transition:opacity .45s ease}
+    .boot-loader.hide{opacity:0;pointer-events:none}
+    .bl-box{text-align:center;color:#fff;width:min(380px,82vw)}
+    .bl-logo{width:66px;height:66px;border-radius:18px;background:linear-gradient(135deg,#4c66f0,#7d92ff);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:23px;letter-spacing:.5px;margin:0 auto 18px;box-shadow:0 10px 34px rgba(0,0,0,.35)}
+    .bl-title{font-size:23px;font-weight:800;letter-spacing:.3px;margin:0}
+    .bl-sub{font-size:13px;color:#aab6dd;margin:3px 0 24px}
+    .bl-bar{height:9px;border-radius:999px;background:rgba(255,255,255,.13);overflow:hidden}
+    .bl-fill{height:100%;width:0%;border-radius:999px;background:linear-gradient(90deg,#6f86ff,#9db0ff);box-shadow:0 0 12px rgba(125,146,255,.6);transition:width .25s ease}
+    .bl-pct{font-size:14px;font-weight:800;margin-top:12px}
+    .bl-step{font-size:12.5px;color:#aab6dd;margin-top:5px;min-height:16px}
+  </style>
+  <script>
+    window.__boot = (function(){
+      function g(id){ return document.getElementById(id); }
+      var cur = 0, target = 0, raf = null;
+      function tick(){
+        cur += (target - cur) * 0.14;
+        if (Math.abs(target - cur) < 0.4) cur = target;
+        var f = g('blFill'), t = g('blPct');
+        if (f) f.style.width = cur + '%';
+        if (t) t.textContent = Math.round(cur) + '%';
+        raf = (cur !== target) ? requestAnimationFrame(tick) : null;
+      }
+      return {
+        set: function(p, s){ target = Math.max(target, Math.min(100, p)); var st = g('blStep'); if (s && st) st.textContent = s; if (!raf) raf = requestAnimationFrame(tick); },
+        step: function(s){ var st = g('blStep'); if (st) st.textContent = s; },
+        t: function(){ return target; },
+        done: function(){ target = 100; if (!raf) raf = requestAnimationFrame(tick); var b = g('bootLoader'); setTimeout(function(){ if (b){ b.classList.add('hide'); setTimeout(function(){ if (b.parentNode) b.parentNode.removeChild(b); }, 480); } }, 320); }
+      };
+    })();
+    // failsafe — किसी त्रुटि पर भी overlay 25s बाद हट जाए (कभी stuck न रहे)
+    setTimeout(function(){ try { window.__boot && window.__boot.done(); } catch (e) {} }, 25000);
+  </script>
   <!-- Calculation engine (HyperFormula) — self-hosted, async (page अटकता नहीं;
        engine background में तैयार होता है)। local vendor फ़ाइल पहले, CDN fallback. -->
   <link rel="preload" as="script" href="vendor/hyperformula.full.min.js" />
@@ -31,6 +66,18 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+
+  <!-- Boot loading overlay — 100% होने पर हट जाता है, तभी सारा डाटा दिखता है -->
+  <div id="bootLoader" class="boot-loader">
+    <div class="bl-box">
+      <div class="bl-logo">RES</div>
+      <h1 class="bl-title">Road Estimator</h1>
+      <div class="bl-sub">सड़क आकलन प्रणाली</div>
+      <div class="bl-bar"><div class="bl-fill" id="blFill"></div></div>
+      <div class="bl-pct" id="blPct">0%</div>
+      <div class="bl-step" id="blStep">शुरू हो रहा है…</div>
+    </div>
+  </div>
 
   <div class="app-shell">
 

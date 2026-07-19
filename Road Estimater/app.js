@@ -1129,11 +1129,11 @@
   function applyOverheadAll() {
     setActiveEstimateOh();
     let n = 0;
+    const prevSup = _suppressEngine;   // boot आदि में पहले से suppressed हो तो वैसा ही रखो (extra buildEngine न हो)
     _suppressEngine = true;
     try { for (const id of state.order.slice()) { if (applyOverheadToSheet(state.sheets[id])) n++; } }
-    finally { _suppressEngine = false; }
-    if (hfReady) buildEngine();
-    if (state.activeSheetId) renderGrid();
+    finally { _suppressEngine = prevSup; }
+    if (!_suppressEngine) { if (hfReady) buildEngine(); if (state.activeSheetId) renderGrid(); }
     return n;
   }
 
@@ -3026,7 +3026,7 @@
       }
       if (changed) { persistSheet(sheet, true); touched++; }   // auto re-rate — "अंतिम सुधार" समय अछूता रहे
     }
-    if (touched) { if (hfReady) buildEngine(); if (state.activeSheetId) renderGrid(); }
+    if (touched && !_suppressEngine) { if (hfReady) buildEngine(); if (state.activeSheetId) renderGrid(); }
     return touched;
   }
   let _reRateTimer = null;
@@ -8737,12 +8737,15 @@
   }
 
   /* ============== BOOT ============== */
+  const bootP = (p, s) => { try { if (window.__boot) window.__boot.set(p, s); } catch (e) {} };
   async function boot() {
     wireGlobal();
+    bootP(8, "डाटा लोड हो रहा है…");
     await db.open();
     const sheets = await db.getAll("sheets");
     const estimates = await db.getAll("estimates");
     const masterRecs = await db.getAll("master");
+    bootP(28, "डाटा लोड हो रहा है…");
     sheets.sort((a, b) => (a.createdOrder || 0) - (b.createdOrder || 0));
     for (const s of sheets) { ensureLock(s); const had = typeof s.kind === "string" && typeof s.group === "string" && typeof s.source === "string"; ensureSheetMeta(s); if (!had) db.put("sheets", s); state.sheets[s.id] = s; state.order.push(s.id); }
     // working copies की source/size/itemKey उनके master से मिला दो (विरासत data के लिए)
@@ -8773,9 +8776,30 @@
       if (fixed) db.put("master", m);
     }
 
-    // ── पहले cached डाटा तुरंत दिखाओ (calculation engine के इंतज़ार में UI न रुके) ──
-    //  Estimates, Master (Primary) Data, Analysis सूची — इन्हें engine नहीं चाहिए; formula-cells last-computed मान (cache) से दिखते हैं
+    // ── Calculation engine (एक ही बार) का इंतज़ार — तब तक loading-strip धीरे-धीरे बढ़े ──
+    bootP(40, "Calculation engine तैयार हो रहा है…");
+    let _creep = 40;
+    const _creepTimer = setInterval(() => { _creep = Math.min(60, _creep + 0.6); bootP(_creep); }, 180);
+    try { await window.__hfReady; } catch (e) {}
+    clearInterval(_creepTimer);
+
+    // ── engine तैयार — सभी गणनाएँ एक ही बार में (बीच में बार-बार buildEngine नहीं) ──
+    bootP(64, "गणना-मॉडल बन रहा है…");
+    _suppressEngine = true;
+    try { migrateFinalRateRows(); } finally { _suppressEngine = false; }   // "Rate per Unit" + "Say Rs." (direct cells)
+    buildEngine();                 // #1 — migrated ढाँचे का मॉडल (structural ops इसी पर)
     setEngineStatus();
+    bootP(78, "दरें व Overhead अपडेट हो रहे हैं…");
+    _suppressEngine = true;
+    try {
+      autoLinkMasterRates();  // पुराने analyses के master-रेट cells link (पीला हटे)
+      applyOverheadAll();     // active estimate के अनुसार Overhead/Profit (structuralBatch — incremental)
+      reRateAllAnalyses();    // Primary/RMR दरें cell में भर दो
+    } finally { _suppressEngine = false; }
+    buildEngine();             // #2 — अंतिम recompute (सारे मान ताज़ा)
+
+    // ── अब सब render — 100% पर overlay हटते ही पूरा डाटा दिखेगा ──
+    bootP(90, "तैयार हो रहा है…");
     renderSheetList();
     renderEstimateSelect();
     renderMasterOverview();
@@ -8784,27 +8808,13 @@
     renderEstimate();
     const firstWorking = state.order.find((id) => state.sheets[id] && state.sheets[id].kind === "working");
     if (firstWorking) { openSheet(firstWorking); } else { clearGrid(); }
-    status("डाटा लोड ✓ · calculation engine तैयार हो रहा है…");
-
-    // ── अब engine का इंतज़ार, फिर compute + ताज़ा render ──
-    try { await window.__hfReady; } catch (e) {}  // engine async लोड होता है
-    buildEngine();
-    setEngineStatus();
-    migrateFinalRateRows(); // पुराने Analysis में "Rate per Unit" + "Say Rs." (final rate) पंक्तियाँ जोड़ो
-    autoLinkMasterRates();  // पुराने analyses के correct master-रेट cells को link कर दो (पीला हटे)
-    reRateAllAnalyses();    // Primary Rate से जुड़े analyses को loaded दरों पर ताज़ा कर दो
-    applyOverheadAll();     // active estimate (या default 10/10) के अनुसार Overhead/Profit
-    // engine तैयार — ताज़ा मान दिखाने हेतु फिर से render
-    renderSheetList();
-    renderMasterOverview();
-    renderEstimate();
-    if (state.activeSheetId) renderGrid();
     status("तैयार · " + masterSheets().length + " master analysis लोड");
+    try { if (window.__boot) window.__boot.done(); } catch (e) {}   // 100% → overlay fade out
   }
 
   // SheetJS load होने पर engine status दुबारा नहीं चाहिए, पर HF status set कर दें
   window.addEventListener("DOMContentLoaded", () => {
-    boot().catch((e) => { console.error(e); status("शुरू करने में दिक्कत: " + e.message); });
+    boot().catch((e) => { console.error(e); status("शुरू करने में दिक्कत: " + e.message); try { if (window.__boot) window.__boot.done(); } catch (x) {} });
   });
 
 })();

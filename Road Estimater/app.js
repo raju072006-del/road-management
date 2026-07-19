@@ -8776,20 +8776,21 @@
       if (fixed) db.put("master", m);
     }
 
-    // ── Calculation engine (एक ही बार) का इंतज़ार — तब तक loading-strip धीरे-धीरे बढ़े ──
-    bootP(40, "Calculation engine तैयार हो रहा है…");
+    // ── Calculation engine (एक ही बार) का इंतज़ार — तब तक loading-strip धीरे-धीरे बढ़े (slow download में भी चलता रहे) ──
+    const _yield = () => new Promise((res) => setTimeout(res, 20));
+    bootP(40, "Calculation engine लोड हो रहा है…");
     let _creep = 40;
-    const _creepTimer = setInterval(() => { _creep = Math.min(60, _creep + 0.6); bootP(_creep); }, 180);
+    const _creepTimer = setInterval(() => { _creep = Math.min(85, _creep + 0.35); bootP(_creep); }, 200);
     try { await window.__hfReady; } catch (e) {}
     clearInterval(_creepTimer);
 
     // ── engine तैयार — सभी गणनाएँ एक ही बार में (बीच में बार-बार buildEngine नहीं) ──
-    bootP(64, "गणना-मॉडल बन रहा है…");
+    bootP(88, "गणना-मॉडल बन रहा है…"); await _yield();
     _suppressEngine = true;
     try { migrateFinalRateRows(); } finally { _suppressEngine = false; }   // "Rate per Unit" + "Say Rs." (direct cells)
     buildEngine();                 // #1 — migrated ढाँचे का मॉडल (structural ops इसी पर)
     setEngineStatus();
-    bootP(78, "दरें व Overhead अपडेट हो रहे हैं…");
+    bootP(92, "दरें व Overhead अपडेट हो रहे हैं…"); await _yield();
     _suppressEngine = true;
     try {
       autoLinkMasterRates();  // पुराने analyses के master-रेट cells link (पीला हटे)
@@ -8799,7 +8800,7 @@
     buildEngine();             // #2 — अंतिम recompute (सारे मान ताज़ा)
 
     // ── अब सब render — 100% पर overlay हटते ही पूरा डाटा दिखेगा ──
-    bootP(90, "तैयार हो रहा है…");
+    bootP(96, "तैयार हो रहा है…"); await _yield();
     renderSheetList();
     renderEstimateSelect();
     renderMasterOverview();

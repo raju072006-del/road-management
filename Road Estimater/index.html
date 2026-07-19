@@ -43,8 +43,8 @@
         done: function(){ target = 100; if (!raf) raf = requestAnimationFrame(tick); var b = g('bootLoader'); setTimeout(function(){ if (b){ b.classList.add('hide'); setTimeout(function(){ if (b.parentNode) b.parentNode.removeChild(b); }, 480); } }, 320); }
       };
     })();
-    // failsafe — किसी त्रुटि पर भी overlay 25s बाद हट जाए (कभी stuck न रहे)
-    setTimeout(function(){ try { window.__boot && window.__boot.done(); } catch (e) {} }, 25000);
+    // failsafe — सिर्फ़ असली hang के लिए (सामान्यतः boot 100% पर खुद हटाता है); slow connection/बड़े model पर समय से पहले न हटे
+    setTimeout(function(){ try { window.__boot && window.__boot.done(); } catch (e) {} }, 180000);
   </script>
   <!-- Calculation engine (HyperFormula) — self-hosted, async (page अटकता नहीं;
        engine background में तैयार होता है)। local vendor फ़ाइल पहले, CDN fallback. -->

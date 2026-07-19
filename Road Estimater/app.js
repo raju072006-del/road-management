@@ -343,18 +343,23 @@
   }
 
   function computedValue(sheet, r, c) {
+    const cell = sheet.cells[addr(r, c)];
     if (hfReady) {
       const sid = hfSheetId(sheet.name);
       if (sid !== undefined) {
         try {
           const v = hf.getCellValue({ sheet: sid, row: r, col: c });
           if (v != null && typeof v === "object" && "type" in v && v.type === "ERROR") return { err: true, val: v.value || "#ERR" };
-          return { err: false, val: v == null ? "" : v };
+          const val = v == null ? "" : v;
+          if (cell && cell.f != null && val !== "" && (typeof val === "number" || typeof val === "string")) cell._v = val;   // formula का last-computed मान cache — engine तैयार होने से पहले दिखे
+          return { err: false, val: val };
         } catch (e) { /* fall through */ }
       }
     }
-    const cell = sheet.cells[addr(r, c)];
-    return { err: false, val: cell ? (cell.f != null ? cell.f : cell.v) : "" };
+    // engine तैयार नहीं — formula हो तो cached मान (न हो तो खाली; formula-text नहीं); वरना सीधा value
+    if (!cell) return { err: false, val: "" };
+    if (cell.f != null) return { err: false, val: cell._v != null ? cell._v : "" };
+    return { err: false, val: cell.v };
   }
 
   function isNumeric(x) { return x !== "" && x !== null && !isNaN(x) && isFinite(Number(x)); }
@@ -8768,26 +8773,32 @@
       if (fixed) db.put("master", m);
     }
 
-    try { await window.__hfReady; } catch (e) {}  // engine async लोड होता है — build से पहले तैयार होने दो
+    // ── पहले cached डाटा तुरंत दिखाओ (calculation engine के इंतज़ार में UI न रुके) ──
+    //  Estimates, Master (Primary) Data, Analysis सूची — इन्हें engine नहीं चाहिए; formula-cells last-computed मान (cache) से दिखते हैं
+    setEngineStatus();
+    renderSheetList();
+    renderEstimateSelect();
+    renderMasterOverview();
+    restoreActiveEstimateId();
+    updateTopbarEstimate();
+    renderEstimate();
+    const firstWorking = state.order.find((id) => state.sheets[id] && state.sheets[id].kind === "working");
+    if (firstWorking) { openSheet(firstWorking); } else { clearGrid(); }
+    status("डाटा लोड ✓ · calculation engine तैयार हो रहा है…");
+
+    // ── अब engine का इंतज़ार, फिर compute + ताज़ा render ──
+    try { await window.__hfReady; } catch (e) {}  // engine async लोड होता है
     buildEngine();
     setEngineStatus();
     migrateFinalRateRows(); // पुराने Analysis में "Rate per Unit" + "Say Rs." (final rate) पंक्तियाँ जोड़ो
     autoLinkMasterRates();  // पुराने analyses के correct master-रेट cells को link कर दो (पीला हटे)
     reRateAllAnalyses();    // Primary Rate से जुड़े analyses को loaded दरों पर ताज़ा कर दो
-
+    applyOverheadAll();     // active estimate (या default 10/10) के अनुसार Overhead/Profit
+    // engine तैयार — ताज़ा मान दिखाने हेतु फिर से render
     renderSheetList();
-    renderEstimateSelect();
-    renderMasterOverview();  // Primary Rate कार्ड (loaded date/version) ब्राउजर लोड होते ही ताज़ा — navigate का इंतज़ार नहीं
-    restoreActiveEstimateId();  // रिफ्रेश के बाद भी वही estimate active रहे (उसके सभी OH groups/RMR दिखें)
-    updateTopbarEstimate();     // हर पेज के सबसे ऊपर active estimate का नाम — रिफ्रेश पर भी सही दिखे
-    applyOverheadAll();     // active estimate (या default 10/10) के अनुसार Overhead/Profit — पुराने भी अपडेट
+    renderMasterOverview();
     renderEstimate();
-
-    // Rate Analysis में पहले से load किया (working) analysis हो तो खोलो; वरना खाली रहने दो
-    const firstWorking = state.order.find((id) => state.sheets[id] && state.sheets[id].kind === "working");
-    if (firstWorking) { openSheet(firstWorking); }
-    else { clearGrid(); }
-
+    if (state.activeSheetId) renderGrid();
     status("तैयार · " + masterSheets().length + " master analysis लोड");
   }
 

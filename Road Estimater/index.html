@@ -13,6 +13,7 @@
 
   <!-- Calculation engine (HyperFormula) — self-hosted, async (page अटकता नहीं;
        engine background में तैयार होता है)। local vendor फ़ाइल पहले, CDN fallback. -->
+  <link rel="preload" as="script" href="vendor/hyperformula.full.min.js" />
   <script>
     window.__hfReady = new Promise((resolve) => {
       function load(src, next){

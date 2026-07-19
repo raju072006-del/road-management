@@ -14,6 +14,7 @@
 
   <!-- Calculation engine (HyperFormula) — self-hosted, async (page अटकता नहीं;
        engine background में तैयार होता है)। local vendor फ़ाइल पहले, CDN fallback. -->
+  <link rel="preload" as="script" href="vendor/hyperformula.full.min.js" />
   <script>
     window.__hfReady = new Promise((resolve) => {
       function load(src, next){
@@ -28,7 +29,7 @@
     });
   </script>
 
-  <link rel="stylesheet" href="styles.css?v=mrovszxg" />
+  <link rel="stylesheet" href="styles.css?v=mrryup2w" />
 </head>
 <body>
 
@@ -572,6 +573,6 @@
   </script>
 
   <!-- हर बार ताज़ा app.js लोड (browser की पुरानी cached copy कभी न परोसे) — local व online दोनों -->
-  <script>document.write('<scr' + 'ipt src="app.js?v=' + Date.now() + '"></scr' + 'ipt>');</script>
+  <script src="app.js?v=mrryup2w"></script>
 </body>
 </html>

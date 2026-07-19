@@ -71,8 +71,10 @@ const guard = SO.replace('>', ' data-guard>') +
   'try{if(!sessionStorage.getItem("rms_token")){document.documentElement.style.visibility="hidden";location.replace("../");}}catch(e){document.documentElement.style.visibility="hidden";location.replace("../");}' +
   SC;
 est = est.replace(/<head>/i, '<head>\n' + guard);
-// cache-busting — हर build पर app.js/styles.css का version बदलो ताकि browser पुरानी cached फ़ाइल न परोसे
+// cache-busting — per-BUILD version (हर refresh पर cache से; सिर्फ़ नए build पर दोबारा download → live साइट तेज़)
 const ver = Date.now().toString(36);
+// source का per-load document.write loader → deploy में स्थिर versioned <script> (हर refresh पर app.js दोबारा download न हो)
+est = est.replace(/<script>document\.write\([\s\S]*?<\/script>/, '<script src="app.js?v=' + ver + '"></script>');
 est = est.replace(/src="app\.js"/g, 'src="app.js?v=' + ver + '"');
 est = est.replace(/href="styles\.css"/g, 'href="styles.css?v=' + ver + '"');
 fs.writeFileSync(estIdx, est, 'utf8');

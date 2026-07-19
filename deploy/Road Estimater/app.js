@@ -8776,37 +8776,32 @@
       if (fixed) db.put("master", m);
     }
 
-    // ── Calculation engine (एक ही बार) का इंतज़ार — तब तक loading-strip धीरे-धीरे बढ़े (slow download में भी चलता रहे) ──
+    // ── Calculation engine का इंतज़ार — तब तक loading-strip धीरे-धीरे बढ़े (slow download में भी चलता रहे) ──
     const _yield = () => new Promise((res) => setTimeout(res, 20));
     bootP(40, "Calculation engine लोड हो रहा है…");
     let _creep = 40;
-    const _creepTimer = setInterval(() => { _creep = Math.min(85, _creep + 0.35); bootP(_creep); }, 200);
+    const _creepTimer = setInterval(() => { _creep = Math.min(80, _creep + 0.32); bootP(_creep); }, 200);
     try { await window.__hfReady; } catch (e) {}
     clearInterval(_creepTimer);
 
-    // ── engine तैयार — सभी गणनाएँ एक ही बार में (बीच में बार-बार buildEngine नहीं) ──
-    bootP(88, "गणना-मॉडल बन रहा है…"); await _yield();
-    _suppressEngine = true;
-    try { migrateFinalRateRows(); } finally { _suppressEngine = false; }   // "Rate per Unit" + "Say Rs." (direct cells)
-    buildEngine();                 // #1 — migrated ढाँचे का मॉडल (structural ops इसी पर)
+    // ── engine तैयार — गणनाएँ (proven क्रम में; overlay के पीछे) ──
+    bootP(84, "गणना-मॉडल बन रहा है…"); await _yield();
+    buildEngine();
     setEngineStatus();
-    bootP(92, "दरें व Overhead अपडेट हो रहे हैं…"); await _yield();
-    _suppressEngine = true;
-    try {
-      autoLinkMasterRates();  // पुराने analyses के master-रेट cells link (पीला हटे)
-      applyOverheadAll();     // active estimate के अनुसार Overhead/Profit (structuralBatch — incremental)
-      reRateAllAnalyses();    // Primary/RMR दरें cell में भर दो
-    } finally { _suppressEngine = false; }
-    buildEngine();             // #2 — अंतिम recompute (सारे मान ताज़ा)
-
-    // ── अब सब render — 100% पर overlay हटते ही पूरा डाटा दिखेगा ──
-    bootP(96, "तैयार हो रहा है…"); await _yield();
+    migrateFinalRateRows(); // पुराने Analysis में "Rate per Unit" + "Say Rs." (final rate) पंक्तियाँ
+    autoLinkMasterRates();  // पुराने analyses के master-रेट cells link (पीला हटे)
+    reRateAllAnalyses();    // Primary/RMR दरें cell में भर दो
+    bootP(92, "Overhead/Profit व Total अपडेट हो रहे हैं…"); await _yield();
     renderSheetList();
     renderEstimateSelect();
     renderMasterOverview();
     restoreActiveEstimateId();
     updateTopbarEstimate();
+    applyOverheadAll();     // Overhead/Profit — active estimate/समूह अनुसार
     renderEstimate();
+
+    // ── सब render — 100% पर overlay हटते ही पूरा डाटा दिखेगा ──
+    bootP(97, "तैयार हो रहा है…"); await _yield();
     const firstWorking = state.order.find((id) => state.sheets[id] && state.sheets[id].kind === "working");
     if (firstWorking) { openSheet(firstWorking); } else { clearGrid(); }
     status("तैयार · " + masterSheets().length + " master analysis लोड");

@@ -838,7 +838,7 @@ function __cloudPatch() {
     if (!r || r.ok !== true) return { success: false, message: (r && r.error) || 'Server त्रुटि' };
     if (r.result && r.result.success) {
       SB_TOKEN = r.result.token;
-      __CU = String(username || '').toLowerCase().trim();   // ownership scoping
+      __CU = String(username || '').trim();   // ownership scoping (case-sensitive)
       __ROLE = String(r.result.role || '');                 // admin-guard
       try { localStorage.setItem('rms_cloud_token', SB_TOKEN); } catch (e) {}
       try { __initLocal(); } catch (e) {}
@@ -858,7 +858,7 @@ function __cloudPatch() {
     if (!r || r.ok !== true) return { valid: false };
     if (r.result && r.result.valid) {
       SB_TOKEN = token;
-      __CU = String(r.result.u || '').toLowerCase().trim();   // ownership scoping (session बहाल)
+      __CU = String(r.result.u || '').trim();   // ownership scoping (session बहाल, case-sensitive)
       __ROLE = String(r.result.role || '');                   // admin-guard (session बहाल)
       try { localStorage.setItem('rms_cloud_token', token); } catch (e) {}
       try { __initLocal(); } catch (e) {}

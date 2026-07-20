@@ -4967,7 +4967,7 @@ function _renderUserRows(list) {
   list.forEach(function(u){
     var un=String(u.username||'').replace(/'/g,"\\'");
     var active=u.active!==false;
-    var isSuper=String(u.username||'').toLowerCase()==='admin';
+    var isSuper=String(u.username||'')==='Admin';
     var roleTxt=isSuper?'⭐ Super Admin':(u.role==='admin'?'👑 Admin':'👤 User');
     html+='<tr style="border-top:1px solid var(--border);">'+
       '<td style="padding:8px;">'+(u.name||'')+'</td>'+
@@ -4986,7 +4986,7 @@ function _renderUserRows(list) {
 }
 function editUserAcc(user) {
   var u = _usersCache.find(function(x){ return String(x.username)===user; }) || {};
-  var isSuper = String(user).toLowerCase()==='admin';
+  var isSuper = String(user)==='Admin';
   var name = prompt('"'+user+'" का प्रदर्शित नाम:', u.name || '');
   if (name===null) return;
   var role;

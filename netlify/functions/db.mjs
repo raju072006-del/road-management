@@ -17,7 +17,7 @@ import crypto from 'node:crypto';
 export const config = { path: '/api/db' };
 
 const BUCKET = 'rms-files';
-const SUPER_ADMIN = 'admin';   // पहला/मुख्य admin — हटाया/निष्क्रिय नहीं हो सकता
+const SUPER_ADMIN = 'Admin';   // डिफ़ॉल्ट id 'Admin' / password 'Admin@123' — हटाया/निष्क्रिय नहीं हो सकता (case-sensitive)
 const env = (k) => process.env[k] || '';
 
 // SUPABASE_URL चाहे कैसे भी paste हुआ हो (/rest/v1 आदि सहित) — सिर्फ़ origin लें
@@ -37,7 +37,7 @@ function users() {
   env('APP_USERS').split(';').map(s => s.trim()).filter(Boolean).forEach(row => {
     const parts = row.split(':');
     const [u, p, role, name] = parts;
-    if (u && p) map[u.toLowerCase()] = { p, role: role || 'user', name: name || u };
+    if (u && p) map[u.trim()] = { p, role: role || 'user', name: name || u };   // case-sensitive username
   });
   return map;
 }
@@ -103,6 +103,17 @@ async function tableHasUsers() {
 async function activeAdmins() {
   return (await sb('/rest/v1/app_users?role=eq.admin&active=eq.true&select=username')) || [];
 }
+// डिफ़ॉल्ट Super Admin सुनिश्चित करो — 'Admin' / 'Admin@123' (यदि टेबल में न हो)।
+// मौजूद हो तो छेड़ता नहीं (admin ने password बदला हो तो वही रहेगा)।
+async function ensureSuperAdmin() {
+  if (await dbUser(SUPER_ADMIN)) return;
+  const salt = makeSalt();
+  await sb('/rest/v1/app_users', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify([{ username: SUPER_ADMIN, pass_hash: hashPw('Admin@123', salt), pass_salt: salt, role: 'admin', name: 'Administrator', active: true }])
+  });
+}
 // env APP_USERS को app_users टेबल में एक बार भर दो — फिर वे भी edit/delete हो सकें
 async function seedEnvUsers() {
   const map = users();
@@ -119,7 +130,7 @@ async function seedEnvUsers() {
 function requireAdmin(auth) {
   if (!auth || auth.r !== 'admin') { const e = new Error('सिर्फ़ Admin — अनुमति नहीं'); e._code = 403; throw e; }
 }
-const cleanUname = (s) => String(s || '').trim().toLowerCase();
+const cleanUname = (s) => String(s || '').trim();   // case-sensitive (सिर्फ़ trim)
 
 // Road Estimator के stores — whitelist
 const EST_STORES = new Set(['sheets', 'estimates', 'master']);
@@ -148,6 +159,7 @@ export default async (req) => {
   try {
     // ── बिना token वाले ops ──
     if (op === 'login') {
+      try { await ensureSuperAdmin(); } catch (e) { /* default super admin सुनिश्चित */ }
       const key = cleanUname(a.user);
       const pass = String(a.pass || '');
       // 1) app_users टेबल (Admin द्वारा बनाए users) — प्राथमिकता
@@ -193,7 +205,7 @@ export default async (req) => {
     if (op === 'userCreate') {
       requireAdmin(auth);
       const uname = cleanUname(a.user);
-      if (!/^[a-z0-9._-]{2,40}$/.test(uname)) throw new Error('username में केवल a-z 0-9 . _ - चलेंगे (2–40 अक्षर)');
+      if (!/^[A-Za-z0-9._-]{2,40}$/.test(uname)) throw new Error('username में केवल A-Z a-z 0-9 . _ - चलेंगे (2–40 अक्षर)');
       if (String(a.pass || '').length < 4) throw new Error('password कम-से-कम 4 अक्षर का हो');
       if (await dbUser(uname)) throw new Error('यह username पहले से मौजूद है');
       const role = (a.role === 'admin') ? 'admin' : 'user';

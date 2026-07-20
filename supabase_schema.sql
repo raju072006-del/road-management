@@ -363,8 +363,8 @@ create table if not exists public.est_kv (
 
 alter table public.est_kv enable row level security;
 alter table public.est_kv add column if not exists owner text;
--- मौजूदा estimates/sheets → Super Admin के (Phase 2 migration)
-update public.est_kv set owner = 'admin' where owner is null and store in ('estimates', 'sheets');
+-- मौजूदा estimates/sheets → Super Admin ('Admin') के (Phase 2 migration)
+update public.est_kv set owner = 'Admin' where owner is null and store in ('estimates', 'sheets');
 
 -- Estimator: तेज़ मिलान — गिनती + आख़िरी बदलाव समय (user-scoped; master साझा)
 drop function if exists public.est_stamp();

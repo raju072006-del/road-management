@@ -71,7 +71,7 @@ function getPaymentPageHtml() {
 // (यह सिर्फ़ LOCAL/file mode के लिए है; online CLOUD mode में login
 //  Netlify server से होता है और passwords APP_USERS env में रहते हैं।)
 // Super Admin — पहला/मुख्य admin: हटाया या निष्क्रिय नहीं किया जा सकता (सिर्फ़ नाम/password बदल सकता है)
-const SUPER_ADMIN_ = 'admin';
+const SUPER_ADMIN_ = 'Admin';   // डिफ़ॉल्ट id 'Admin' / password 'Admin@123' (case-sensitive)
 
 // ── Ownership scoping (Phase 2) ──────────────────────────────
 // वर्तमान लॉग-इन user (server-frame global) — login/session पर सेट होता है।
@@ -98,7 +98,7 @@ function _sharedIds_(ss) {
   var me = _owner_(), roads = {}, projs = {};
   try {
     sheetToObjects_(ss, '14_Shares').forEach(function (s) {
-      if (String(s.Shared_With || '').toLowerCase() !== me) return;
+      if (String(s.Shared_With || '').trim() !== me) return;
       if (s.Res_Type === 'road') roads[s.Res_ID] = 1;
       else if (s.Res_Type === 'project') projs[s.Res_ID] = 1;
     });
@@ -115,8 +115,8 @@ function _shareMaps_(ss) {
   try {
     sheetToObjects_(ss, '14_Shares').forEach(function (s) {
       var key = s.Res_Type + ':' + s.Res_ID;
-      if (String(s.Owner || '').toLowerCase() === me) (out.mineTo[key] = out.mineTo[key] || []).push(String(s.Shared_With));
-      if (String(s.Shared_With || '').toLowerCase() === me) out.toMe[key] = String(s.Owner);
+      if (String(s.Owner || '').trim() === me) (out.mineTo[key] = out.mineTo[key] || []).push(String(s.Shared_With));
+      if (String(s.Shared_With || '').trim() === me) out.toMe[key] = String(s.Owner);
     });
   } catch (e) {}
   return out;
@@ -158,7 +158,7 @@ function listShareTargets() {
   return out;
 }
 function shareResource(resType, resId, sharedWith) {
-  resType = String(resType || '').trim(); resId = String(resId || '').trim(); sharedWith = String(sharedWith || '').toLowerCase().trim();
+  resType = String(resType || '').trim(); resId = String(resId || '').trim(); sharedWith = String(sharedWith || '').trim();
   if (resType !== 'road' && resType !== 'project') return { success: false, msg: 'अमान्य resource' };
   if (!resId || !sharedWith) return { success: false, msg: 'अधूरी जानकारी' };
   if (sharedWith === _owner_()) return { success: false, msg: 'स्वयं को share नहीं कर सकते' };
@@ -166,14 +166,14 @@ function shareResource(resType, resId, sharedWith) {
   if (!_isAdmin_() && !_currentUserOwnsResource_(ss, resType, resId)) return { success: false, msg: 'यह resource आपका नहीं है' };
   var sh = _ensureSharesSheet_(ss);
   var rows = sheetToObjects_(ss, '14_Shares');
-  if (rows.some(function (r) { return r.Res_Type === resType && r.Res_ID === resId && String(r.Shared_With).toLowerCase() === sharedWith; })) return { success: true };
+  if (rows.some(function (r) { return r.Res_Type === resType && r.Res_ID === resId && String(r.Shared_With).trim() === sharedWith; })) return { success: true };
   sh.appendRow(['SHR' + Date.now().toString(36) + Math.floor(Math.random() * 1000), _owner_(), sharedWith, resType, resId]);
   SBApp.flush();
   CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
   return { success: true };
 }
 function unshareResource(resType, resId, sharedWith) {
-  resType = String(resType || '').trim(); resId = String(resId || '').trim(); sharedWith = String(sharedWith || '').toLowerCase().trim();
+  resType = String(resType || '').trim(); resId = String(resId || '').trim(); sharedWith = String(sharedWith || '').trim();
   var ss = SBApp.getActiveSpreadsheet();
   if (!_isAdmin_() && !_currentUserOwnsResource_(ss, resType, resId)) return { success: false, msg: 'यह resource आपका नहीं है' };
   var sh = ss.getSheetByName('14_Shares'); if (!sh) return { success: true };
@@ -181,7 +181,7 @@ function unshareResource(resType, resId, sharedWith) {
   var H = vals[0].map(function (h) { return String(h).trim(); });
   var tC = H.indexOf('Res_Type'), iC = H.indexOf('Res_ID'), wC = H.indexOf('Shared_With');
   for (var r = vals.length - 1; r >= 1; r--) {
-    if (String(vals[r][tC]) === resType && String(vals[r][iC]) === resId && String(vals[r][wC]).toLowerCase() === sharedWith) sh.deleteRow(r + 1);
+    if (String(vals[r][tC]) === resType && String(vals[r][iC]) === resId && String(vals[r][wC]).trim() === sharedWith) sh.deleteRow(r + 1);
   }
   SBApp.flush();
   CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
@@ -195,7 +195,7 @@ function listSharesFor(resType, resId) {
     .map(function (r) { return String(r.Shared_With); });
 }
 const USERS_ = {
-  'admin': { hash: 'e86f78a8a3caf0b60d8e74e5942aa6d86dc150cd3c03338aef25b7d2d7e3acc7', role: 'admin', name: 'Administrator' },
+  'Admin': { hash: 'e86f78a8a3caf0b60d8e74e5942aa6d86dc150cd3c03338aef25b7d2d7e3acc7', role: 'admin', name: 'Administrator' },   // Admin / Admin@123 (Super Admin)
   'user1': { hash: '1e9a6b9afd56cf274a1b46367cad2ff478fb6f0e29e5766195848b1482d2e2be', role: 'user',  name: 'User 1' },
   'user2': { hash: 'cd92953692442115e21ca8c5daefaffe2b3d8737769700667cb8ca864ae1e7c4', role: 'user',  name: 'User 2' },
   'user':  { hash: '3e7c19576488862816f13b512cacf3e4ba97dd97243ea0bd6a2ad1642d86ba72', role: 'user',  name: 'User' }   // User / User@123 — local mode
@@ -229,7 +229,7 @@ function _isLastActiveAdmin_(dyn, key) {
 }
 
 function validateLogin(username, password) {
-  var key = (username || '').toLowerCase().trim();
+  var key = (username || '').trim();   // case-sensitive
   _seedLocalUsersIfNeeded_();
   var dyn = _localUsers_();
   var u = dyn[key];
@@ -259,8 +259,8 @@ function adminListUsers() {
 function adminCreateUser(a) {
   a = a || {};
   _seedLocalUsersIfNeeded_();
-  var uname = (a.user || '').toLowerCase().trim();
-  if (!/^[a-z0-9._-]{2,40}$/.test(uname)) return { success: false, msg: 'username में केवल a-z 0-9 . _ - चलेंगे (2–40 अक्षर)' };
+  var uname = (a.user || '').trim();
+  if (!/^[A-Za-z0-9._-]{2,40}$/.test(uname)) return { success: false, msg: 'username में केवल A-Z a-z 0-9 . _ - चलेंगे (2–40 अक्षर)' };
   if (String(a.pass || '').length < 4) return { success: false, msg: 'password कम-से-कम 4 अक्षर का हो' };
   var dyn = _localUsers_();
   if (dyn[uname]) return { success: false, msg: 'यह username पहले से मौजूद है' };
@@ -271,7 +271,7 @@ function adminCreateUser(a) {
 function adminUpdateUser(a) {
   a = a || {};
   _seedLocalUsersIfNeeded_();
-  var uname = (a.user || '').toLowerCase().trim();
+  var uname = (a.user || '').trim();
   var dyn = _localUsers_();
   if (!dyn[uname]) return { success: false, msg: 'user नहीं मिला' };
   var role = a.role === 'admin' ? 'admin' : 'user';
@@ -285,7 +285,7 @@ function adminUpdateUser(a) {
 function adminSetPassword(a) {
   a = a || {};
   _seedLocalUsersIfNeeded_();
-  var uname = (a.user || '').toLowerCase().trim();
+  var uname = (a.user || '').trim();
   if (String(a.pass || '').length < 4) return { success: false, msg: 'password कम-से-कम 4 अक्षर का हो' };
   var dyn = _localUsers_();
   if (!dyn[uname]) return { success: false, msg: 'user नहीं मिला' };
@@ -296,7 +296,7 @@ function adminSetPassword(a) {
 function adminSetActive(a) {
   a = a || {};
   _seedLocalUsersIfNeeded_();
-  var uname = (a.user || '').toLowerCase().trim();
+  var uname = (a.user || '').trim();
   var dyn = _localUsers_();
   if (!dyn[uname]) return { success: false, msg: 'user नहीं मिला' };
   if (!a.active && uname === SUPER_ADMIN_) return { success: false, msg: 'Super Admin को निष्क्रिय नहीं किया जा सकता' };
@@ -308,7 +308,7 @@ function adminSetActive(a) {
 function adminDeleteUser(a) {
   a = a || {};
   _seedLocalUsersIfNeeded_();
-  var uname = (a.user || '').toLowerCase().trim();
+  var uname = (a.user || '').trim();
   var dyn = _localUsers_();
   if (!dyn[uname]) return { success: false, msg: 'user नहीं मिला' };
   if (uname === SUPER_ADMIN_) return { success: false, msg: 'Super Admin को हटाया नहीं जा सकता' };

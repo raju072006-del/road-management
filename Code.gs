@@ -1477,19 +1477,17 @@ function ensureProjColumns_(ss) {
 }
 
 function genProjectId_(ss) {
-  // Check all related sheets so deleted project IDs are never reused
-  const allRows = [
-    ...sheetToObjects_(ss, '3_Projects'),
-    ...sheetToObjects_(ss, '3B_Project_Roads'),
-    ...sheetToObjects_(ss, '4_Documents'),
-    ...sheetToObjects_(ss, '8_Bills'),
-    ...sheetToObjects_(ss, '11_Conversations')
-  ];
-  const max = allRows.reduce((m, r) => {
-    const n = parseInt((r.Project_ID||'').replace(/\D/g,'')) || 0;
-    return n > m ? n : m;
-  }, 0);
-  return 'PRJ' + String(max + 1).padStart(3, '0');
+  // सबसे छोटा खाली क्रमांक दोबारा उपयोग करो (हटाई गई परियोजना का नंबर फिर भर जाए) —
+  // ताकि PRJ001, PRJ002… में गैप न रहे। सिर्फ़ मौजूदा 3_Projects की IDs देखो;
+  // addProject किसी बचे orphan डेटा को इस ID के लिए पहले ही साफ़ कर देता है।
+  const used = {};
+  sheetToObjects_(ss, '3_Projects').forEach(function(r) {
+    const n = parseInt(String(r.Project_ID||'').replace(/\D/g,'')) || 0;
+    if (n > 0) used[n] = true;
+  });
+  let n = 1;
+  while (used[n]) n++;
+  return 'PRJ' + String(n).padStart(3, '0');
 }
 
 function addProject(data) {
@@ -1498,6 +1496,9 @@ function addProject(data) {
   if (!sheet) return { success: false, msg: '3_Projects Sheet नहीं मिली' };
   ensureProjColumns_(ss);
   const pid = genProjectId_(ss);
+  // सुरक्षा: यदि पुराने (त्रुटिपूर्ण) delete से इसी नए ID वाली orphan पंक्तियाँ कहीं बची हों तो हटा दो,
+  // ताकि दोबारा उपयोग किया गया ID पुराने डेटा से न जुड़ जाए।
+  purgeProjectRows_(ss, pid);
   const hdr = sheet.getRange(1,1,1,sheet.getLastColumn()).getValues()[0].map(h=>String(h).trim());
   const map = {
     Project_ID: pid,
@@ -1523,6 +1524,53 @@ function addProject(data) {
   SBApp.flush();
   CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
   return { success: true, projectId: pid };
+}
+
+// किसी Project_ID से जुड़ी सभी शीट (मुख्य को छोड़कर) की पंक्तियाँ हटाओ
+const PROJECT_LINKED_SHEETS = ['3B_Project_Roads', '4_Documents', '8_Bills', '11_Conversations', '5_Letters', '6_Finance_Ledger'];
+function purgeProjectRows_(ss, projectId) {
+  projectId = String(projectId||'').trim();
+  if (!projectId) return;
+  PROJECT_LINKED_SHEETS.forEach(function(sName) {
+    const s = ss.getSheetByName(sName);
+    if (!s || s.getLastRow() < 2) return;
+    const sv   = s.getDataRange().getValues();
+    const pidI = sv[0].map(h => String(h).trim()).indexOf('Project_ID');
+    if (pidI < 0) return;
+    for (let r = sv.length - 1; r >= 1; r--) {
+      if (String(sv[r][pidI]).trim() === projectId) s.deleteRow(r + 1);
+    }
+  });
+}
+
+// किसी परियोजना का Project_ID बदलो (सभी जुड़ी शीट में reference भी अपडेट) —
+// गैप भरने/साफ़ क्रमांक (जैसे PRJ004 → PRJ001) के लिए
+function renumberProject(oldId, newId) {
+  oldId = String(oldId||'').trim();
+  newId = String(newId||'').trim().toUpperCase();
+  if (!oldId || !newId)  return { success: false, msg: 'पुराना व नया दोनों ID ज़रूरी हैं' };
+  if (oldId === newId)   return { success: true };
+  if (!/^PRJ\d{3,}$/.test(newId)) return { success: false, msg: 'नया ID रूप PRJxxx होना चाहिए (जैसे PRJ001)' };
+  const ss = SBApp.getActiveSpreadsheet();
+  const projSheet = ss.getSheetByName('3_Projects');
+  if (!projSheet) return { success: false, msg: '3_Projects Sheet नहीं मिली' };
+  const projs = sheetToObjects_(ss, '3_Projects');
+  if (!projs.some(p => String(p.Project_ID).trim() === oldId))  return { success: false, msg: oldId + ' नहीं मिली' };
+  if (projs.some(p => String(p.Project_ID).trim() === newId))   return { success: false, msg: newId + ' पहले से किसी परियोजना का है' };
+  // हर शीट में Project_ID कॉलम पर oldId → newId
+  ['3_Projects'].concat(PROJECT_LINKED_SHEETS).forEach(function(sName) {
+    const s = ss.getSheetByName(sName);
+    if (!s || s.getLastRow() < 2) return;
+    const vals = s.getDataRange().getValues();
+    const pidI = vals[0].map(h => String(h).trim()).indexOf('Project_ID');
+    if (pidI < 0) return;
+    for (let r = 1; r < vals.length; r++) {
+      if (String(vals[r][pidI]).trim() === oldId) s.getRange(r + 1, pidI + 1).setValue(newId);
+    }
+  });
+  SBApp.flush();
+  CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
+  return { success: true, oldId: oldId, newId: newId };
 }
 
 function updateProject(data) {
@@ -1593,16 +1641,7 @@ function deleteProject(projectId) {
   } catch(e) { /* Drive error non-fatal — continue sheet cleanup */ }
 
   // 2. Delete related rows from linked sheets (reverse order to keep indices stable)
-  ['3B_Project_Roads', '4_Documents', '8_Bills', '11_Conversations', '5_Letters'].forEach(function(sName) {
-    const s = ss.getSheetByName(sName);
-    if (!s || s.getLastRow() < 2) return;
-    const sv   = s.getDataRange().getValues();
-    const pidI = sv[0].map(h => String(h).trim()).indexOf('Project_ID');
-    if (pidI < 0) return;
-    for (let r = sv.length - 1; r >= 1; r--) {
-      if (String(sv[r][pidI]).trim() === projectId) s.deleteRow(r + 1);
-    }
-  });
+  purgeProjectRows_(ss, projectId);
 
   // 3. Delete main project row
   sheet.deleteRow(projectRow);

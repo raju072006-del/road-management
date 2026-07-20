@@ -886,7 +886,7 @@ function _autoLoadByName(name) {
 function renderConnMode(){
   const el=document.getElementById('connMode');
   if(el){
-    el.textContent = IS_GAS ? '● स्प्रेडशीट से जुड़ा' : '● लोकल मोड';
+    el.textContent = IS_GAS ? '● सर्वर से जुड़ा' : '● लोकल मोड';
     el.className = 'badge ' + (IS_GAS ? 'b-green' : 'b-red');
   }
   const bv=document.getElementById('buildVer');
@@ -897,8 +897,8 @@ function renderConnMode(){
     else {
       w.style.display='block';
       w.innerHTML='<div style="margin:0 0 16px;padding:11px 14px;border-radius:10px;background:var(--red-bg);color:var(--red-2);border:1px solid #f4ccc4;font-size:13px;font-weight:600;line-height:1.55">'
-        +'⚠ <b>लोकल (ऑफ़लाइन) मोड</b> — यह पेज Google Apps Script वेब-ऐप के बाहर खुला है, इसलिए जोड़ी गई नाप/भुगतान केवल <u>इसी ब्राउज़र</u> (localStorage) में सहेजे जा रहे हैं, Google Spreadsheet पर नहीं। '
-        +'दूसरे ब्राउज़र पर भी डेटा दिखाने के लिए ऐप को <b>तैनात (Deploy) वेब-ऐप के URL</b> से खोलें (Apps Script → Deploy → Web app)।</div>';
+        +'⚠ <b>लोकल (ऑफ़लाइन) मोड</b> — यह पेज सीधे फ़ाइल से खुला है, इसलिए जोड़ी गई नाप/भुगतान केवल <u>इसी ब्राउज़र</u> (localStorage) में सहेजे जा रहे हैं, केंद्रीय डेटाबेस पर नहीं। '
+        +'दूसरे ब्राउज़र पर भी डेटा दिखाने के लिए ऐप को <b>होस्ट किए गए साइट URL</b> से खोलें।</div>';
     }
   }
 }
@@ -942,11 +942,11 @@ function projectPanel(){
   const ps=state.projectState;
   if(!ps){
     if(IS_GAS) return `<div class="card" style="padding:14px 16px;margin-bottom:18px;background:var(--amber-bg);border-color:#f3d8ad">
-      <b>📂 परियोजना पैनल लोड नहीं हुआ</b><div class="faint" style="margin-top:4px">संभवतः पुराना संस्करण चल रहा है। कृपया नया <b>Code.gs</b> push कर Apps Script में <b>Deploy → Manage deployments → New version</b> करें, और पहली बार चलाने पर <b>Drive अनुमति authorize</b> करें।</div>
+      <b>📂 परियोजना पैनल लोड नहीं हुआ</b><div class="faint" style="margin-top:4px">संभवतः पुराना संस्करण चल रहा है। कृपया ऐप को होस्ट किए गए साइट URL से दोबारा खोलें और नया build push करें।</div>
       <button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="refresh()">पुनः जाँचें</button></div>`;
-    return `<div class="card" style="padding:12px 14px;margin-bottom:18px;color:var(--red-2);background:var(--red-bg);border-color:#f4ccc4">📂 <b>लोकल मोड</b> — परियोजना-सूची/लोड केवल तैनात Google वेब-ऐप में काम करते हैं (टॉप-राइट चिप 🟢 होनी चाहिए)।</div>`;
+    return `<div class="card" style="padding:12px 14px;margin-bottom:18px;color:var(--red-2);background:var(--red-bg);border-color:#f4ccc4">📂 <b>लोकल मोड</b> — परियोजना-सूची/लोड केवल होस्ट किए गए साइट पर काम करते हैं (टॉप-राइट चिप 🟢 होनी चाहिए)।</div>`;
   }
-  if(ps.mock) return `<div class="card" style="padding:12px 14px;margin-bottom:18px;color:var(--red-2);background:var(--red-bg);border-color:#f4ccc4">📂 <b>लोकल मोड</b> — परियोजना लोड/सूची केवल तैनात Google वेब-ऐप में। टॉप-राइट चिप 🟢 "स्प्रेडशीट से जुड़ा" होनी चाहिए।</div>`;
+  if(ps.mock) return `<div class="card" style="padding:12px 14px;margin-bottom:18px;color:var(--red-2);background:var(--red-bg);border-color:#f4ccc4">📂 <b>लोकल मोड</b> — परियोजना लोड/सूची केवल होस्ट किए गए ऐप में। टॉप-राइट चिप 🟢 "सर्वर से जुड़ा" होनी चाहिए।</div>`;
   const active=ps.active;
   const sub = ps.folderSet ? ('फ़ोल्डर: '+esc(ps.folderName||'')) : '⚠ Drive फ़ोल्डर सेट नहीं';
   const cur = active
@@ -2041,7 +2041,7 @@ function runImport(){
   api('importItems', IMPORT.payload)
     .then(()=> newEngs.length ? api('saveProject', Object.assign({}, state.data.project, {engineers:cur.concat(newEngs).join('\n')})) : null)
     .then(()=>{ const r=IMPORT.payload; closeModal(); refresh();
-      toast('आयात पूर्ण: '+r.items.length+' आइटम, '+r.measurements.length+' नाप '+(IS_GAS?'(स्प्रेडशीट)':'(लोकल)')); })
+      toast('आयात पूर्ण: '+r.items.length+' आइटम, '+r.measurements.length+' नाप '+(IS_GAS?'(सर्वर)':'(लोकल)')); })
     .catch(e=>{ loader(false); toast('आयात त्रुटि: '+e,true); });
 }
 
@@ -2173,7 +2173,7 @@ function _saveMeasModalDo(id,itemId,kind,sancRef,q){
     m.MeasID = id || newId;
     upsertLocal(state.data.measurements, 'MeasID', m);
     closeModal(); render(); loader(false);
-    toast('नाप सहेजी गई '+(IS_GAS?'(स्प्रेडशीट)':'(लोकल — सिंक नहीं)'));
+    toast('नाप सहेजी गई '+(IS_GAS?'(सर्वर)':'(लोकल — सिंक नहीं)'));
   }).catch(e=>{loader(false);toast('त्रुटि: '+e,true);});
 }
 function delMeas(id){
@@ -2556,7 +2556,7 @@ function _doMbSave(saves){
     state.data.measurements = state.data.measurements.filter(x=>dels.indexOf(x.MeasID)===-1);
     saves.forEach((m,i)=>{ if(!m.MeasID) m.MeasID=ids[i]; upsertLocal(state.data.measurements,'MeasID',m); });
     closeModal(); render(); loader(false);
-    toast('नाप सहेजी गई '+(IS_GAS?'(स्प्रेडशीट)':'(लोकल — सिंक नहीं)'));
+    toast('नाप सहेजी गई '+(IS_GAS?'(सर्वर)':'(लोकल — सिंक नहीं)'));
   }).catch(e=>{ loader(false); toast('त्रुटि: '+e, true); });
 }
 

@@ -113,12 +113,14 @@ button, input, select, textarea { font-family: inherit; }
 
 /* ── NAV BAR — pill links ── */
 .navbar {
+  /* ऊपर का horizontal मेनू हटा दिया — वही सभी लिंक बाएँ पैनल (left-panel) में मौजूद हैं।
+     DOM में रखा है ताकि nb-running/nb-pending badge-अपडेट व active-toggle कोड न टूटे। */
+  display: none !important;
   background: rgba(255,255,255,.66);
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border);
   padding: 8px 20px;
-  display: flex;
   align-items: center;
   gap: 4px;
   flex-wrap: wrap;
@@ -3517,7 +3519,12 @@ tr.sec-row-new  td { background: #effcf6; }
     <div class="modal-body">
       <input type="hidden" id="pf-id">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        <div><label class="form-label">Project ID</label><input class="config-input" id="pf-pid" placeholder="Auto-generate होगा" readonly style="background:var(--bg);"></div>
+        <div><label class="form-label">Project ID</label>
+          <div style="display:flex;gap:6px;">
+            <input class="config-input" id="pf-pid" placeholder="Auto-generate होगा" readonly style="background:var(--bg);flex:1;min-width:0;">
+            <button type="button" id="pf-renumber-btn" onclick="renumberProjectPrompt()" title="Project ID बदलें (गैप भरें)" style="display:none;white-space:nowrap;padding:0 10px;border:1px solid var(--border);border-radius:var(--radius);background:#fff;cursor:pointer;font-size:12px;">🔢 बदलें</button>
+          </div>
+        </div>
         <div><label class="form-label">Status</label>
           <select class="config-input" id="pf-status">
             <option value="Pending">Pending</option>
@@ -12988,6 +12995,7 @@ function openAddProjModal() {
   document.getElementById('pf-samt-unit').value  = 'lakh';
   document.getElementById('pf-ccost-unit').value = 'lakh';
   populateProjWorkType('');
+  document.getElementById('pf-renumber-btn').style.display = 'none';   // नई परियोजना में ID auto — बदलें बटन नहीं
   _pfRoadsExpanded = false;
   renderProjRoadsInForm();
   document.getElementById('proj-form-modal').classList.add('open');
@@ -13032,9 +13040,38 @@ function openEditProjModal(pid) {
   document.getElementById('pf-ccost-gst').value = _cg ? (_cg/100000).toFixed(2) : '';
   document.getElementById('pf-remark').value    = p.Remark||'';
   populateProjWorkType(p.Work_Type||'');
+  document.getElementById('pf-renumber-btn').style.display = '';        // Edit में ID बदला जा सकता है
   _pfRoadsExpanded = false;
   renderProjRoadsInForm();
   document.getElementById('proj-form-modal').classList.add('open');
+}
+
+// Project ID बदलें (जैसे PRJ004 → PRJ001) — सभी जुड़े रिकॉर्ड (दस्तावेज़/पत्राचार/वित्त आदि) साथ अपडेट होते हैं
+function renumberProjectPrompt() {
+  var oldId = document.getElementById('pf-pid').value.trim();
+  if (!oldId || oldId === '(Auto)') return;
+  var newId = prompt('नया Project ID दर्ज करें (रूप: PRJ001)।\nसभी जुड़े दस्तावेज़/पत्राचार/वित्त reference भी अपने आप बदल जाएँगे।', oldId);
+  if (newId === null) return;
+  newId = newId.trim().toUpperCase();
+  if (!/^PRJ\d{3,}$/.test(newId)) { alert('❌ ID रूप PRJxxx होना चाहिए, जैसे PRJ001'); return; }
+  if (newId === oldId) return;
+  var resEl = document.getElementById('pf-result');
+  resEl.innerHTML = '<div class="status-box loading">⏳ ID बदला जा रहा है...</div>';
+  _opStart();
+  google.script.run
+    .withSuccessHandler(function(res){
+      _opEnd();
+      if (res && res.success) {
+        // पूरा डेटा सर्वर से दोबारा लाओ (सभी सेक्शन + dropdown ताज़ा) और modal बंद करो
+        alert('✅ Project ID बदला: '+oldId+' → '+newId);
+        closeModal('proj-form-modal');
+        loadData();
+      } else {
+        resEl.innerHTML = '<div class="status-box error">❌ '+((res&&res.msg)||'ID नहीं बदला')+'</div>';
+      }
+    })
+    .withFailureHandler(function(err){ _opEnd(); resEl.innerHTML='<div class="status-box error">❌ '+(err.message||err)+'</div>'; })
+    .renumberProject(oldId, newId);
 }
 
 function submitProjForm() {
@@ -13099,9 +13136,7 @@ function submitProjForm() {
             pr.Overall_Start_Date=data.startDate; pr.Overall_End_Date=data.endDate;
             pr.Maintenance_Years=data.maintenanceYears; pr.Remark=data.remark; }
         }
-        renderProj();
-        updateSidebar();
-        renderDash();
+        refreshProjectViews();
         setTimeout(function(){ closeModal('proj-form-modal'); }, 1000);
       } else { resEl.innerHTML='<div class="status-box error">❌ '+res.msg+'</div>'; btnEl.disabled=false; }
     })
@@ -13115,6 +13150,19 @@ function openDeleteProjModal(pid, pname) {
   document.getElementById('pdel-result').innerHTML = '';
   document.getElementById('pdel-btn').disabled = false;
   document.getElementById('proj-delete-modal').classList.add('open');
+}
+
+// किसी परियोजना के जुड़ने/हटने के बाद सभी जगह (dropdown, सूची, गिनती) एक साथ ताज़ा करें —
+// ताकि हटाई गई परियोजना कहीं भी (पत्राचार/दस्तावेज़/वित्त फ़िल्टर आदि) बची न रहे।
+function refreshProjectViews() {
+  try { populateProjectDropdowns(); } catch(e){}
+  try { updateSidebar(); }           catch(e){}
+  try { renderDash();  }             catch(e){}
+  try { renderProj();  }             catch(e){}
+  try { renderRoads(); }             catch(e){}
+  try { renderDocs();  }             catch(e){}
+  try { renderLtrs();  }             catch(e){}
+  try { renderFin();   }             catch(e){}
 }
 
 function executeDeleteProj() {
@@ -13135,7 +13183,8 @@ function executeDeleteProj() {
         D.convs     = (D.convs ||[]).filter(function(c){ return c.Project_ID !== pid; });
         D.projRoads = (D.projRoads||[]).filter(function(r){ return r.Project_ID !== pid; });
         D.letters   = (D.letters  ||[]).filter(function(l){ return l.Project_ID !== pid; });
-        renderProj();
+        D.finance   = (D.finance  ||[]).filter(function(f){ return f.Project_ID !== pid; });
+        refreshProjectViews();
         setTimeout(function(){ closeModal('proj-delete-modal'); }, 1200);
       } else { resEl.innerHTML='<div class="status-box error">❌ '+res.msg+'</div>'; btnEl.disabled=false; }
     })

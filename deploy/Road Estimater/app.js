@@ -562,8 +562,10 @@
   // grand Total के बाद "Rate per Unit =" + "Say Rs. =" पंक्तियाँ जोड़ो (न हों तो) — cells सीधे (HF की ज़रूरत नहीं)
   function ensureFinalRateRows(s) {
     if (!s) return false;
+    if (analysisScan(s).finalRow >= 0) return false;   // पहले से है
+    ensureGrandtotRole(s);   // MoRD/imported में grandtot role न हो तो "Total" label से मार्क करो
     const info = analysisScan(s);
-    if (info.grandRow < 0 || info.finalRow >= 0) return false;   // structured नहीं / पहले से है
+    if (info.grandRow < 0) return false;   // structured नहीं
     const gr = info.grandRow;
     for (let r = s.rows - 1; r > gr; r--) for (let c = 0; c < s.cols; c++) {   // grandtot के बाद की पंक्तियाँ 2 नीचे
       const from = addr(r, c), to = addr(r + 2, c);
@@ -1006,6 +1008,19 @@
     return { sections, subRow, grandRow, ohRow, cpRow, ohcpRow, perRow, finalRow };
   }
   function isRoyaltySec(sheet, sec) { return /royal|रॉयल|रायल्टी/i.test((sheet.cells[addr(sec.head, 2)] || {}).secName || ""); }
+  // grandtot role न हो पर "Total" label वाली पंक्ति हो (MoRD/imported), तो उसे grandtot मार्क करो → grandRow लौटाओ
+  function ensureGrandtotRole(sheet) {
+    for (let r = 0; r < sheet.rows; r++) { const c = sheet.cells[addr(r, 2)]; if (c && c.role === "grandtot") return r; }
+    const info = analysisScan(sheet);
+    const start = info.subRow >= 0 ? info.subRow + 1 : 1;
+    for (let r = start; r < sheet.rows; r++) {
+      const c = sheet.cells[addr(r, 2)]; const v = c ? (c.f != null ? "" : (c.v == null ? "" : String(c.v))) : "";
+      if (/\btotal\b/i.test(v) && !/sub\s*total/i.test(v) && !/total\s*\(\s*[a-z]\s*\)/i.test(v)) {
+        const cc = sheet.cells[addr(r, 2)] || (sheet.cells[addr(r, 2)] = {}); cc.role = "grandtot"; return r;
+      }
+    }
+    return -1;
+  }
   // "Taking output =" पंक्ति का Quantity-cell (D) — नाम से खोजो ताकि row जोड़ने/हटाने पर संदर्भ slip न करे
   function takingOutputQtyRef(sheet) {
     for (let r = 0; r < sheet.rows; r++) {
@@ -1038,9 +1053,10 @@
       }
     });
     const hasRoy = info.sections.some((s) => isRoyaltySec(sheet, s));
+    const hasGrand = info.grandRow >= 0;   // grandtot हो तो Royalty उसमें (Sub Total से बाहर); न हो तो Sub Total में
     if (info.subRow >= 0) {
-      const sc = sheet.cells[addr(info.subRow, 2)] || (sheet.cells[addr(info.subRow, 2)] = {}); sc.v = "Sub Total without Royality ="; sc.role = "subtot";
-      const parts = info.sections.filter((s) => s.tot >= 0 && !isRoyaltySec(sheet, s)).map((s) => addr(s.tot, 6));   // Royalty को Sub Total में न लो (OH/CP उस पर न लगे)
+      const sc = sheet.cells[addr(info.subRow, 2)] || (sheet.cells[addr(info.subRow, 2)] = {}); sc.v = (hasRoy && hasGrand) ? "Sub Total without Royality =" : "Sub Total ="; sc.role = "subtot";
+      const parts = info.sections.filter((s) => s.tot >= 0 && (hasGrand ? !isRoyaltySec(sheet, s) : true)).map((s) => addr(s.tot, 6));
       putFormula(sheet, info.subRow, 6, parts.length ? "=ROUND(" + parts.join("+") + ",2)" : "=0");
     }
     // Overhead / Contractor Profit — A = Sub Total पर (सब 2 दशमलव); % इस sheet के OH group से
@@ -1096,6 +1112,7 @@
   // एक analysis में Overhead/Contractor Profit पंक्तियाँ (ohSettings अनुसार) बना/अपडेट करो
   function applyOverheadToSheet(sheet) {
     if (!sheet || !isStructuredAnalysis(sheet)) return false;
+    ensureGrandtotRole(sheet); // MoRD/पुराने analysis: "Total" पंक्ति को grandtot मार्क करो ताकि OH/CP लग सके
     if (rowWithRole(sheet, "grandtot") < 0) return false;
     const needRoles = ohSettingsForSheet(sheet).sep ? ["overhead", "profit"] : ["ohcp"];
     // पहले से सही charge-पंक्तियाँ हों तो सिर्फ़ % (formula/label) अपडेट करो — structural churn नहीं
@@ -1216,8 +1233,10 @@
       if (nm.trim()) matRows.push(r);
     }
     if (!matRows.length) { alert("Material section में कोई material नहीं मिला।"); return; }
-    if (info.grandRow < 0) { alert("Total पंक्ति नहीं मिली।"); return; }
-    const n = matRows.length, at = info.grandRow, block = 2 + n;   // Contractor Profit के बाद, Total से ठीक पहले; header + n items + sectot
+    let gRow = ensureGrandtotRole(sheet);            // grandtot न हो तो "Total" label से मार्क करो (MoRD/imported)
+    const at = gRow >= 0 ? gRow : info.subRow;        // Total से पहले; न हो तो Sub Total से पहले
+    if (at < 0) { alert("इस Analysis में उपयुक्त Total/Sub Total पंक्ति नहीं मिली।"); return; }
+    const n = matRows.length, block = 2 + n;         // header + n items + sectot
     pushUndo("all");
     if (!structuralBatch("insRow", at, block, true)) { undoStack.pop(); return; }
     const headR = at, totR = at + 1 + n;

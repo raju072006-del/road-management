@@ -838,6 +838,8 @@ function __cloudPatch() {
     if (!r || r.ok !== true) return { success: false, message: (r && r.error) || 'Server त्रुटि' };
     if (r.result && r.result.success) {
       SB_TOKEN = r.result.token;
+      __CU = String(username || '').toLowerCase().trim();   // ownership scoping
+      __ROLE = String(r.result.role || '');                 // admin-guard
       try { localStorage.setItem('rms_cloud_token', SB_TOKEN); } catch (e) {}
       try { __initLocal(); } catch (e) {}
     }
@@ -856,10 +858,41 @@ function __cloudPatch() {
     if (!r || r.ok !== true) return { valid: false };
     if (r.result && r.result.valid) {
       SB_TOKEN = token;
+      __CU = String(r.result.u || '').toLowerCase().trim();   // ownership scoping (session बहाल)
+      __ROLE = String(r.result.role || '');                   // admin-guard (session बहाल)
       try { localStorage.setItem('rms_cloud_token', token); } catch (e) {}
       try { __initLocal(); } catch (e) {}
     }
     return r.result;
+  };
+
+  /* Admin: user-प्रबंधन — server-side (Supabase app_users टेबल) */
+  adminListUsers = function () {
+    try { return sbCall_('userList') || []; } catch (e) { return []; }
+  };
+  adminCreateUser = function (a) {
+    try { sbCall_('userCreate', a || {}); return { success: true }; }
+    catch (e) { return { success: false, msg: String(e.message || e) }; }
+  };
+  adminUpdateUser = function (a) {
+    try { sbCall_('userUpdate', a || {}); return { success: true }; }
+    catch (e) { return { success: false, msg: String(e.message || e) }; }
+  };
+  // Phase 3 sharing — share-picker के लिए users की सूची (Supabase से)
+  listShareTargets = function () {
+    try { return sbCall_('userTargets') || []; } catch (e) { return []; }
+  };
+  adminSetPassword = function (a) {
+    try { sbCall_('userSetPassword', a || {}); return { success: true }; }
+    catch (e) { return { success: false, msg: String(e.message || e) }; }
+  };
+  adminSetActive = function (a) {
+    try { sbCall_('userSetActive', a || {}); return { success: true }; }
+    catch (e) { return { success: false, msg: String(e.message || e) }; }
+  };
+  adminDeleteUser = function (a) {
+    try { sbCall_('userDelete', a || {}); return { success: true }; }
+    catch (e) { return { success: false, msg: String(e.message || e) }; }
   };
 
   Logger.log('[Cloud] Supabase mode ON');

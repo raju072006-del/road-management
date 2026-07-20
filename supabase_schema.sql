@@ -357,34 +357,59 @@ create table if not exists public.est_kv (
   id         text  not null,
   data       jsonb not null,
   updated_at timestamptz not null default now(),
+  owner      text,             -- किस user का (estimates/sheets); master साझा (owner NULL)
   primary key (store, id)
 );
 
 alter table public.est_kv enable row level security;
+alter table public.est_kv add column if not exists owner text;
+-- मौजूदा estimates/sheets → Super Admin के (Phase 2 migration)
+update public.est_kv set owner = 'admin' where owner is null and store in ('estimates', 'sheets');
 
--- Estimator: तेज़ मिलान — गिनती + आख़िरी बदलाव समय (छोटा जवाब)
-create or replace function public.est_stamp()
+-- Estimator: तेज़ मिलान — गिनती + आख़िरी बदलाव समय (user-scoped; master साझा)
+drop function if exists public.est_stamp();
+create or replace function public.est_stamp(p_owner text default '')
 returns jsonb
 language sql stable
 as $$
   select coalesce(jsonb_object_agg(store, jsonb_build_object('n', n, 'ts', ts)), '{}'::jsonb)
   from (
     select store, count(*) as n, max(updated_at) as ts
-    from public.est_kv group by store
+    from public.est_kv
+    where store = 'master' or owner is not distinct from p_owner
+    group by store
   ) t;
 $$;
 
--- Estimator: तीनों stores का पूरा डेटा एक ही call में
-create or replace function public.est_all()
+-- Estimator: तीनों stores का डेटा एक ही call में (user-scoped; master साझा)
+drop function if exists public.est_all();
+create or replace function public.est_all(p_owner text default '')
 returns jsonb
 language sql stable
 as $$
   select coalesce(jsonb_object_agg(store, rows), '{}'::jsonb)
   from (
     select store, jsonb_agg(jsonb_build_object('id', id, 'data', data) order by id) as rows
-    from public.est_kv group by store
+    from public.est_kv
+    where store = 'master' or owner is not distinct from p_owner
+    group by store
   ) t;
 $$;
+
+-- ── App users (Admin द्वारा बनाए/प्रबंधित) ──────────────────────
+-- passwords सिर्फ़ scrypt-hash (salt अलग) — plaintext कभी नहीं।
+-- केवल server (service_role key, db.mjs) ही इसे छूता है — RLS ON + कोई policy नहीं।
+create table if not exists public.app_users (
+  username    text primary key,
+  pass_hash   text not null,
+  pass_salt   text not null,
+  role        text not null default 'user',   -- 'admin' | 'user'
+  name        text not null default '',
+  active      boolean not null default true,
+  created_at  timestamptz not null default now()
+);
+
+alter table public.app_users enable row level security;
 
 -- ── मुख्य वर्कबुक seed ───────────────────────────────────────────
 

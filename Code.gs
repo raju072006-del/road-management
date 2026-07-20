@@ -70,6 +70,130 @@ function getPaymentPageHtml() {
 // सुरक्षा: passwords code में plaintext नहीं — केवल SHA-256 hash।
 // (यह सिर्फ़ LOCAL/file mode के लिए है; online CLOUD mode में login
 //  Netlify server से होता है और passwords APP_USERS env में रहते हैं।)
+// Super Admin — पहला/मुख्य admin: हटाया या निष्क्रिय नहीं किया जा सकता (सिर्फ़ नाम/password बदल सकता है)
+const SUPER_ADMIN_ = 'admin';
+
+// ── Ownership scoping (Phase 2) ──────────────────────────────
+// वर्तमान लॉग-इन user (server-frame global) — login/session पर सेट होता है।
+// हर user को सिर्फ़ अपना डेटा दिखे; owner-रहित (पुराना) डेटा Super Admin का माना जाता है।
+var __CU = '';
+var __ROLE = '';
+function _owner_() { return __CU || SUPER_ADMIN_; }
+function _isAdmin_() { return __ROLE === 'admin'; }
+// साझा Master/reference डेटा सिर्फ़ Admin बदल सकता है; user केवल उपयोग करता है
+function _adminOnlyGuard_() { return _isAdmin_() ? null : { success: false, msg: 'यह साझा Master/सूची डेटा केवल Admin बदल सकता है।' }; }
+function _ownsRow_(row) { return String((row && row.Owner) || SUPER_ADMIN_) === _owner_(); }
+// किसी नई पंक्ति (सबसे अंतिम) पर Owner कॉलम भर दो (कॉलम न हो तो बना दो)
+function _stampOwnerLastRow_(sheet) {
+  if (!sheet) return;
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+  var hdr = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(function (h) { return String(h).trim(); });
+  var c = hdr.indexOf('Owner');
+  if (c < 0) { c = hdr.length; sheet.getRange(1, c + 1).setValue('Owner'); }
+  sheet.getRange(lastRow, c + 1).setValue(_owner_());
+}
+// Phase 3: वर्तमान user के साथ share किए गए resources (14_Shares शीट से)
+function _sharedIds_(ss) {
+  var me = _owner_(), roads = {}, projs = {};
+  try {
+    sheetToObjects_(ss, '14_Shares').forEach(function (s) {
+      if (String(s.Shared_With || '').toLowerCase() !== me) return;
+      if (s.Res_Type === 'road') roads[s.Res_ID] = 1;
+      else if (s.Res_Type === 'project') projs[s.Res_ID] = 1;
+    });
+  } catch (e) {}
+  return { roads: roads, projs: projs };
+}
+// किसी road/project को current user देख सकता है? — owner हो या share किया गया हो
+function _canSeeRoad_(r, shared) { return _ownsRow_(r) || !!(shared && shared.roads[r.Road_ID]); }
+function _canSeeProj_(p, shared) { return _ownsRow_(p) || !!(shared && shared.projs[p.Project_ID]); }
+
+// share की स्थिति (remark दिखाने हेतु): mineTo[type:id]=[किन users को दिया], toMe[type:id]=मालिक
+function _shareMaps_(ss) {
+  var me = _owner_(), out = { mineTo: {}, toMe: {} };
+  try {
+    sheetToObjects_(ss, '14_Shares').forEach(function (s) {
+      var key = s.Res_Type + ':' + s.Res_ID;
+      if (String(s.Owner || '').toLowerCase() === me) (out.mineTo[key] = out.mineTo[key] || []).push(String(s.Shared_With));
+      if (String(s.Shared_With || '').toLowerCase() === me) out.toMe[key] = String(s.Owner);
+    });
+  } catch (e) {}
+  return out;
+}
+// row पर share-remark टैग: 'in:<मालिक>' (मुझसे साझा) | 'out:<users>' (मैंने साझा किया) | ''
+function _shareTag_(type, id, maps) {
+  var key = type + ':' + id;
+  if (maps.toMe[key]) return 'in:' + maps.toMe[key];
+  if (maps.mineTo[key] && maps.mineTo[key].length) return 'out:' + maps.mineTo[key].join(', ');
+  return '';
+}
+
+// वर्तमान user को दिखने वाले Road_ID / Project_ID के सेट (owned + shared; children filter हेतु)
+function _ownedSets_(ss) {
+  var shared = _sharedIds_(ss);
+  var roads = {}, projs = {};
+  sheetToObjects_(ss, '1_Roads_Master').forEach(function (r) { if (_canSeeRoad_(r, shared) && r.Road_ID) roads[r.Road_ID] = 1; });
+  sheetToObjects_(ss, '3_Projects').forEach(function (p) { if (_canSeeProj_(p, shared) && p.Project_ID) projs[p.Project_ID] = 1; });
+  return { roads: roads, projs: projs };
+}
+
+// ── Phase 3: Sharing (road/project को दूसरे user के साथ view+edit) ──
+function _ensureSharesSheet_(ss) {
+  var sh = ss.getSheetByName('14_Shares');
+  if (!sh) { sh = ss.insertSheet('14_Shares'); sh.appendRow(['Share_ID', 'Owner', 'Shared_With', 'Res_Type', 'Res_ID']); SBApp.flush(); }
+  return sh;
+}
+function _currentUserOwnsResource_(ss, resType, resId) {
+  var sheetName = resType === 'road' ? '1_Roads_Master' : '3_Projects';
+  var idCol     = resType === 'road' ? 'Road_ID' : 'Project_ID';
+  var row = sheetToObjects_(ss, sheetName).find(function (x) { return String(x[idCol]) === resId; });
+  return !!(row && _ownsRow_(row));
+}
+// किन users के साथ share किया जा सकता है (self को छोड़कर सक्रिय users) — किसी भी logged-in user के लिए
+function listShareTargets() {
+  _seedLocalUsersIfNeeded_();
+  var me = _owner_(), dyn = _localUsers_(), out = [];
+  Object.keys(dyn).forEach(function (k) { if (k !== me && dyn[k].active !== false) out.push({ username: k, name: dyn[k].name || k }); });
+  return out;
+}
+function shareResource(resType, resId, sharedWith) {
+  resType = String(resType || '').trim(); resId = String(resId || '').trim(); sharedWith = String(sharedWith || '').toLowerCase().trim();
+  if (resType !== 'road' && resType !== 'project') return { success: false, msg: 'अमान्य resource' };
+  if (!resId || !sharedWith) return { success: false, msg: 'अधूरी जानकारी' };
+  if (sharedWith === _owner_()) return { success: false, msg: 'स्वयं को share नहीं कर सकते' };
+  var ss = SBApp.getActiveSpreadsheet();
+  if (!_isAdmin_() && !_currentUserOwnsResource_(ss, resType, resId)) return { success: false, msg: 'यह resource आपका नहीं है' };
+  var sh = _ensureSharesSheet_(ss);
+  var rows = sheetToObjects_(ss, '14_Shares');
+  if (rows.some(function (r) { return r.Res_Type === resType && r.Res_ID === resId && String(r.Shared_With).toLowerCase() === sharedWith; })) return { success: true };
+  sh.appendRow(['SHR' + Date.now().toString(36) + Math.floor(Math.random() * 1000), _owner_(), sharedWith, resType, resId]);
+  SBApp.flush();
+  CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
+  return { success: true };
+}
+function unshareResource(resType, resId, sharedWith) {
+  resType = String(resType || '').trim(); resId = String(resId || '').trim(); sharedWith = String(sharedWith || '').toLowerCase().trim();
+  var ss = SBApp.getActiveSpreadsheet();
+  if (!_isAdmin_() && !_currentUserOwnsResource_(ss, resType, resId)) return { success: false, msg: 'यह resource आपका नहीं है' };
+  var sh = ss.getSheetByName('14_Shares'); if (!sh) return { success: true };
+  var vals = sh.getDataRange().getValues();
+  var H = vals[0].map(function (h) { return String(h).trim(); });
+  var tC = H.indexOf('Res_Type'), iC = H.indexOf('Res_ID'), wC = H.indexOf('Shared_With');
+  for (var r = vals.length - 1; r >= 1; r--) {
+    if (String(vals[r][tC]) === resType && String(vals[r][iC]) === resId && String(vals[r][wC]).toLowerCase() === sharedWith) sh.deleteRow(r + 1);
+  }
+  SBApp.flush();
+  CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
+  return { success: true };
+}
+function listSharesFor(resType, resId) {
+  resType = String(resType || '').trim(); resId = String(resId || '').trim();
+  var ss = SBApp.getActiveSpreadsheet();
+  return sheetToObjects_(ss, '14_Shares')
+    .filter(function (r) { return r.Res_Type === resType && r.Res_ID === resId; })
+    .map(function (r) { return String(r.Shared_With); });
+}
 const USERS_ = {
   'admin': { hash: 'e86f78a8a3caf0b60d8e74e5942aa6d86dc150cd3c03338aef25b7d2d7e3acc7', role: 'admin', name: 'Administrator' },
   'user1': { hash: '1e9a6b9afd56cf274a1b46367cad2ff478fb6f0e29e5766195848b1482d2e2be', role: 'user',  name: 'User 1' },
@@ -77,8 +201,40 @@ const USERS_ = {
   'user':  { hash: '3e7c19576488862816f13b512cacf3e4ba97dd97243ea0bd6a2ad1642d86ba72', role: 'user',  name: 'User' }   // User / User@123 — local mode
 };
 
+// LOCAL mode में Admin द्वारा बनाए dynamic users — PropertiesService में
+// (CLOUD mode में ये सब __cloudPatch से Netlify/Supabase पर चले जाते हैं)
+function _localUsers_() {
+  try { return JSON.parse(PropertiesService.getScriptProperties().getProperty('app_users') || '{}') || {}; }
+  catch (e) { return {}; }
+}
+function _saveLocalUsers_(m) {
+  PropertiesService.getScriptProperties().setProperty('app_users', JSON.stringify(m || {}));
+}
+// पहली बार: built-in USERS_ को manageable store में एक बार copy करो — फिर सब edit/delete हो सकें।
+// एक बार seed होने पर USERS_ auth में उपयोग नहीं होता (हटाया user वापस न आए)।
+function _seedLocalUsersIfNeeded_() {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('app_users_seeded')) return;
+  var dyn = _localUsers_();
+  Object.keys(USERS_).forEach(function (k) {
+    if (!dyn[k]) dyn[k] = { hash: USERS_[k].hash, role: USERS_[k].role, name: USERS_[k].name, active: true };
+  });
+  _saveLocalUsers_(dyn);
+  props.setProperty('app_users_seeded', '1');
+}
+// कम-से-कम एक सक्रिय Admin ज़रूरी — क्या यह key वही आख़िरी admin है?
+function _isLastActiveAdmin_(dyn, key) {
+  var admins = Object.keys(dyn).filter(function (k) { return dyn[k].role === 'admin' && dyn[k].active !== false; });
+  return admins.length <= 1 && admins.indexOf(key) >= 0;
+}
+
 function validateLogin(username, password) {
-  var u = USERS_[(username || '').toLowerCase().trim()];
+  var key = (username || '').toLowerCase().trim();
+  _seedLocalUsersIfNeeded_();
+  var dyn = _localUsers_();
+  var u = dyn[key];
+  if (!u && Object.keys(dyn).length === 0) u = USERS_[key];   // आपात: store खाली हो तो built-in से
+  if (u && u.active === false) return { success: false, message: 'यह खाता निष्क्रिय है — Admin से संपर्क करें।' };
   var ok = false;
   try { ok = !!u && typeof sha256Hex_ === 'function' && sha256Hex_(String(password || '')) === u.hash; } catch (e) { ok = false; }
   if (!ok) {
@@ -87,9 +243,79 @@ function validateLogin(username, password) {
   var token = Utilities.getUuid();
   PropertiesService.getScriptProperties().setProperty(
     'sess_' + token,
-    JSON.stringify({ username: username, role: u.role, name: u.name, expires: Date.now() + 28800000 })
+    JSON.stringify({ username: key, role: u.role, name: u.name, expires: Date.now() + 28800000 })
   );
+  __CU = key; __ROLE = u.role;   // ownership scoping + admin-guard
   return { success: true, token: token, role: u.role, name: u.name };
+}
+
+// ── Admin: user-प्रबंधन (LOCAL implementations; CLOUD में __cloudPatch override) ──
+function adminListUsers() {
+  _seedLocalUsersIfNeeded_();
+  var out = [], dyn = _localUsers_();
+  Object.keys(dyn).forEach(function (k) { out.push({ username: k, role: dyn[k].role, name: dyn[k].name, active: dyn[k].active !== false }); });
+  return out;
+}
+function adminCreateUser(a) {
+  a = a || {};
+  _seedLocalUsersIfNeeded_();
+  var uname = (a.user || '').toLowerCase().trim();
+  if (!/^[a-z0-9._-]{2,40}$/.test(uname)) return { success: false, msg: 'username में केवल a-z 0-9 . _ - चलेंगे (2–40 अक्षर)' };
+  if (String(a.pass || '').length < 4) return { success: false, msg: 'password कम-से-कम 4 अक्षर का हो' };
+  var dyn = _localUsers_();
+  if (dyn[uname]) return { success: false, msg: 'यह username पहले से मौजूद है' };
+  dyn[uname] = { hash: sha256Hex_(String(a.pass)), role: a.role === 'admin' ? 'admin' : 'user', name: a.name || uname, active: true };
+  _saveLocalUsers_(dyn);
+  return { success: true };
+}
+function adminUpdateUser(a) {
+  a = a || {};
+  _seedLocalUsersIfNeeded_();
+  var uname = (a.user || '').toLowerCase().trim();
+  var dyn = _localUsers_();
+  if (!dyn[uname]) return { success: false, msg: 'user नहीं मिला' };
+  var role = a.role === 'admin' ? 'admin' : 'user';
+  if (uname === SUPER_ADMIN_) role = 'admin';   // Super Admin हमेशा Admin रहेगा
+  if (dyn[uname].role === 'admin' && role !== 'admin' && _isLastActiveAdmin_(dyn, uname)) return { success: false, msg: 'कम-से-कम एक सक्रिय Admin ज़रूरी है' };
+  if (a.name !== undefined) dyn[uname].name = a.name || uname;
+  dyn[uname].role = role;
+  _saveLocalUsers_(dyn);
+  return { success: true };
+}
+function adminSetPassword(a) {
+  a = a || {};
+  _seedLocalUsersIfNeeded_();
+  var uname = (a.user || '').toLowerCase().trim();
+  if (String(a.pass || '').length < 4) return { success: false, msg: 'password कम-से-कम 4 अक्षर का हो' };
+  var dyn = _localUsers_();
+  if (!dyn[uname]) return { success: false, msg: 'user नहीं मिला' };
+  dyn[uname].hash = sha256Hex_(String(a.pass));
+  _saveLocalUsers_(dyn);
+  return { success: true };
+}
+function adminSetActive(a) {
+  a = a || {};
+  _seedLocalUsersIfNeeded_();
+  var uname = (a.user || '').toLowerCase().trim();
+  var dyn = _localUsers_();
+  if (!dyn[uname]) return { success: false, msg: 'user नहीं मिला' };
+  if (!a.active && uname === SUPER_ADMIN_) return { success: false, msg: 'Super Admin को निष्क्रिय नहीं किया जा सकता' };
+  if (!a.active && dyn[uname].role === 'admin' && _isLastActiveAdmin_(dyn, uname)) return { success: false, msg: 'कम-से-कम एक सक्रिय Admin ज़रूरी है' };
+  dyn[uname].active = !!a.active;
+  _saveLocalUsers_(dyn);
+  return { success: true };
+}
+function adminDeleteUser(a) {
+  a = a || {};
+  _seedLocalUsersIfNeeded_();
+  var uname = (a.user || '').toLowerCase().trim();
+  var dyn = _localUsers_();
+  if (!dyn[uname]) return { success: false, msg: 'user नहीं मिला' };
+  if (uname === SUPER_ADMIN_) return { success: false, msg: 'Super Admin को हटाया नहीं जा सकता' };
+  if (dyn[uname].role === 'admin' && _isLastActiveAdmin_(dyn, uname)) return { success: false, msg: 'कम-से-कम एक सक्रिय Admin ज़रूरी है — पहले दूसरा Admin बनाएँ' };
+  delete dyn[uname];
+  _saveLocalUsers_(dyn);
+  return { success: true };
 }
 
 function validateSession(token) {
@@ -102,6 +328,7 @@ function validateSession(token) {
       PropertiesService.getScriptProperties().deleteProperty('sess_' + token);
       return { valid: false };
     }
+    __CU = s.username || ''; __ROLE = s.role || '';   // ownership scoping + admin-guard (session बहाल)
     return { valid: true, role: s.role, name: s.name };
   } catch(e) { return { valid: false }; }
 }
@@ -158,6 +385,9 @@ function sheetToObjects_(ss, sheetName) {
 
 // ── Primary Data: Dashboard के लिए (Roads, Projects, Letters) ─
 function getPrimaryData() {
+  return _scopePrimary_(_rawPrimary_());
+}
+function _rawPrimary_() {
   const cache = CacheService.getScriptCache();
   const cached = cache.get(CACHE_KEY_P);
   if (cached) {
@@ -171,6 +401,22 @@ function getPrimaryData() {
   };
   try { cache.put(CACHE_KEY_P, JSON.stringify(data), CACHE_TTL); } catch(e) {}
   return data;
+}
+// वर्तमान user के अनुसार छाँटो (cache raw रहता है; हर call अपने user के लिए filter)
+function _scopePrimary_(raw) {
+  var me = _owner_();
+  var ss = SBApp.getActiveSpreadsheet();
+  var shared = _sharedIds_(ss);
+  var roads    = (raw.roads    || []).filter(function (r) { return _canSeeRoad_(r, shared); });
+  var projects = (raw.projects || []).filter(function (p) { return _canSeeProj_(p, shared); });
+  var maps = _shareMaps_(ss);
+  roads.forEach(function (r) { r._share = _shareTag_('road', r.Road_ID, maps); });
+  projects.forEach(function (p) { p._share = _shareTag_('project', p.Project_ID, maps); });
+  var pids = {}; projects.forEach(function (p) { if (p.Project_ID) pids[p.Project_ID] = 1; });
+  var letters  = (raw.letters  || []).filter(function (l) {
+    return l.Project_ID ? !!pids[l.Project_ID] : (me === SUPER_ADMIN_);
+  });
+  return { roads: roads, projects: projects, letters: letters };
 }
 
 // ── Default Work Types ───────────────────────────────────────
@@ -881,6 +1127,7 @@ function getDocCategoriesList_() {
 }
 
 function saveDocCategory(catNo, catName) {
+  var _g = _adminOnlyGuard_(); if (_g) return _g;
   catNo = String(catNo||'').trim(); catName = String(catName||'').trim();
   if (!catNo || !catName) return {success:false, msg:'नाम खाली नहीं हो सकता'};
   const ss = SBApp.getActiveSpreadsheet();
@@ -898,6 +1145,7 @@ function saveDocCategory(catNo, catName) {
 }
 
 function addDocCategory(catName) {
+  var _g = _adminOnlyGuard_(); if (_g) return _g;
   catName = String(catName||'').trim();
   if (!catName) return {success:false, msg:'नाम खाली नहीं हो सकता'};
   const ss = SBApp.getActiveSpreadsheet();
@@ -914,6 +1162,7 @@ function addDocCategory(catName) {
 }
 
 function deleteDocCategory(catNo) {
+  var _g = _adminOnlyGuard_(); if (_g) return _g;
   catNo = String(catNo||'').trim();
   const ss = SBApp.getActiveSpreadsheet();
   const sheet = ensureDocCatSheet_(ss);
@@ -948,6 +1197,7 @@ function getWorkTypesList_() {
 
 // ── Work Types: Rename (केवल कस्टम — डिफ़ॉल्ट नहीं) ──────────
 function renameWorkType(oldName, newName) {
+  var _g = _adminOnlyGuard_(); if (_g) return _g;
   oldName = String(oldName||'').trim(); newName = String(newName||'').trim();
   if (!newName) return { success: false, msg: 'नाम खाली नहीं हो सकता' };
   if (DEFAULT_WORK_TYPES.indexOf(oldName) >= 0) return { success: false, msg: 'डिफ़ॉल्ट कार्य प्रकार बदला नहीं जा सकता' };
@@ -967,6 +1217,7 @@ function renameWorkType(oldName, newName) {
 
 // ── Work Types: Delete (केवल कस्टम — डिफ़ॉल्ट नहीं) ──────────
 function deleteWorkType(name) {
+  var _g = _adminOnlyGuard_(); if (_g) return _g;
   name = String(name||'').trim();
   if (DEFAULT_WORK_TYPES.indexOf(name) >= 0) return { success: false, msg: 'डिफ़ॉल्ट कार्य प्रकार हटाया नहीं जा सकता' };
   const ss = SBApp.getActiveSpreadsheet();
@@ -985,6 +1236,9 @@ function deleteWorkType(name) {
 
 // ── Secondary Data: बाकी सब ─────────────────────────────────
 function getSecondaryData() {
+  return _scopeSecondary_(_rawSecondary_());
+}
+function _rawSecondary_() {
   const cache = CacheService.getScriptCache();
   const cached = cache.get(CACHE_KEY_S);
   if (cached) {
@@ -1015,6 +1269,27 @@ function getSecondaryData() {
   };
   try { cache.put(CACHE_KEY_S, JSON.stringify(data), CACHE_TTL); } catch(e) {}
   return data;
+}
+// children को parent (road/project) के owner अनुसार छाँटो; reference/config व OFC साझा रहते हैं
+function _scopeSecondary_(raw) {
+  var ss = SBApp.getActiveSpreadsheet();
+  var own = _ownedSets_(ss);
+  var byRoad = function (x) { return x.Road_ID ? !!own.roads[x.Road_ID] : false; };
+  var byProj = function (x) { return x.Project_ID ? !!own.projs[x.Project_ID] : false; };
+  return {
+    sections:  (raw.sections  || []).filter(byRoad),
+    projRoads: (raw.projRoads || []).filter(byProj),
+    docs:      (raw.docs      || []).filter(byProj),
+    finance:   (raw.finance   || []).filter(byProj),
+    plan:      (raw.plan      || []).filter(byRoad),
+    convs:     (raw.convs     || []).filter(byProj),
+    bills:     (raw.bills     || []).filter(byProj),
+    mbItems:   (raw.mbItems   || []).filter(byProj),
+    mbEntries: (raw.mbEntries || []).filter(byProj),
+    // साझा reference/config — सभी users के लिए एक ही
+    workTypes: raw.workTypes, roadTypes: raw.roadTypes, docCats: raw.docCats,
+    masters:   raw.masters, ofc: raw.ofc
+  };
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1069,6 +1344,7 @@ function addRoad(data) {
   [['Avg_Width_M', data.avgWidthM||''],['Last_Work_Month', lw.month],['Last_Work_Year', lw.year],
    ['Last_Work_Date', data.lastWorkDate||''],['Maintenance_Years', data.maintenanceYears||2]]
     .forEach(([k,v]) => { const c=hdrNew.indexOf(k); if (c>=0 && v!=='') sheet.getRange(lastRow,c+1).setValue(v); });
+  _stampOwnerLastRow_(sheet);   // यह सड़क वर्तमान user की
   SBApp.flush();
   CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
   return { success: true };
@@ -1182,6 +1458,7 @@ function bulkAddRoads(rows) {
     if (!rid || !row.roadName) { errors.push(rid || '(blank)'); return; }
     if (existing.includes(rid)) { skipped.push(rid); return; }
     sheet.appendRow([rid, row.roadName||'', row.roadType||'', row.srishtiCode||'', row.vidhansabha||'', row.lengthKm||'', 'Active', row.remark||'']);
+    _stampOwnerLastRow_(sheet);   // हर आयातित सड़क वर्तमान user की
     existing.push(rid);
     added++;
   });
@@ -1386,6 +1663,7 @@ function ensureRoadTypesSheet_(ss) {
 }
 
 function addRoadType(typeName) {
+  var _g = _adminOnlyGuard_(); if (_g) return _g;
   typeName = String(typeName).trim();
   if (!typeName) return { success: false, msg: 'नाम खाली नहीं हो सकता' };
   const ss = SBApp.getActiveSpreadsheet();
@@ -1399,6 +1677,7 @@ function addRoadType(typeName) {
 }
 
 function updateRoadType(oldName, newName) {
+  var _g = _adminOnlyGuard_(); if (_g) return _g;
   oldName = String(oldName).trim(); newName = String(newName).trim();
   if (!newName) return { success: false, msg: 'नाम खाली नहीं हो सकता' };
   const ss = SBApp.getActiveSpreadsheet();
@@ -1416,6 +1695,7 @@ function updateRoadType(oldName, newName) {
 }
 
 function deleteRoadType(typeName) {
+  var _g = _adminOnlyGuard_(); if (_g) return _g;
   typeName = String(typeName).trim();
   const ss = SBApp.getActiveSpreadsheet();
   const sheet = ensureRoadTypesSheet_(ss);
@@ -1433,6 +1713,7 @@ function deleteRoadType(typeName) {
 
 // ── नया Work Type जोड़ें ─────────────────────────────────────
 function addWorkType(typeName) {
+  var _g = _adminOnlyGuard_(); if (_g) return _g;
   typeName = String(typeName).trim();
   if (!typeName) return { success: false, msg: 'नाम खाली नहीं हो सकता' };
 
@@ -1521,6 +1802,7 @@ function addProject(data) {
     Remark: data.remark||''
   };
   sheet.appendRow(hdr.map(h => map[h] !== undefined ? map[h] : ''));
+  _stampOwnerLastRow_(sheet);   // यह परियोजना वर्तमान user की
   SBApp.flush();
   CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
   return { success: true, projectId: pid };
@@ -2661,6 +2943,7 @@ function ensureMasterSheet_(ss) {
 }
 
 function addMaster(type, value) {
+  var _g = _adminOnlyGuard_(); if (_g) return _g;
   try {
     const ss = SBApp.getActiveSpreadsheet();
     const sh = ensureMasterSheet_(ss);
@@ -2676,6 +2959,7 @@ function addMaster(type, value) {
 }
 
 function deleteMaster(masterId) {
+  var _g = _adminOnlyGuard_(); if (_g) return _g;
   try {
     const ss = SBApp.getActiveSpreadsheet();
     const sh = ss.getSheetByName('9_Masters');

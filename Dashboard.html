@@ -2963,6 +2963,32 @@ tr.sec-row-new  td { background: #effcf6; }
     </div>
   </div>
 
+  <!-- ══ USER MANAGEMENT (केवल Admin) ══ -->
+  <div class="config-section" id="user-mgmt-section" style="display:none;border:2px solid #1e3a5f;">
+    <div class="config-title">👥 User प्रबंधन <span style="font-size:12px;font-weight:500;color:var(--text3);">(केवल Admin)</span></div>
+    <div style="margin-bottom:14px;font-size:13px;color:var(--text2);line-height:1.6;">
+      यहाँ बनाया गया हर User अपने Account से <strong>केवल अपने</strong> Estimate, सड़कों की सूची और उनके भुगतान का प्रबंधन कर सकेगा।
+      Admin भी किसी User का डेटा तब तक नहीं देख पाएगा जब तक उसके User ID/Password से लॉगिन न करे।
+    </div>
+    <div id="user-mgmt-list" style="border:1px solid var(--border);border-radius:var(--radius);overflow:auto;margin-bottom:16px;">
+      <div style="padding:12px;color:var(--text3);text-align:center;">⏳ लोड हो रहा है...</div>
+    </div>
+    <div style="font-weight:700;color:var(--navy);margin-bottom:8px;">➕ नया User बनाएँ</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div><label class="form-label">नाम</label><input class="config-input" id="nu-name" placeholder="पूरा नाम" style="width:100%;"></div>
+      <div><label class="form-label">User ID (username)</label><input class="config-input" id="nu-user" placeholder="जैसे: ramesh" autocomplete="off" style="width:100%;"></div>
+      <div><label class="form-label">Password</label><input class="config-input" id="nu-pass" type="text" placeholder="कम-से-कम 4 अक्षर" autocomplete="new-password" style="width:100%;"></div>
+      <div><label class="form-label">भूमिका</label>
+        <select class="config-input" id="nu-role" style="width:100%;">
+          <option value="user">User (सामान्य — केवल अपना डेटा)</option>
+          <option value="admin">Admin (user प्रबंधन)</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-top:12px;"><button class="btn-primary" onclick="createUser()">➕ User बनाएँ</button></div>
+    <div id="user-mgmt-status" style="margin-top:10px;"></div>
+  </div>
+
   <div class="config-section">
     <div class="config-title">🔗 Connection Status</div>
     <div id="cfg-status" class="status-box loading">⏳ डेटा लोड हो रहा है...</div>
@@ -3625,6 +3651,31 @@ tr.sec-row-new  td { background: #effcf6; }
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeModal('proj-delete-modal')">रद्द करें</button>
       <button class="btn-primary" id="pdel-btn" style="background:#dc2626;" onclick="executeDeleteProj()">🗑️ हाँ, Delete करें</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SHARE MODAL (Phase 3) ══ -->
+<div class="modal-overlay" id="share-modal">
+  <div class="modal" style="max-width:460px;">
+    <div class="modal-header" style="background:linear-gradient(135deg,#0b7d57,#16a34a);">
+      <div>
+        <div class="modal-title">🔗 साझा करें</div>
+        <div class="modal-sub" id="share-sub">—</div>
+      </div>
+      <div class="modal-close" onclick="closeModal('share-modal')">✕</div>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:12px;line-height:1.6;">
+        जिन users को चुनेंगे वे इसे (और इससे जुड़े सभी विवरण) <strong>देख और एडिट</strong> कर सकेंगे।
+      </div>
+      <div id="share-list" style="border:1px solid var(--border);border-radius:var(--radius);overflow:auto;max-height:320px;">
+        <div style="padding:12px;color:var(--text3);text-align:center;">⏳ लोड हो रहा है...</div>
+      </div>
+      <div id="share-status" style="margin-top:10px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('share-modal')">बंद करें</button>
     </div>
   </div>
 </div>
@@ -4738,7 +4789,7 @@ function showPage(name, navEl, panelEl) {
   document.getElementById('page-'+name).classList.add('active');
   if(navEl){ document.querySelectorAll('.nav-link').forEach(function(n){n.classList.remove('active');}); navEl.classList.add('active'); }
   if(panelEl){ document.querySelectorAll('.panel-link').forEach(function(n){n.classList.remove('active');}); panelEl.classList.add('active'); }
-  var fns={dashboard:renderDash,roads:renderRoads,projects:renderProj,documents:renderDocs,letters:renderLtrs,officers:renderOfcPage,finance:renderFin,annualplan:renderPlan,dumproads:renderDumpRoads};
+  var fns={dashboard:renderDash,roads:renderRoads,projects:renderProj,documents:renderDocs,letters:renderLtrs,officers:renderOfcPage,finance:renderFin,annualplan:renderPlan,dumproads:renderDumpRoads,settings:renderSettings};
   if(fns[name]) fns[name]();
   try { localStorage.setItem('rms_page', name); } catch(e){}
 }
@@ -4888,6 +4939,167 @@ function _showApp() {
     if (nameEl) nameEl.textContent = _currentUser.name || '—';
     if (roleEl) roleEl.textContent = _currentUser.role === 'admin' ? '👑 Admin' : '👤 User';
   }
+}
+
+// ── User प्रबंधन (Admin) ─────────────────────────────────────
+function renderSettings() {
+  var isAdmin = _currentUser && _currentUser.role === 'admin';
+  var sec = document.getElementById('user-mgmt-section');
+  if (sec) sec.style.display = isAdmin ? '' : 'none';
+  if (isAdmin) renderUserMgmt();
+}
+var _usersCache = [];
+function renderUserMgmt() {
+  var box = document.getElementById('user-mgmt-list');
+  if (box) box.innerHTML = '<div style="padding:12px;color:var(--text3);text-align:center;">⏳ लोड हो रहा है...</div>';
+  google.script.run
+    .withSuccessHandler(function(list){ _usersCache = list || []; _renderUserRows(_usersCache); })
+    .withFailureHandler(function(e){ if(box) box.innerHTML='<div style="padding:12px;color:var(--red-gov);">❌ '+(e.message||e)+'</div>'; })
+    .adminListUsers();
+}
+function _renderUserRows(list) {
+  var box = document.getElementById('user-mgmt-list'); if(!box) return;
+  if(!list.length){ box.innerHTML='<div style="padding:12px;color:var(--text3);text-align:center;">कोई user नहीं</div>'; return; }
+  var html='<table style="width:100%;border-collapse:collapse;font-size:13px;min-width:560px;">'+
+    '<thead><tr style="background:var(--bg);">'+
+    '<th style="text-align:left;padding:8px;">नाम</th><th style="text-align:left;padding:8px;">User ID</th>'+
+    '<th style="padding:8px;">भूमिका</th><th style="padding:8px;">स्थिति</th><th style="padding:8px;">क्रिया</th></tr></thead><tbody>';
+  list.forEach(function(u){
+    var un=String(u.username||'').replace(/'/g,"\\'");
+    var active=u.active!==false;
+    var isSuper=String(u.username||'').toLowerCase()==='admin';
+    var roleTxt=isSuper?'⭐ Super Admin':(u.role==='admin'?'👑 Admin':'👤 User');
+    html+='<tr style="border-top:1px solid var(--border);">'+
+      '<td style="padding:8px;">'+(u.name||'')+'</td>'+
+      '<td style="padding:8px;font-family:var(--font-en);">'+(u.username||'')+'</td>'+
+      '<td style="padding:8px;text-align:center;">'+roleTxt+'</td>'+
+      '<td style="padding:8px;text-align:center;">'+(active?'<span style="color:var(--green-gov);">सक्रिय</span>':'<span style="color:var(--red-gov);">निष्क्रिय</span>')+'</td>'+
+      '<td style="padding:8px;text-align:center;white-space:nowrap;">'+
+        '<button class="act-btn" title="'+(isSuper?'नाम बदलें':'नाम/भूमिका बदलें')+'" onclick="editUserAcc(\''+un+'\')">✏️</button> '+
+        '<button class="act-btn" title="Password बदलें" onclick="resetUserPassword(\''+un+'\')">🔑</button> '+
+        (isSuper?'':
+          '<button class="act-btn" title="'+(active?'निष्क्रिय करें':'सक्रिय करें')+'" onclick="toggleUserActive(\''+un+'\','+(!active)+')">'+(active?'🚫':'✅')+'</button> '+
+          '<button class="act-btn del" title="हटाएँ" onclick="deleteUserAcc(\''+un+'\')">🗑</button>')+
+      '</td></tr>';
+  });
+  box.innerHTML = html+'</tbody></table>';
+}
+function editUserAcc(user) {
+  var u = _usersCache.find(function(x){ return String(x.username)===user; }) || {};
+  var isSuper = String(user).toLowerCase()==='admin';
+  var name = prompt('"'+user+'" का प्रदर्शित नाम:', u.name || '');
+  if (name===null) return;
+  var role;
+  if (isSuper) {
+    role = 'admin';   // Super Admin की भूमिका नहीं बदलती
+  } else {
+    var mkAdmin = confirm('भूमिका चुनें:\n\n[ OK ] = 👑 Admin\n[ Cancel ] = 👤 User\n\n(अभी: '+(u.role==='admin'?'Admin':'User')+')');
+    role = mkAdmin ? 'admin' : 'user';
+  }
+  google.script.run
+    .withSuccessHandler(function(res){ if(res&&res.success) renderUserMgmt(); else alert('❌ '+((res&&res.msg)||'')); })
+    .withFailureHandler(function(e){ alert('❌ '+(e.message||e)); })
+    .adminUpdateUser({user:user, name:name, role: role});
+}
+function createUser() {
+  var name=document.getElementById('nu-name').value.trim();
+  var user=document.getElementById('nu-user').value.trim();
+  var pass=document.getElementById('nu-pass').value;
+  var role=document.getElementById('nu-role').value;
+  var st=document.getElementById('user-mgmt-status');
+  if(!user||!pass){ st.innerHTML='<div class="status-box error">❌ User ID और Password दोनों भरें</div>'; return; }
+  st.innerHTML='<div class="status-box loading">⏳ बना रहे हैं...</div>';
+  google.script.run
+    .withSuccessHandler(function(res){
+      if(res&&res.success){
+        st.innerHTML='<div class="status-box success">✅ User बना: '+user+'</div>';
+        document.getElementById('nu-name').value=''; document.getElementById('nu-user').value=''; document.getElementById('nu-pass').value='';
+        renderUserMgmt();
+      } else st.innerHTML='<div class="status-box error">❌ '+((res&&res.msg)||'नहीं बना')+'</div>';
+    })
+    .withFailureHandler(function(e){ st.innerHTML='<div class="status-box error">❌ '+(e.message||e)+'</div>'; })
+    .adminCreateUser({user:user, pass:pass, role:role, name:name||user});
+}
+function resetUserPassword(user) {
+  var np=prompt('"'+user+'" के लिए नया Password (कम-से-कम 4 अक्षर):','');
+  if(np===null) return;
+  if(np.length<4){ alert('❌ Password कम-से-कम 4 अक्षर का हो'); return; }
+  google.script.run
+    .withSuccessHandler(function(res){ alert(res&&res.success?'✅ Password बदला गया':'❌ '+((res&&res.msg)||'नहीं बदला')); })
+    .withFailureHandler(function(e){ alert('❌ '+(e.message||e)); })
+    .adminSetPassword({user:user, pass:np});
+}
+function toggleUserActive(user, active) {
+  google.script.run
+    .withSuccessHandler(function(res){ if(res&&res.success) renderUserMgmt(); else alert('❌ '+((res&&res.msg)||'')); })
+    .withFailureHandler(function(e){ alert('❌ '+(e.message||e)); })
+    .adminSetActive({user:user, active:active});
+}
+function deleteUserAcc(user) {
+  if(!confirm('"'+user+'" User हटाएँ?\n(इस User का अपना डेटा हटेगा नहीं — केवल login हटेगा।)')) return;
+  google.script.run
+    .withSuccessHandler(function(res){ if(res&&res.success) renderUserMgmt(); else alert('❌ '+((res&&res.msg)||'')); })
+    .withFailureHandler(function(e){ alert('❌ '+(e.message||e)); })
+    .adminDeleteUser({user:user});
+}
+
+// ── Sharing (Phase 3) ────────────────────────────────────────
+// row._share = 'in:<मालिक>' (किसी ने मुझसे साझा किया) | 'out:<users>' (मैंने साझा किया)
+function _shareRemark(row) {
+  var s = row && row._share; if (!s) return '';
+  if (s.indexOf('in:') === 0) {
+    var owner = s.slice(3);
+    return '<div style="font-size:9px;color:#b45309;margin-top:2px;font-weight:700;white-space:nowrap;" title="'+owner+' द्वारा आपके साथ साझा">🔗 साझा किया गया</div>';
+  }
+  if (s.indexOf('out:') === 0) {
+    var us = s.slice(4);
+    return '<div style="font-size:9px;color:#0b7d57;margin-top:2px;font-weight:700;white-space:nowrap;" title="साझा: '+us+'">🔗 साझा किया</div>';
+  }
+  return '';
+}
+var _shareCtx = { type: '', id: '', label: '' };
+function openShareModal(resType, resId, label) {
+  _shareCtx = { type: resType, id: resId, label: label || resId };
+  document.getElementById('share-sub').textContent = (resType === 'road' ? 'सड़क: ' : 'परियोजना: ') + _shareCtx.label;
+  document.getElementById('share-status').innerHTML = '';
+  document.getElementById('share-list').innerHTML = '<div style="padding:12px;color:var(--text3);text-align:center;">⏳ लोड हो रहा है...</div>';
+  document.getElementById('share-modal').classList.add('open');
+  // targets + मौजूदा shares दोनों लाकर render करो
+  google.script.run.withSuccessHandler(function(targets){
+    google.script.run.withSuccessHandler(function(shared){
+      _renderShareList(targets || [], shared || []);
+    }).withFailureHandler(function(e){ _renderShareList(targets||[], []); })
+      .listSharesFor(_shareCtx.type, _shareCtx.id);
+  }).withFailureHandler(function(e){
+    document.getElementById('share-list').innerHTML = '<div style="padding:12px;color:var(--red-gov);">❌ '+(e.message||e)+'</div>';
+  }).listShareTargets();
+}
+function _renderShareList(targets, sharedWith) {
+  var box = document.getElementById('share-list'); if(!box) return;
+  if(!targets.length){ box.innerHTML='<div style="padding:12px;color:var(--text3);text-align:center;">कोई अन्य user नहीं — पहले Admin से user बनवाएँ।</div>'; return; }
+  var setShared = {}; sharedWith.forEach(function(u){ setShared[String(u).toLowerCase()]=1; });
+  box.innerHTML = targets.map(function(t){
+    var un=String(t.username||'').replace(/'/g,"\\'");
+    var on=!!setShared[String(t.username||'').toLowerCase()];
+    return '<label style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border);cursor:pointer;">'+
+      '<input type="checkbox" '+(on?'checked':'')+' onchange="toggleShare(\''+un+'\',this.checked,this)" style="width:17px;height:17px;">'+
+      '<span style="flex:1;"><strong>'+(t.name||t.username)+'</strong> <span style="color:var(--text3);font-family:var(--font-en);font-size:12px;">('+(t.username||'')+')</span></span>'+
+    '</label>';
+  }).join('');
+}
+function toggleShare(user, on, el) {
+  if(el) el.disabled = true;
+  var st=document.getElementById('share-status');
+  st.innerHTML='<div class="status-box loading">⏳ अपडेट हो रहा है...</div>';
+  var fn = on ? 'shareResource' : 'unshareResource';
+  google.script.run
+    .withSuccessHandler(function(res){
+      if(el) el.disabled=false;
+      if(res&&res.success){ st.innerHTML='<div class="status-box success">✅ '+(on?'साझा किया':'साझा हटाया')+': '+user+'</div>'; loadData(); }
+      else { st.innerHTML='<div class="status-box error">❌ '+((res&&res.msg)||'')+'</div>'; if(el) el.checked=!on; }
+    })
+    .withFailureHandler(function(e){ if(el){el.disabled=false;el.checked=!on;} st.innerHTML='<div class="status-box error">❌ '+(e.message||e)+'</div>'; })
+    [fn](_shareCtx.type, _shareCtx.id, user);
 }
 
 // ── Load Data via Google Apps Script (2-phase) ──────────────
@@ -5612,12 +5824,13 @@ function applyRoadFilter(){
     var actHtml = '<div class="act-btns">' +
       '<button class="btn-sm" onclick="openRoadModal(\''+rid_e+'\')" style="font-size:10px;padding:3px 8px;">Detail</button>&nbsp;' +
       '<button class="act-btn edit" title="Edit करें" onclick="openEditRoadModal(\''+rid_e+'\')">✏️</button>' +
+      '<button class="act-btn" title="किसी user के साथ साझा करें" onclick="openShareModal(\'road\',\''+rid_e+'\',\''+rname_e+'\')">🔗</button>' +
       dumpBtn +
       '<button class="act-btn del" title="Delete करें" onclick="openDeleteRoadModal(\''+rid_e+'\',\''+rname_e+'\')">🗑️</button>' +
     '</div>';
     return '<tr class="'+(isDumped?'road-dumped':'')+'">' +
       '<td style="text-align:center;color:var(--text3);font-size:12px;">'+(i+1)+'</td>'+
-      '<td style="font-family:var(--font-en);font-size:12px;color:var(--text3);letter-spacing:.02em;">'+(r.Road_ID||'')+(isDumped?'<span class="dump-label">Dump</span>':'')+'</td>'+
+      '<td style="font-family:var(--font-en);font-size:12px;color:var(--text3);letter-spacing:.02em;">'+(r.Road_ID||'')+(isDumped?'<span class="dump-label">Dump</span>':'')+_shareRemark(r)+'</td>'+
       '<td style="font-weight:500;"><span class="link-cell" onclick="openRoadModal(\''+rid_e+'\')">'+r.Road_Name+'</span></td>'+
       '<td><span class="'+tc+'">'+(r.Road_Type||'')+'</span></td>'+
       '<td style="color:var(--text3);">'+(r.Srishti_Code||'')+'</td>'+
@@ -5771,7 +5984,7 @@ function applyProjFilter(){
     });
     paid+=Number((D.payTotals||{})[pname(p)]||0);
     return'<tr>'+
-      '<td style="font-family:var(--font-en);font-size:12px;color:var(--text3);">'+pid+'</td>'+
+      '<td style="font-family:var(--font-en);font-size:12px;color:var(--text3);">'+pid+_shareRemark(p)+'</td>'+
       '<td><span class="link-cell" onclick="openProjDetailInline(\''+pe+'\')">'+pname(p)+'</span></td>'+
       (function(){
         var rc=D.projRoads.filter(function(pr){return pr.Project_ID===pid;}).length;
@@ -5805,6 +6018,7 @@ function applyProjFilter(){
       '<td><div class="act-btns">'+
         '<button class="btn-sm" onclick="openProjDetailInline(\''+pe+'\')" style="font-size:10px;padding:3px 7px;">Detail</button>'+
         '<button class="act-btn edit" title="Edit" onclick="openEditProjModal(\''+pe+'\')">✏️</button>'+
+        '<button class="act-btn" title="किसी user के साथ साझा करें" onclick="openShareModal(\'project\',\''+pe+'\',\''+pne+'\')">🔗</button>'+
         ((p.Status==='Dumped')
           ? '<button class="act-btn restore" title="Restore करें" onclick="restoreProjAction(\''+pe+'\',\''+pne+'\')">🔄</button>'
           : '<button class="act-btn dump"    title="Dump करें"    onclick="openDumpProjModal(\''+pe+'\',\''+pne+'\')">📦</button>')+

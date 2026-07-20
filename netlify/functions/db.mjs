@@ -17,6 +17,7 @@ import crypto from 'node:crypto';
 export const config = { path: '/api/db' };
 
 const BUCKET = 'rms-files';
+const SUPER_ADMIN = 'admin';   // पहला/मुख्य admin — हटाया/निष्क्रिय नहीं हो सकता
 const env = (k) => process.env[k] || '';
 
 // SUPABASE_URL चाहे कैसे भी paste हुआ हो (/rest/v1 आदि सहित) — सिर्फ़ origin लें
@@ -81,6 +82,45 @@ const rpc = (fn, params) => sb('/rest/v1/rpc/' + fn, {
 });
 const encPath = (p) => p.split('/').map(encodeURIComponent).join('/');
 
+// ── app_users (Admin-managed) — scrypt password hashing ──
+const makeSalt = () => crypto.randomBytes(16).toString('hex');
+const hashPw = (pw, salt) => crypto.scryptSync(String(pw || ''), salt, 32).toString('hex');
+function verifyPw(pw, salt, hash) {
+  try {
+    const a = Buffer.from(hashPw(pw, salt), 'hex');
+    const b = Buffer.from(String(hash || ''), 'hex');
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  } catch (e) { return false; }
+}
+async function dbUser(uname) {
+  const rows = await sb('/rest/v1/app_users?username=eq.' + encodeURIComponent(uname) + '&select=*');
+  return (rows && rows[0]) ? rows[0] : null;
+}
+async function tableHasUsers() {
+  const r = await sb('/rest/v1/app_users?select=username&limit=1');
+  return !!(r && r.length);
+}
+async function activeAdmins() {
+  return (await sb('/rest/v1/app_users?role=eq.admin&active=eq.true&select=username')) || [];
+}
+// env APP_USERS को app_users टेबल में एक बार भर दो — फिर वे भी edit/delete हो सकें
+async function seedEnvUsers() {
+  const map = users();
+  const rows = Object.keys(map).map(k => {
+    const salt = makeSalt();
+    return { username: k, pass_hash: hashPw(map[k].p, salt), pass_salt: salt, role: map[k].role, name: map[k].name, active: true };
+  });
+  if (rows.length) await sb('/rest/v1/app_users', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify(rows)
+  });
+}
+function requireAdmin(auth) {
+  if (!auth || auth.r !== 'admin') { const e = new Error('सिर्फ़ Admin — अनुमति नहीं'); e._code = 403; throw e; }
+}
+const cleanUname = (s) => String(s || '').trim().toLowerCase();
+
 // Road Estimator के stores — whitelist
 const EST_STORES = new Set(['sheets', 'estimates', 'master']);
 function estStore(s) {
@@ -108,20 +148,127 @@ export default async (req) => {
   try {
     // ── बिना token वाले ops ──
     if (op === 'login') {
-      const u = users()[String(a.user || '').toLowerCase().trim()];
-      if (!u || u.p !== String(a.pass || '')) {
+      const key = cleanUname(a.user);
+      const pass = String(a.pass || '');
+      // 1) app_users टेबल (Admin द्वारा बनाए users) — प्राथमिकता
+      const row = await dbUser(key);
+      if (row) {
+        if (row.active === false) return json({ ok: true, result: { success: false, message: 'यह खाता निष्क्रिय है — Admin से संपर्क करें।' } });
+        if (!verifyPw(pass, row.pass_salt, row.pass_hash)) return json({ ok: true, result: { success: false, message: 'गलत यूजर ID या पासवर्ड।' } });
+        return json({ ok: true, result: { success: true, token: makeToken(row.username, row.role, row.name), role: row.role, name: row.name } });
+      }
+      // टेबल भर चुका है → वही एकमात्र सत्य; env fallback बंद (हटाए users वापस न आएँ)
+      if (await tableHasUsers()) {
         return json({ ok: true, result: { success: false, message: 'गलत यूजर ID या पासवर्ड।' } });
       }
-      const uname = String(a.user).trim();
-      return json({ ok: true, result: { success: true, token: makeToken(uname, u.role, u.name), role: u.role, name: u.name } });
+      // 2) bootstrap — टेबल खाली है: env APP_USERS से पहला admin login, फिर env users को टेबल में seed
+      const u = users()[key];
+      if (!u || u.p !== pass) {
+        return json({ ok: true, result: { success: false, message: 'गलत यूजर ID या पासवर्ड।' } });
+      }
+      try { await seedEnvUsers(); } catch (e) { /* seed विफल हो तो भी login चले */ }
+      return json({ ok: true, result: { success: true, token: makeToken(key, u.role, u.name), role: u.role, name: u.name } });
     }
     if (op === 'session') {
       const o = checkToken(a.token);
-      return json({ ok: true, result: o ? { valid: true, role: o.r, name: o.n } : { valid: false } });
+      return json({ ok: true, result: o ? { valid: true, role: o.r, name: o.n, u: o.u } : { valid: false } });
     }
 
     // ── बाक़ी सबके लिए token अनिवार्य ──
-    if (!checkToken(body.token)) return json({ ok: false, error: 'unauthorized — दोबारा login करें' }, 401);
+    const auth = checkToken(body.token);
+    if (!auth) return json({ ok: false, error: 'unauthorized — दोबारा login करें' }, 401);
+
+    // share picker के लिए — कोई भी logged-in user सक्रिय users की सूची (username+name) ले सकता है
+    if (op === 'userTargets') {
+      const rows = await sb('/rest/v1/app_users?active=eq.true&select=username,name&order=name') || [];
+      return json({ ok: true, result: rows.filter(u => cleanUname(u.username) !== cleanUname(auth.u)) });
+    }
+
+    // ── Admin: user-प्रबंधन ops (role=admin अनिवार्य) ──
+    if (op === 'userList') {
+      requireAdmin(auth);
+      const rows = await sb('/rest/v1/app_users?select=username,role,name,active,created_at&order=created_at') || [];
+      return json({ ok: true, result: rows });
+    }
+    if (op === 'userCreate') {
+      requireAdmin(auth);
+      const uname = cleanUname(a.user);
+      if (!/^[a-z0-9._-]{2,40}$/.test(uname)) throw new Error('username में केवल a-z 0-9 . _ - चलेंगे (2–40 अक्षर)');
+      if (String(a.pass || '').length < 4) throw new Error('password कम-से-कम 4 अक्षर का हो');
+      if (await dbUser(uname)) throw new Error('यह username पहले से मौजूद है');
+      const role = (a.role === 'admin') ? 'admin' : 'user';
+      const salt = makeSalt();
+      await sb('/rest/v1/app_users', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify([{ username: uname, pass_hash: hashPw(a.pass, salt), pass_salt: salt, role, name: String(a.name || uname), active: true }])
+      });
+      return json({ ok: true, result: true });
+    }
+    if (op === 'userSetPassword') {
+      requireAdmin(auth);
+      const uname = cleanUname(a.user);
+      if (String(a.pass || '').length < 4) throw new Error('password कम-से-कम 4 अक्षर का हो');
+      const salt = makeSalt();
+      await sb('/rest/v1/app_users?username=eq.' + encodeURIComponent(uname), {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ pass_hash: hashPw(a.pass, salt), pass_salt: salt })
+      });
+      return json({ ok: true, result: true });
+    }
+    if (op === 'userUpdate') {
+      requireAdmin(auth);
+      const uname = cleanUname(a.user);
+      const target = await dbUser(uname);
+      if (!target) throw new Error('user नहीं मिला');
+      let role = (a.role === 'admin') ? 'admin' : 'user';
+      if (uname === SUPER_ADMIN) role = 'admin';   // Super Admin हमेशा Admin रहेगा
+      if (target.role === 'admin' && role !== 'admin') {
+        const admins = await activeAdmins();
+        if (admins.length <= 1) throw new Error('कम-से-कम एक सक्रिय Admin ज़रूरी है');
+      }
+      const patch = { role };
+      if (a.name !== undefined) patch.name = String(a.name || uname);
+      await sb('/rest/v1/app_users?username=eq.' + encodeURIComponent(uname), {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify(patch)
+      });
+      return json({ ok: true, result: true });
+    }
+    if (op === 'userSetActive') {
+      requireAdmin(auth);
+      const uname = cleanUname(a.user);
+      if (!a.active && uname === SUPER_ADMIN) throw new Error('Super Admin को निष्क्रिय नहीं किया जा सकता');
+      if (uname === cleanUname(auth.u)) throw new Error('आप स्वयं को निष्क्रिय नहीं कर सकते');
+      if (!a.active) {
+        const target = await dbUser(uname);
+        if (target && target.role === 'admin') {
+          const admins = await activeAdmins();
+          if (admins.length <= 1) throw new Error('कम-से-कम एक सक्रिय Admin ज़रूरी है');
+        }
+      }
+      await sb('/rest/v1/app_users?username=eq.' + encodeURIComponent(uname), {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ active: !!a.active })
+      });
+      return json({ ok: true, result: true });
+    }
+    if (op === 'userDelete') {
+      requireAdmin(auth);
+      const uname = cleanUname(a.user);
+      if (uname === SUPER_ADMIN) throw new Error('Super Admin को हटाया नहीं जा सकता');
+      if (uname === cleanUname(auth.u)) throw new Error('आप स्वयं को नहीं हटा सकते');
+      const target = await dbUser(uname);
+      if (target && target.role === 'admin') {
+        const admins = await activeAdmins();
+        if (admins.length <= 1) throw new Error('कम-से-कम एक सक्रिय Admin ज़रूरी है — पहले दूसरा Admin बनाएँ');
+      }
+      await sb('/rest/v1/app_users?username=eq.' + encodeURIComponent(uname), { method: 'DELETE', headers: { 'Prefer': 'return=minimal' } });
+      return json({ ok: true, result: true });
+    }
 
     switch (op) {
       // workbook/sheet ops → schema के ss_* RPC functions
@@ -187,22 +334,32 @@ export default async (req) => {
       // ── Road Estimator data (est_kv: store/id/data) ──────────
       case 'estAll': {
         const store = estStore(a.store);
-        const rows = await sb('/rest/v1/est_kv?store=eq.' + encodeURIComponent(store) + '&select=id,data&order=id') || [];
+        let q = '/rest/v1/est_kv?store=eq.' + encodeURIComponent(store) + '&select=id,data&order=id';
+        if (store !== 'master') q += '&owner=eq.' + encodeURIComponent(auth.u);   // सिर्फ़ अपना
+        const rows = await sb(q) || [];
         return json({ ok: true, result: rows });
       }
       case 'estPut': {
         const store = estStore(a.store);
+        if (store === 'master') requireAdmin(auth);   // साझा Master Data सिर्फ़ Admin बदल सकता है
+        const rec = { store, id: String(a.id), data: a.data, updated_at: new Date().toISOString() };
+        if (store !== 'master') rec.owner = auth.u;   // estimates/sheets → वर्तमान user के
         await sb('/rest/v1/est_kv', {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
-          body: JSON.stringify([{ store, id: String(a.id), data: a.data, updated_at: new Date().toISOString() }])
+          body: JSON.stringify([rec])
         });
         return json({ ok: true, result: true });
       }
       case 'estBulkPut': {
         const store = estStore(a.store);
+        if (store === 'master') requireAdmin(auth);   // साझा Master Data सिर्फ़ Admin बदल सकता है
         const now = new Date().toISOString();
-        const rows = (a.rows || []).map(r => ({ store, id: String(r.id), data: r.data, updated_at: now }));
+        const rows = (a.rows || []).map(r => {
+          const o = { store, id: String(r.id), data: r.data, updated_at: now };
+          if (store !== 'master') o.owner = auth.u;
+          return o;
+        });
         if (rows.length) await sb('/rest/v1/est_kv', {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
@@ -210,22 +367,28 @@ export default async (req) => {
         });
         return json({ ok: true, result: rows.length });
       }
-      case 'estStamp':    return json({ ok: true, result: (await rpc('est_stamp', {})) || {} });
-      case 'estFetchAll': return json({ ok: true, result: (await rpc('est_all', {})) || {} });
+      case 'estStamp':    return json({ ok: true, result: (await rpc('est_stamp', { p_owner: auth.u })) || {} });
+      case 'estFetchAll': return json({ ok: true, result: (await rpc('est_all', { p_owner: auth.u })) || {} });
       case 'estDel': {
         const store = estStore(a.store);
-        await sb('/rest/v1/est_kv?store=eq.' + encodeURIComponent(store) + '&id=eq.' + encodeURIComponent(String(a.id)), { method: 'DELETE' });
+        if (store === 'master') requireAdmin(auth);   // साझा Master Data सिर्फ़ Admin बदल सकता है
+        let q = '/rest/v1/est_kv?store=eq.' + encodeURIComponent(store) + '&id=eq.' + encodeURIComponent(String(a.id));
+        if (store !== 'master') q += '&owner=eq.' + encodeURIComponent(auth.u);   // सिर्फ़ अपना
+        await sb(q, { method: 'DELETE' });
         return json({ ok: true, result: true });
       }
       case 'estClear': {
         const store = estStore(a.store);
-        await sb('/rest/v1/est_kv?store=eq.' + encodeURIComponent(store), { method: 'DELETE' });
+        if (store === 'master') requireAdmin(auth);   // साझा Master Data सिर्फ़ Admin बदल सकता है
+        let q = '/rest/v1/est_kv?store=eq.' + encodeURIComponent(store);
+        if (store !== 'master') q += '&owner=eq.' + encodeURIComponent(auth.u);   // सिर्फ़ अपना store खाली
+        await sb(q, { method: 'DELETE' });
         return json({ ok: true, result: true });
       }
 
       default: return json({ ok: false, error: 'अज्ञात op: ' + op }, 400);
     }
   } catch (e) {
-    return json({ ok: false, error: String(e.message || e) }, 500);
+    return json({ ok: false, error: String(e.message || e) }, e && e._code ? e._code : 500);
   }
 };

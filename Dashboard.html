@@ -3839,8 +3839,11 @@ tr.sec-row-new  td { background: #effcf6; }
       <div class="form-grid">
 
         <div class="fg">
-          <label class="fg-label">Road ID <span class="req">*</span></label>
-          <input class="config-input" id="rf-id" placeholder="जैसे: RD005">
+          <label class="fg-label">Road ID <span style="font-weight:400;color:var(--text3);font-size:11px;">(केवल अंक, अधिकतम 8 — खाली छोड़ें तो अपने-आप बनेगा)</span></label>
+          <div style="display:flex;gap:6px;">
+            <input class="config-input" id="rf-id" placeholder="जैसे: 101 (केवल अंक, वैकल्पिक)" maxlength="8" inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'').slice(0,8)" style="flex:1;min-width:0;">
+            <button type="button" id="rf-renumber-btn" onclick="renumberRoadPrompt()" title="Road ID बदलें" style="display:none;white-space:nowrap;padding:0 10px;border:1px solid var(--border);border-radius:var(--radius);background:#fff;cursor:pointer;font-size:12px;">🔢 बदलें</button>
+          </div>
         </div>
 
         <div class="fg">
@@ -13017,6 +13020,7 @@ function openAddRoadModal() {
   document.getElementById('rf-maint').value = '2';
   document.getElementById('rf-maint-note').textContent = '';
   document.getElementById('rf-id').readOnly = false;
+  document.getElementById('rf-renumber-btn').style.display = 'none';   // नई सड़क — ID auto/typed, बदलें बटन नहीं
   document.getElementById('rf-result').innerHTML = '';
   document.getElementById('rf-submit-btn').disabled = false;
   document.getElementById('road-form-modal').classList.add('open');
@@ -13029,6 +13033,7 @@ function openEditRoadModal(rid) {
   document.getElementById('road-form-modal-title').textContent = '✏️ सड़क Edit करें';
   document.getElementById('rf-id').value    = road.Road_ID || '';
   document.getElementById('rf-id').readOnly = true;
+  document.getElementById('rf-renumber-btn').style.display = '';   // Edit में Road ID बदला जा सकता है
   document.getElementById('rf-name').value  = road.Road_Name || '';
   document.getElementById('rf-type').value  = road.Road_Type || '';
   document.getElementById('rf-code').value  = road.Srishti_Code || '';
@@ -13754,8 +13759,12 @@ function submitRoadForm() {
     remark:      document.getElementById('rf-rem').value.trim()
   };
   if (data.roadType === '__new__') { resEl.innerHTML='<div class="status-box error">❌ पहले नया प्रकार "जोड़ें" दबाकर confirm करें</div>'; return; }
-  if (!data.roadId)   { resEl.innerHTML='<div class="status-box error">❌ Road ID अनिवार्य है</div>'; return; }
+  if (data.roadId && !/^\d{1,8}$/.test(data.roadId)) { resEl.innerHTML='<div class="status-box error">❌ Road ID केवल अंक (अधिकतम 8 डिजिट) हो सकता है</div>'; return; }
   if (!data.roadName) { resEl.innerHTML='<div class="status-box error">❌ सड़क का नाम अनिवार्य है</div>'; return; }
+  // Road ID न दी हो (add mode) — चेतावनी देकर अपने-आप बनने दें
+  if (_rfMode === 'add' && !data.roadId) {
+    if (!confirm('⚠️ Road ID नहीं डाला गया है।\n\nसिस्टम अपने-आप एक Road ID बना देगा और सड़क सहेज देगा।\nबाद में आप इसे Edit करके बदल भी सकते हैं।\n\nजारी रखें?')) return;
+  }
   btnEl.disabled = true;
   resEl.innerHTML = '<div class="status-box loading">⏳ Save हो रहा है...</div>';
   var fn = _rfMode === 'add' ? 'addRoad' : 'updateRoad';
@@ -13764,14 +13773,40 @@ function submitRoadForm() {
     .withSuccessHandler(function(res) {
       _opEnd();
       if (res.success) {
-        resEl.innerHTML = '<div class="status-box success">✅ सफलतापूर्वक '+ (_rfMode==='add'?'जोड़ा':'update किया') +' गया</div>';
+        var idMsg = (res.autoId && res.roadId) ? ' (Road ID: '+res.roadId+' — अपने-आप बनी)' : '';
+        resEl.innerHTML = '<div class="status-box success">✅ सफलतापूर्वक '+ (_rfMode==='add'?'जोड़ा':'update किया') +' गया'+idMsg+'</div>';
         refreshRoadAndProjectData(function(){
-          setTimeout(function(){closeModal('road-form-modal');}, 1200);
+          setTimeout(function(){closeModal('road-form-modal');}, res.autoId ? 1800 : 1200);
         });
       } else { resEl.innerHTML='<div class="status-box error">❌ '+res.msg+'</div>'; btnEl.disabled=false; }
     })
     .withFailureHandler(function(err){ _opEnd(); resEl.innerHTML='<div class="status-box error">❌ '+(err.message||err)+'</div>'; btnEl.disabled=false; })
     [fn](data);
+}
+
+// Road ID बदलें (सभी जुड़े sections/documents/project-roads/plan reference साथ अपडेट)
+function renumberRoadPrompt() {
+  var oldId = document.getElementById('rf-id').value.trim();
+  if (!oldId) return;
+  var newId = prompt('नया Road ID दर्ज करें (केवल अंक, अधिकतम 8 डिजिट)।\nसभी जुड़े विवरण (sections/दस्तावेज़/project-roads/योजना) के reference भी अपने-आप बदल जाएँगे।', oldId);
+  if (newId === null) return;
+  newId = newId.trim();
+  if (!newId || newId === oldId) return;
+  if (!/^\d{1,8}$/.test(newId)) { alert('❌ Road ID केवल अंक (अधिकतम 8 डिजिट) हो सकता है'); return; }
+  var resEl = document.getElementById('rf-result');
+  resEl.innerHTML = '<div class="status-box loading">⏳ Road ID बदला जा रहा है...</div>';
+  _opStart();
+  google.script.run
+    .withSuccessHandler(function(res){
+      _opEnd();
+      if (res && res.success) {
+        alert('✅ Road ID बदला: '+oldId+' → '+newId);
+        closeModal('road-form-modal');
+        refreshRoadAndProjectData(function(){ renderRoads(); });
+      } else { resEl.innerHTML='<div class="status-box error">❌ '+((res&&res.msg)||'नहीं बदला')+'</div>'; }
+    })
+    .withFailureHandler(function(err){ _opEnd(); resEl.innerHTML='<div class="status-box error">❌ '+(err.message||err)+'</div>'; })
+    .renumberRoad(oldId, newId);
 }
 
 var _dumpId='', _dumpName='';

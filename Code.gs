@@ -214,13 +214,21 @@ function _saveLocalUsers_(m) {
 // एक बार seed होने पर USERS_ auth में उपयोग नहीं होता (हटाया user वापस न आए)।
 function _seedLocalUsersIfNeeded_() {
   var props = PropertiesService.getScriptProperties();
-  if (props.getProperty('app_users_seeded')) return;
   var dyn = _localUsers_();
-  Object.keys(USERS_).forEach(function (k) {
-    if (!dyn[k]) dyn[k] = { hash: USERS_[k].hash, role: USERS_[k].role, name: USERS_[k].name, active: true };
-  });
-  _saveLocalUsers_(dyn);
-  props.setProperty('app_users_seeded', '1');
+  var changed = false;
+  // Super Admin हमेशा मौजूद रहे — flag की परवाह किए बिना (पुराने seed में छूट गया हो तो भी)
+  if (!dyn[SUPER_ADMIN_] && USERS_[SUPER_ADMIN_]) {
+    dyn[SUPER_ADMIN_] = { hash: USERS_[SUPER_ADMIN_].hash, role: 'admin', name: USERS_[SUPER_ADMIN_].name, active: true };
+    changed = true;
+  }
+  // पहली बार — बाक़ी built-in users भी एक बार copy करो
+  if (!props.getProperty('app_users_seeded')) {
+    Object.keys(USERS_).forEach(function (k) {
+      if (!dyn[k]) { dyn[k] = { hash: USERS_[k].hash, role: USERS_[k].role, name: USERS_[k].name, active: true }; changed = true; }
+    });
+    props.setProperty('app_users_seeded', '1');
+  }
+  if (changed) _saveLocalUsers_(dyn);
 }
 // कम-से-कम एक सक्रिय Admin ज़रूरी — क्या यह key वही आख़िरी admin है?
 function _isLastActiveAdmin_(dyn, key) {
@@ -1326,14 +1334,29 @@ function ensureStatusColumn_(ss) {
 }
 
 // ── नई सड़क Add ──────────────────────────────────────────────
+// Road ID — केवल अंक, अधिकतम 8 डिजिट
+function _validRoadId_(id) { return /^\d{1,8}$/.test(String(id || '').trim()); }
+// सबसे छोटा खाली numeric क्रमांक — Road ID न दिए जाने पर auto-generate (केवल अंक)
+function genRoadId_(ss) {
+  const used = {};
+  sheetToObjects_(ss, '1_Roads_Master').forEach(function (r) {
+    const n = parseInt(String(r.Road_ID || '').replace(/\D/g, '')) || 0;
+    if (n > 0) used[n] = true;
+  });
+  let n = 1; while (used[n]) n++;
+  return String(n);
+}
+
 function addRoad(data) {
   const ss = SBApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('1_Roads_Master');
   if (!sheet) return { success: false, msg: '1_Roads_Master Sheet नहीं मिली' };
-  const rid = String(data.roadId || '').trim();
-  if (!rid) return { success: false, msg: 'Road ID अनिवार्य है' };
-  // Duplicate check
   const rows = sheetToObjects_(ss, '1_Roads_Master');
+  let rid = String(data.roadId || '').trim();
+  let autoId = false;
+  if (!rid) { rid = genRoadId_(ss); autoId = true; }   // ID न दी हो तो अपने-आप बनाओ
+  else if (!_validRoadId_(rid)) return { success: false, msg: 'Road ID केवल अंक (अधिकतम 8 डिजिट) हो सकता है' };
+  // Duplicate check
   if (rows.find(r => r.Road_ID === rid)) return { success: false, msg: 'Road ID "' + rid + '" पहले से मौजूद है' };
   ensureStatusColumn_(ss);
   ensureRoadMasterExtraCols_(ss);
@@ -1347,7 +1370,45 @@ function addRoad(data) {
   _stampOwnerLastRow_(sheet);   // यह सड़क वर्तमान user की
   SBApp.flush();
   CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
-  return { success: true };
+  return { success: true, roadId: rid, autoId: autoId };
+}
+
+// किसी सड़क का Road_ID बदलो (सभी जुड़ी शीट में reference भी अपडेट)
+const ROAD_ID_SHEETS = ['1_Roads_Master', '2_Road_Sections', '3B_Project_Roads', '4_Documents', '5_Letters', '7_Annual_Plan', 'OFC_RoadLinks', 'OFC_Letters'];
+function renumberRoad(oldId, newId) {
+  oldId = String(oldId || '').trim();
+  newId = String(newId || '').trim();
+  if (!oldId || !newId) return { success: false, msg: 'पुराना व नया दोनों Road ID ज़रूरी हैं' };
+  if (oldId === newId) return { success: true };
+  if (!_validRoadId_(newId)) return { success: false, msg: 'Road ID केवल अंक (अधिकतम 8 डिजिट) हो सकता है' };
+  const ss = SBApp.getActiveSpreadsheet();
+  const roads = sheetToObjects_(ss, '1_Roads_Master');
+  if (!roads.some(r => String(r.Road_ID).trim() === oldId)) return { success: false, msg: oldId + ' नहीं मिली' };
+  if (roads.some(r => String(r.Road_ID).trim() === newId)) return { success: false, msg: newId + ' पहले से मौजूद है' };
+  // हर शीट में Road_ID कॉलम पर oldId → newId
+  ROAD_ID_SHEETS.forEach(function (sName) {
+    const s = ss.getSheetByName(sName);
+    if (!s || s.getLastRow() < 2) return;
+    const vals = s.getDataRange().getValues();
+    const c = vals[0].map(h => String(h).trim()).indexOf('Road_ID');
+    if (c < 0) return;
+    for (let r = 1; r < vals.length; r++) {
+      if (String(vals[r][c]).trim() === oldId) s.getRange(r + 1, c + 1).setValue(newId);
+    }
+  });
+  // 14_Shares — road share का Res_ID भी बदलो
+  const shr = ss.getSheetByName('14_Shares');
+  if (shr && shr.getLastRow() >= 2) {
+    const sv = shr.getDataRange().getValues();
+    const H = sv[0].map(h => String(h).trim());
+    const tC = H.indexOf('Res_Type'), iC = H.indexOf('Res_ID');
+    if (tC >= 0 && iC >= 0) for (let r = 1; r < sv.length; r++) {
+      if (String(sv[r][tC]) === 'road' && String(sv[r][iC]).trim() === oldId) shr.getRange(r + 1, iC + 1).setValue(newId);
+    }
+  }
+  SBApp.flush();
+  CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
+  return { success: true, oldId: oldId, newId: newId };
 }
 
 // "आखिरी कार्य की तारीख" (input type=date, YYYY-MM-DD) से Month/Year निकालें — पुराने Month/Year

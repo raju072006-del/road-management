@@ -896,6 +896,7 @@
   function structuralBatch(kind, index, count, silent) {
     const sheet = state.sheets[state.activeSheetId];
     if (!sheet) return false;
+    if (sheet.kind === "master") _masterEditDirty = true;   // master में row/col बदलाव → copies में लागू
     if (!hfReady) buildEngine();
     if (!hfReady) { if (!silent) alert("Links सुरक्षित रखने के लिए calculation engine (HyperFormula) ज़रूरी है।\nInternet जोड़कर page दोबारा खोलें।"); return false; }
     const sid = hfSheetId(sheet.name);
@@ -3353,6 +3354,11 @@
   };
   const VIEW_PARENT = { "master-cat": "master", "master-edit": "master", "rmr": "basic-analysis", "bitumen": "basic-analysis", "dom": "dom-boq", "boq": "dom-boq", "cover": "basic-sheet", "checklist": "basic-sheet", "index": "basic-sheet", "report": "basic-sheet", "reference": "basic-sheet" }; // sub-page → कौन-सा nav highlight हो
   function setActiveView(name) {
+    // Master-edit से बाहर निकलते समय — यदि master बदला है तो सभी loaded copies में लागू करो
+    if (name !== "master-edit" && _masterEditDirty && _editingMasterId) {
+      const mid = _editingMasterId; _masterEditDirty = false;
+      try { syncMasterToWorkingCopies(mid); } catch (e) { console.error("master→copy sync:", e); }
+    }
     // editor-panel को सही जगह mount करो (Rate Analysis / Master edit / DOM)
     if (name === "rate-analysis") mountEditor("rate");
     else if (name === "master-edit") mountEditor("master");
@@ -3831,9 +3837,11 @@
 
   // Master analysis को Master Data के अपने editor में खोलो (Rate Analysis से अलग)
   let masterEditReturnTab = "morth";
+  let _editingMasterId = null, _masterEditDirty = false;   // master-edit propagation ट्रैकिंग
   function openMasterForEdit(id) {
     const s = state.sheets[id]; if (!s) return;
     masterEditReturnTab = (s.source === "mord") ? "mord" : "morth";
+    _editingMasterId = id; _masterEditDirty = false;   // इस master के edit को ट्रैक करो
     openSheet(id);
     setActiveView("master-edit");
   }
@@ -4482,6 +4490,37 @@
     db.put("sheets", m);
     status("Master भी अपडेट हुआ: " + m.name);
   }
+  // ===== master → loaded copies (Master बदलने पर) =====
+  // User की पसंद: copies पूरी तरह Master से overwrite हों, फिर उसी Estimate के RMR + OH/CP से दोबारा लिंक।
+  function syncMasterToWorkingCopies(masterId) {
+    const m = state.sheets[masterId];
+    if (!m || m.kind !== "master") return 0;
+    const copies = state.order.map((id) => state.sheets[id]).filter((s) => s && s.kind === "working" && s.masterId === masterId);
+    if (!copies.length) return 0;
+    for (const copy of copies) {
+      // पूरा content Master से overwrite (identity व linkage-fields — id/name/rmrId/ohGroupId — सुरक्षित)
+      copy.cells = JSON.parse(JSON.stringify(m.cells || {}));
+      copy.merges = JSON.parse(JSON.stringify(m.merges || []));
+      copy.colWidths = (m.colWidths || []).slice();
+      copy.rows = m.rows; copy.cols = m.cols;
+      copy.lockTop = m.lockTop; copy.lockBottom = m.lockBottom;
+      copy.source = m.source; copy.size = m.size; copy.itemKey = m.itemKey; copy.itemName = m.itemName;
+      copy.title = copy.rmrName ? ((m.title ? m.title + "  " : "") + "[RMR: " + copy.rmrName + "]") : (m.title || "");
+      copy.syncPref = null; copy.updatedAt = Date.now();
+      // उसी Estimate के RMR + Bitumen + OH-group से दोबारा लिंक
+      if (copy.rmrId) repointMaterialToRmr(copy, copy.rmrId);
+      try { linkBitumenToEstimate(copy, estOfWorkingSheet(copy)); } catch (e) {}
+      ensureFinalRateRows(copy);
+      applyOverheadToSheet(copy);
+      db.put("sheets", copy);
+    }
+    buildEngine();
+    reRateAllAnalyses();
+    if (state.activeSheetId) renderGrid();
+    status(copies.length + " loaded copy अपडेट हुईं — Master बदलाव लागू + RMR/OH re-link");
+    return copies.length;
+  }
+
   // working-copy में किसी user-बदलाव के बाद — पूछो/लागू करो
   function maybeSyncToMaster(sheet) {
     if (!isWorkingCopy(sheet)) return;
@@ -4506,6 +4545,7 @@
   function userSetCell(sheet, r, c, raw) {
     pushUndo("sheet");
     setCell(sheet, r, c, raw);
+    if (sheet && sheet.kind === "master") _masterEditDirty = true;   // master बदला → बाहर निकलने पर copies में लागू
     maybeSyncToMaster(sheet);
   }
   function updateTopbarEstimate() {

@@ -3586,7 +3586,57 @@
       if (typeof s.itemName !== "string" || !s.itemName) s.itemName = (s.title || s.name);
     }
   }
-  function isMasterSheet(s) { return !!s && s.kind !== "working"; }
+  // केवल असली master library शीट (MoRTH/MoRD Analysis) — DOM/BOQ/Summary/Bitumen नहीं
+  function isMasterSheet(s) { return !!s && s.kind === "master"; }
+  // DOM/BOQ/Summary/Bitumen शीट जो किसी estimate से जुड़ी नहीं (orphan) — सुरक्षित सफ़ाई हेतु
+  function orphanAuxSheets() {
+    const ref = new Set();
+    for (const id in state.estimates) { try { estAllSheetIds(state.estimates[id]).forEach((x) => ref.add(x)); } catch (e) {} }
+    const kinds = new Set(["dom", "boq", "summary", "bitumen"]);
+    return state.order.filter((id) => { const s = state.sheets[id]; return s && kinds.has(s.kind) && !ref.has(id); });
+  }
+  function _orphanSecName(k) {
+    return k === "dom" ? "DOM (DOM & BOQ सेक्शन)" : k === "boq" ? "BOQ (DOM & BOQ सेक्शन)" :
+           k === "summary" ? "Summary of Estimated Cost" : k === "bitumen" ? "Bitumen Rate Analysis" : k;
+  }
+  // orphan शीटों की सूची दिखाओ — हर एक का सेक्शन + नाम, और प्रत्येक के आगे अलग हटाने का बटन
+  function showOrphanSheets() {
+    const ov = document.createElement("div");
+    ov.className = "modal-overlay";
+    document.body.appendChild(ov);
+    function render() {
+      const orphans = orphanAuxSheets();
+      let body;
+      if (!orphans.length) {
+        body = "<p class='sub'>✅ कोई orphan शीट नहीं — सभी DOM/BOQ/Summary/Bitumen शीट किसी न किसी estimate से जुड़ी हैं।</p>";
+      } else {
+        const rows = orphans.map((id) => {
+          const s = state.sheets[id];
+          const nm = escapeHtml(s.title || s.name || id);
+          return "<div class='row' style='justify-content:space-between;align-items:center;gap:10px;border-bottom:1px solid #e5e7eb;padding:8px 2px;'>" +
+            "<span style='flex:1;min-width:0;'><span style='font-size:11px;font-weight:700;color:#0b5;'>" + escapeHtml(_orphanSecName(s.kind)) + "</span><br><span style='font-weight:600;'>" + nm + "</span></span>" +
+            "<button class='btn sm' style='color:#b91c1c;border-color:#f5c2c8;white-space:nowrap;' data-del='" + id + "'>🗑 हटाएँ</button></div>";
+        }).join("");
+        body = "<p class='sub'>ये <b>" + orphans.length + "</b> शीट किसी भी estimate से जुड़ी नहीं हैं (orphan)। हर एक को अलग-अलग हटा सकते हैं:</p>" +
+          "<div style='max-height:52vh;overflow:auto;'>" + rows + "</div>";
+      }
+      ov.innerHTML = "<div class='modal' style='max-width:580px;'><h3>🧹 Orphan शीट — किसी estimate से न जुड़ी</h3>" + body +
+        "<div class='row' style='margin-top:12px;justify-content:flex-end;'><button class='btn' id='orClose'>बंद करें</button></div></div>";
+      ov.querySelector("#orClose").addEventListener("click", () => ov.remove());
+      ov.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", () => {
+        const id = b.dataset.del; const s = state.sheets[id];
+        if (!confirm("यह शीट पूरी तरह हटाएँ? (वापस नहीं होगा)\n\n" + (s ? (_orphanSecName(s.kind) + "\n" + (s.title || s.name || "")) : id))) return;
+        delete state.sheets[id]; const k = state.order.indexOf(id); if (k >= 0) state.order.splice(k, 1); if (db.del) db.del("sheets", id);
+        try { buildEngine(); } catch (e) {}
+        try { renderSheetList(); } catch (e) {}
+        try { renderMasterAnalysis(); } catch (e) {}
+        status("orphan शीट हटाई गई");
+        render();   // सूची ताज़ा करो (हटाई गई शीट हट जाए)
+      }));
+    }
+    ov.addEventListener("mousedown", (e) => { if (e.target === ov) ov.remove(); });
+    render();
+  }
   function isWorkingCopy(s) { return !!(s && s.kind === "working" && s.masterId && state.sheets[s.masterId]); }
   function masterSheets() { return state.order.map((id) => state.sheets[id]).filter(isMasterSheet); }
   function sourceMasters(src) { return masterSheets().filter((s) => (s.source || "morth") === src); }
@@ -5626,6 +5676,8 @@
     if (nMorth) nMorth.addEventListener("click", () => newSheet({ kind: "master", source: "morth", size: projectSize, group: defaultChapterKey("morth") }));
     const nMord = document.getElementById("btnNewMord");
     if (nMord) nMord.addEventListener("click", () => newSheet({ kind: "master", source: "mord", group: defaultChapterKey("mord") }));
+    const nOrphan = document.getElementById("btnCheckOrphans");
+    if (nOrphan) nOrphan.addEventListener("click", () => showOrphanSheets());
     // नया Chapter (हर tab का अपना source)
     document.querySelectorAll("[data-newchapter]").forEach((b) => b.addEventListener("click", () => addChapter(b.dataset.newchapter)));
     // खोज

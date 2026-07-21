@@ -1974,8 +1974,13 @@ tr.sec-row-new  td { background: #effcf6; }
       <div class="page-sub">8 श्रेणियों के सभी दस्तावेज़ — PDF, फ़ोटो Google Drive में save</div>
       <div class="page-hdr-title-line"></div>
     </div>
-    <button class="btn-primary" onclick="openUploadModal('')">📤 दस्तावेज़ Upload करें</button>
+    <button class="btn-primary" id="doc-upload-btn" onclick="openUploadModal('')">📤 दस्तावेज़ Upload करें</button>
   </div>
+  <div style="display:flex;gap:6px;margin-bottom:14px;border-bottom:2px solid var(--border);">
+    <button id="doctab-btn-project" onclick="docSwitchTab('project')" style="border:none;background:none;padding:8px 14px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;border-bottom:3px solid var(--navy);color:var(--navy);margin-bottom:-2px;">📁 परियोजनावार दस्तावेज़</button>
+    <button id="doctab-btn-personal" onclick="docSwitchTab('personal')" style="border:none;background:none;padding:8px 14px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;border-bottom:3px solid transparent;color:var(--text3);margin-bottom:-2px;">👤 व्यक्तिगत दस्तावेज़</button>
+  </div>
+  <div id="doctab-project">
   <div class="filter-bar">
     <label>परियोजना:</label>
     <select class="f-select" id="d-proj" onchange="applyDocFilter()"><option value="">— सभी —</option></select>
@@ -2003,6 +2008,78 @@ tr.sec-row-new  td { background: #effcf6; }
           <tr><td colspan="9" style="text-align:center;color:var(--text3);padding:24px;">⏳ डेटा लोड हो रहा है...</td></tr>
         </tbody>
       </table>
+    </div>
+  </div>
+  </div><!-- /doctab-project -->
+
+  <!-- व्यक्तिगत दस्तावेज़ tab -->
+  <div id="doctab-personal" style="display:none;">
+    <div style="margin-bottom:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <button class="btn-primary" onclick="openPersonalUploadModal()">📤 व्यक्तिगत दस्तावेज़ Upload करें</button>
+      <span style="font-size:12px;color:var(--text3);">आपके निजी पेपर — केवल आपको दिखते हैं। विषय/विवरण व जारी तिथि के साथ रखें।</span>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <div class="card-head-title">मेरे व्यक्तिगत दस्तावेज़</div>
+        <span id="pd-count" style="font-size:12px;color:var(--text3);"></span>
+      </div>
+      <div class="card-body-flush" style="overflow-x:auto;">
+        <table class="tbl">
+          <thead><tr>
+            <th>ID</th><th>विषय / विवरण</th><th>जारी तिथि</th><th>फ़ाइल</th><th>अपलोड तिथि</th><th style="min-width:120px;">Actions</th>
+          </tr></thead>
+          <tbody id="pd-tbody">
+            <tr><td colspan="6" style="text-align:center;color:var(--text3);padding:24px;">⏳ लोड हो रहा है...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PERSONAL DOC UPLOAD MODAL ══ -->
+<div class="modal-overlay" id="personal-doc-modal" style="z-index:500;">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-header" style="background:linear-gradient(135deg,#0b5,#0b7d57);">
+      <div>
+        <div class="modal-title">📤 व्यक्तिगत दस्तावेज़</div>
+        <div class="modal-sub">आपके निजी पेपर — डेटाबेस Storage में सुरक्षित (सिर्फ़ आपको दिखेंगे)</div>
+      </div>
+      <div class="modal-close" onclick="closeModal('personal-doc-modal')">✕</div>
+    </div>
+    <div class="modal-body">
+      <div style="display:grid;gap:12px;">
+        <div>
+          <label class="form-label">विषय / विवरण <span class="req">*</span></label>
+          <input class="config-input" id="pd-subject" placeholder="किस संबंध में है — जैसे: नियुक्ति पत्र, प्रमाणपत्र, स्थानांतरण आदेश..." style="width:100%;box-sizing:border-box;">
+        </div>
+        <div>
+          <label class="form-label">जारी होने की तिथि</label>
+          <input class="config-input" id="pd-issue-date" type="date" style="width:100%;box-sizing:border-box;">
+        </div>
+        <div>
+          <label class="form-label">फाइल <span class="req">*</span> <span style="font-weight:400;color:var(--text3);font-size:10px;">PDF, JPG, PNG, DOC, XLS — अधिकतम 50MB</span></label>
+          <label id="pd-file-label" style="display:flex;align-items:center;gap:10px;border:2px dashed var(--border2);border-radius:8px;padding:12px 14px;cursor:pointer;background:#f8fafc;" ondragover="event.preventDefault();this.style.borderColor='var(--navy)'" ondragleave="this.style.borderColor='var(--border2)'" ondrop="event.preventDefault();this.style.borderColor='var(--border2)';var _dt=new DataTransfer();Array.from(event.dataTransfer.files).forEach(function(f){_dt.items.add(f)});var _inp=document.getElementById('pd-file');_inp.files=_dt.files;pdFileChange(_inp)">
+            <span style="font-size:22px;">📎</span>
+            <div>
+              <div style="font-size:12px;font-weight:600;color:var(--navy);">क्लिक करें या खींचें (Drag &amp; Drop)</div>
+              <div id="pd-file-info" style="font-size:10px;color:var(--text3);">कोई फाइल नहीं चुनी</div>
+            </div>
+            <input type="file" id="pd-file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx" style="display:none;" onchange="pdFileChange(this)">
+          </label>
+        </div>
+      </div>
+      <div id="pd-progress-wrap" style="display:none;margin-top:12px;">
+        <div style="font-size:12px;color:var(--text2);margin-bottom:4px;" id="pd-progress-msg">⏳ Upload हो रहा है...</div>
+        <div style="background:var(--bg);border-radius:6px;height:8px;overflow:hidden;border:1px solid var(--border);">
+          <div id="pd-progress-bar" style="height:100%;background:linear-gradient(90deg,#0b7d57,#16a34a);border-radius:6px;width:0%;transition:width 0.4s;"></div>
+        </div>
+      </div>
+      <div id="pd-result" style="margin-top:10px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('personal-doc-modal')">रद्द करें</button>
+      <button class="btn-primary" id="pd-submit-btn" onclick="submitPersonalUpload()">📤 Upload करें</button>
     </div>
   </div>
 </div>
@@ -6033,7 +6110,119 @@ function applyProjFilter(){
 function clearProjFilter(){document.getElementById('p-search').value='';document.getElementById('p-status').value='';document.getElementById('p-type').value='';applyProjFilter();}
 
 // ── Documents ────────────────────────────────────────────────
-function renderDocs(){applyDocFilter();}
+function renderDocs(){ docSwitchTab(_docTab || 'project'); }
+
+// ── दस्तावेज़ सेक्शन के tab (परियोजनावार / व्यक्तिगत) ──
+var _docTab = 'project';
+var _personalDocs = [];
+function docSwitchTab(which){
+  _docTab = which;
+  var proj = document.getElementById('doctab-project');
+  var pers = document.getElementById('doctab-personal');
+  var bP = document.getElementById('doctab-btn-project');
+  var bU = document.getElementById('doctab-btn-personal');
+  var upBtn = document.getElementById('doc-upload-btn');
+  var isProj = which !== 'personal';
+  if (proj) proj.style.display = isProj ? '' : 'none';
+  if (pers) pers.style.display = isProj ? 'none' : '';
+  if (upBtn) upBtn.style.display = isProj ? '' : 'none';   // header वाला upload बटन सिर्फ़ परियोजनावार में
+  if (bP){ bP.style.borderBottomColor = isProj?'var(--navy)':'transparent'; bP.style.color = isProj?'var(--navy)':'var(--text3)'; }
+  if (bU){ bU.style.borderBottomColor = isProj?'transparent':'var(--navy)'; bU.style.color = isProj?'var(--text3)':'var(--navy)'; }
+  if (isProj) applyDocFilter(); else renderPersonalDocs();
+}
+function renderPersonalDocs(){
+  var tb = document.getElementById('pd-tbody'); if(!tb) return;
+  tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:24px;">⏳ लोड हो रहा है...</td></tr>';
+  google.script.run
+    .withSuccessHandler(function(list){ _personalDocs = list || []; _renderPersonalRows(_personalDocs); })
+    .withFailureHandler(function(e){ tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--red-gov);padding:20px;">❌ '+(e.message||e)+'</td></tr>'; })
+    .getPersonalDocs();
+}
+function _renderPersonalRows(list){
+  var tb = document.getElementById('pd-tbody'); if(!tb) return;
+  var cnt = document.getElementById('pd-count'); if(cnt) cnt.textContent = list.length+' दस्तावेज़';
+  if(!list.length){ tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:24px;">अभी कोई व्यक्तिगत दस्तावेज़ नहीं — ऊपर से Upload करें।</td></tr>'; return; }
+  tb.innerHTML = list.map(function(d){
+    var lnk=(d.Drive_Link||''), fn=(d.File_Name||'').replace(/'/g,"\\'");
+    var did=(d.Doc_ID||'').replace(/'/g,"\\'");
+    var view = lnk ? '<button onclick="openFileViewer(\''+lnk.replace(/'/g,"\\'")+'\',\''+fn+'\')" style="font-size:11px;padding:3px 9px;background:var(--navy);color:#fff;border:none;border-radius:4px;cursor:pointer;">👁 देखें</button>' : '—';
+    return '<tr>'+
+      '<td style="font-size:11px;color:var(--text3);">'+(d.Doc_ID||'')+'</td>'+
+      '<td style="font-weight:600;">'+(d.Subject||'')+'</td>'+
+      '<td style="font-size:12px;white-space:nowrap;">'+(d.Issue_Date||'—')+'</td>'+
+      '<td style="font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(d.File_Name||'')+'">'+(d.File_Name||'')+'</td>'+
+      '<td style="font-size:12px;white-space:nowrap;">'+(d.Upload_Date||'')+'</td>'+
+      '<td style="white-space:nowrap;"><div class="act-btns">'+view+' <button class="act-btn del" title="हटाएँ" onclick="deletePersonalDocAction(\''+did+'\')">🗑️</button></div></td>'+
+    '</tr>';
+  }).join('');
+}
+function openPersonalUploadModal(){
+  document.getElementById('pd-subject').value='';
+  document.getElementById('pd-issue-date').value='';
+  document.getElementById('pd-file').value='';
+  document.getElementById('pd-file-info').textContent='कोई फाइल नहीं चुनी';
+  document.getElementById('pd-result').innerHTML='';
+  document.getElementById('pd-progress-wrap').style.display='none';
+  document.getElementById('pd-submit-btn').disabled=false;
+  document.getElementById('pd-submit-btn').innerHTML='📤 Upload करें';
+  document.getElementById('personal-doc-modal').classList.add('open');
+}
+function pdFileChange(input){
+  var f=input.files&&input.files[0];
+  document.getElementById('pd-file-info').textContent = f ? (f.name+' ('+(f.size/1024/1024).toFixed(2)+' MB)') : 'कोई फाइल नहीं चुनी';
+}
+function submitPersonalUpload(){
+  var subject=document.getElementById('pd-subject').value.trim();
+  var issueDate=document.getElementById('pd-issue-date').value;
+  var files=document.getElementById('pd-file').files;
+  var resEl=document.getElementById('pd-result'), btnEl=document.getElementById('pd-submit-btn');
+  var pw=document.getElementById('pd-progress-wrap'), pb=document.getElementById('pd-progress-bar'), pm=document.getElementById('pd-progress-msg');
+  if(!subject){ resEl.innerHTML='<div class="status-box error">❌ विषय/विवरण लिखें</div>'; return; }
+  if(!files||!files.length){ resEl.innerHTML='<div class="status-box error">❌ फाइल चुनें</div>'; return; }
+  var f=files[0];
+  if(f.size>50*1024*1024){ resEl.innerHTML='<div class="status-box error">❌ फाइल 50MB से बड़ी है</div>'; return; }
+  // जारी तिथि dd/mm/yyyy में बदलें (input type=date देता है yyyy-mm-dd)
+  var isd=''; if(issueDate){ var p=issueDate.split('-'); if(p.length===3) isd=p[2]+'/'+p[1]+'/'+p[0]; else isd=issueDate; }
+  btnEl.disabled=true; btnEl.innerHTML='⏳...';
+  pw.style.display='block'; pb.style.width='15%'; pm.textContent='⏳ फाइल पढ़ी जा रही है...'; pm.style.color='var(--text2)';
+  var reader=new FileReader();
+  reader.onload=function(e){
+    pb.style.width='40%'; pm.textContent='⏳ Upload हो रहा है...';
+    var prog=40; var t=setInterval(function(){ if(prog<86){prog+=5;pb.style.width=prog+'%';} },700);
+    _opStart();
+    google.script.run
+      .withSuccessHandler(function(res){
+        clearInterval(t); _opEnd(); pb.style.width='100%';
+        if(res&&res.success){
+          pm.textContent='✅ Upload सफल!'; pm.style.color='var(--green-gov)';
+          resEl.innerHTML='<div class="status-box success">✅ <strong>'+res.fileName+'</strong> सहेजा गया।</div>';
+          btnEl.disabled=false; btnEl.innerHTML='📤 Upload करें';
+          renderPersonalDocs();
+          setTimeout(function(){ closeModal('personal-doc-modal'); }, 1000);
+        } else {
+          pb.style.background='#dc2626'; pm.textContent='❌ Error'; pm.style.color='var(--red-gov)';
+          resEl.innerHTML='<div class="status-box error">❌ '+((res&&res.msg)||'Error')+'</div>';
+          btnEl.disabled=false; btnEl.innerHTML='📤 Upload करें';
+        }
+      })
+      .withFailureHandler(function(err){
+        clearInterval(t); _opEnd();
+        pb.style.background='#dc2626'; pm.textContent='❌ Error'; pm.style.color='var(--red-gov)';
+        resEl.innerHTML='<div class="status-box error">❌ '+(err.message||err)+'</div>';
+        btnEl.disabled=false; btnEl.innerHTML='📤 Upload करें';
+      })
+      .uploadPersonalDoc({ subject:subject, issueDate:isd, fileName:f.name, mimeType:f.type||'application/octet-stream', base64:e.target.result.split(',')[1] });
+  };
+  reader.onerror=function(){ pw.style.display='none'; resEl.innerHTML='<div class="status-box error">❌ फाइल पढ़ने में error</div>'; btnEl.disabled=false; btnEl.innerHTML='📤 Upload करें'; };
+  reader.readAsDataURL(f);
+}
+function deletePersonalDocAction(docId){
+  if(!confirm('यह व्यक्तिगत दस्तावेज़ पूरी तरह हटाएँ?')) return;
+  google.script.run
+    .withSuccessHandler(function(res){ if(res&&res.success) renderPersonalDocs(); else alert('❌ '+((res&&res.msg)||'')); })
+    .withFailureHandler(function(e){ alert('❌ '+(e.message||e)); })
+    .deletePersonalDoc(docId);
+}
 function applyDocFilter(){
   var pr=document.getElementById('d-proj').value;
   var ca=document.getElementById('d-cat').value;

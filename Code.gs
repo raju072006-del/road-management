@@ -2734,6 +2734,58 @@ function uploadFileToDrive(payload) {
   }
 }
 
+// ── व्यक्तिगत दस्तावेज़ (Personal Documents) — per-user, project-रहित ──
+// हर user के निजी पेपर: विषय/विवरण + जारी तिथि + फाइल। '15_Personal_Docs' शीट, Owner से filter।
+function _ensurePersonalDocsSheet_(ss) {
+  var sh = ss.getSheetByName('15_Personal_Docs');
+  if (!sh) { sh = ss.insertSheet('15_Personal_Docs'); sh.appendRow(['Doc_ID', 'Owner', 'Subject', 'Issue_Date', 'File_Name', 'Upload_Date', 'Drive_Link']); SBApp.flush(); }
+  return sh;
+}
+function getPersonalDocs() {
+  var ss = SBApp.getActiveSpreadsheet();
+  _ensurePersonalDocsSheet_(ss);
+  var me = _owner_();
+  return sheetToObjects_(ss, '15_Personal_Docs').filter(function (d) { return String(d.Owner || '') === me; });
+}
+function uploadPersonalDoc(payload) {
+  try {
+    payload = payload || {};
+    var subject = String(payload.subject || '').trim();
+    if (!subject) return { success: false, msg: 'विषय/विवरण ज़रूरी है' };
+    if (!payload.base64) return { success: false, msg: 'फाइल ज़रूरी है' };
+    var rmsFolder    = getRMSFolder_();
+    var personalRoot = getOrCreateFolder_(rmsFolder, 'Personal');
+    var userFolder   = getOrCreateFolder_(personalRoot, _owner_() || 'unknown');
+    var blob = Utilities.newBlob(Utilities.base64Decode(payload.base64), payload.mimeType || 'application/octet-stream', payload.fileName || 'file');
+    var file = userFolder.createFile(blob);
+    file.setSharing(SBDrive.Access.ANYONE_WITH_LINK, SBDrive.Permission.VIEW);
+    var viewUrl = file.getUrl();
+    var ss  = SBApp.getActiveSpreadsheet();
+    var sh  = _ensurePersonalDocsSheet_(ss);
+    var now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy');
+    var docId = 'PD' + String(sh.getLastRow()).padStart(4, '0');
+    sh.appendRow([docId, _owner_(), subject, String(payload.issueDate || ''), payload.fileName || '', now, viewUrl]);
+    SBApp.flush();
+    CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
+    return { success: true, docId: docId, viewUrl: viewUrl, fileName: payload.fileName || '', subject: subject, issueDate: String(payload.issueDate || ''), uploadDate: now };
+  } catch (e) { return { success: false, msg: String(e.message || e) }; }
+}
+function deletePersonalDoc(docId) {
+  docId = String(docId || '').trim();
+  var ss = SBApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName('15_Personal_Docs'); if (!sh) return { success: true };
+  var vals = sh.getDataRange().getValues();
+  var H = vals[0].map(function (h) { return String(h).trim(); });
+  var idC = H.indexOf('Doc_ID'), owC = H.indexOf('Owner');
+  var me = _owner_();
+  for (var r = vals.length - 1; r >= 1; r--) {
+    if (String(vals[r][idC]).trim() === docId && (String(vals[r][owC] || '') === me || _isAdmin_())) sh.deleteRow(r + 1);
+  }
+  SBApp.flush();
+  CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
+  return { success: true };
+}
+
 // ── Cache Clear ──────────────────────────────────────────────
 // HTML से call होने पर सिर्फ cache clear करता है (no alert)
 // Spreadsheet menu से call होने पर alert दिखाता है

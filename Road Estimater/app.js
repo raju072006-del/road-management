@@ -180,15 +180,9 @@
       } catch (e) { _cloudMode = false; }
       if (_cloudMode) {
         await flushPendingOnBoot();   // पिछली बार की बची writes पहले भेजो (डेटा हानि न हो)
-        if (localStorage.getItem(STAMP_KEY)) {
-          /* mirror मौजूद — तुरंत खोलो, मिलान background में */
-          cloudSync(true)
-            .then((changed) => { if (changed) location.reload(); })
-            .catch((e) => console.error("cloud sync:", e));
-        } else {
-          /* इस browser में पहली बार — mirror भरना ज़रूरी है */
-          await cloudSync(false);
-        }
+        // एक ही बार सिंक: stamp बराबर हो तो तुरंत mirror से; बदला हो तो mirror ताज़ा करके build —
+        // कोई location.reload() नहीं (पहले "एक बार लोड फिर दोबारा लोड" वाली दिक्कत यहीं से थी)।
+        try { await cloudSync(false); } catch (e) { console.error("cloud sync:", e); }
       }
       return _db;
     },

@@ -363,36 +363,34 @@ create table if not exists public.est_kv (
 
 alter table public.est_kv enable row level security;
 alter table public.est_kv add column if not exists owner text;
--- मौजूदा estimates/sheets → Super Admin ('Admin') के (Phase 2 migration)
-update public.est_kv set owner = 'Admin' where owner is null and store in ('estimates', 'sheets');
+-- नोट: Estimator per-user isolation फ़िलहाल टाला गया (estimator rebuild तक) — owner column भविष्य के लिए रखा है,
+-- पर est_stamp/est_all इसे filter नहीं करते → सभी users को सारा estimator डेटा (MoRTH/MoRD analysis सहित) दिखता है।
 
--- Estimator: तेज़ मिलान — गिनती + आख़िरी बदलाव समय (user-scoped; master साझा)
+-- Estimator: तेज़ मिलान — गिनती + आख़िरी बदलाव समय (साझा — सभी stores)
+drop function if exists public.est_stamp(text);
 drop function if exists public.est_stamp();
-create or replace function public.est_stamp(p_owner text default '')
+create or replace function public.est_stamp()
 returns jsonb
 language sql stable
 as $$
   select coalesce(jsonb_object_agg(store, jsonb_build_object('n', n, 'ts', ts)), '{}'::jsonb)
   from (
     select store, count(*) as n, max(updated_at) as ts
-    from public.est_kv
-    where store = 'master' or owner is not distinct from p_owner
-    group by store
+    from public.est_kv group by store
   ) t;
 $$;
 
--- Estimator: तीनों stores का डेटा एक ही call में (user-scoped; master साझा)
+-- Estimator: तीनों stores का डेटा एक ही call में (साझा)
+drop function if exists public.est_all(text);
 drop function if exists public.est_all();
-create or replace function public.est_all(p_owner text default '')
+create or replace function public.est_all()
 returns jsonb
 language sql stable
 as $$
   select coalesce(jsonb_object_agg(store, rows), '{}'::jsonb)
   from (
     select store, jsonb_agg(jsonb_build_object('id', id, 'data', data) order by id) as rows
-    from public.est_kv
-    where store = 'master' or owner is not distinct from p_owner
-    group by store
+    from public.est_kv group by store
   ) t;
 $$;
 

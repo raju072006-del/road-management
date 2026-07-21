@@ -344,22 +344,20 @@ export default async (req) => {
       }
 
       // ── Road Estimator data (est_kv: store/id/data) ──────────
+      // NOTE: Estimator per-user isolation फ़िलहाल टाला गया (estimator rebuild तक) — सभी users को सारा
+      // estimator डेटा (MoRTH/MoRD master analysis सहित) दिखता है। सिर्फ़ 'master' store की EDIT admin-only है।
       case 'estAll': {
         const store = estStore(a.store);
-        let q = '/rest/v1/est_kv?store=eq.' + encodeURIComponent(store) + '&select=id,data&order=id';
-        if (store !== 'master') q += '&owner=eq.' + encodeURIComponent(auth.u);   // सिर्फ़ अपना
-        const rows = await sb(q) || [];
+        const rows = await sb('/rest/v1/est_kv?store=eq.' + encodeURIComponent(store) + '&select=id,data&order=id') || [];
         return json({ ok: true, result: rows });
       }
       case 'estPut': {
         const store = estStore(a.store);
         if (store === 'master') requireAdmin(auth);   // साझा Master Data सिर्फ़ Admin बदल सकता है
-        const rec = { store, id: String(a.id), data: a.data, updated_at: new Date().toISOString() };
-        if (store !== 'master') rec.owner = auth.u;   // estimates/sheets → वर्तमान user के
         await sb('/rest/v1/est_kv', {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
-          body: JSON.stringify([rec])
+          body: JSON.stringify([{ store, id: String(a.id), data: a.data, updated_at: new Date().toISOString() }])
         });
         return json({ ok: true, result: true });
       }
@@ -367,11 +365,7 @@ export default async (req) => {
         const store = estStore(a.store);
         if (store === 'master') requireAdmin(auth);   // साझा Master Data सिर्फ़ Admin बदल सकता है
         const now = new Date().toISOString();
-        const rows = (a.rows || []).map(r => {
-          const o = { store, id: String(r.id), data: r.data, updated_at: now };
-          if (store !== 'master') o.owner = auth.u;
-          return o;
-        });
+        const rows = (a.rows || []).map(r => ({ store, id: String(r.id), data: r.data, updated_at: now }));
         if (rows.length) await sb('/rest/v1/est_kv', {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
@@ -379,22 +373,18 @@ export default async (req) => {
         });
         return json({ ok: true, result: rows.length });
       }
-      case 'estStamp':    return json({ ok: true, result: (await rpc('est_stamp', { p_owner: auth.u })) || {} });
-      case 'estFetchAll': return json({ ok: true, result: (await rpc('est_all', { p_owner: auth.u })) || {} });
+      case 'estStamp':    return json({ ok: true, result: (await rpc('est_stamp', {})) || {} });
+      case 'estFetchAll': return json({ ok: true, result: (await rpc('est_all', {})) || {} });
       case 'estDel': {
         const store = estStore(a.store);
         if (store === 'master') requireAdmin(auth);   // साझा Master Data सिर्फ़ Admin बदल सकता है
-        let q = '/rest/v1/est_kv?store=eq.' + encodeURIComponent(store) + '&id=eq.' + encodeURIComponent(String(a.id));
-        if (store !== 'master') q += '&owner=eq.' + encodeURIComponent(auth.u);   // सिर्फ़ अपना
-        await sb(q, { method: 'DELETE' });
+        await sb('/rest/v1/est_kv?store=eq.' + encodeURIComponent(store) + '&id=eq.' + encodeURIComponent(String(a.id)), { method: 'DELETE' });
         return json({ ok: true, result: true });
       }
       case 'estClear': {
         const store = estStore(a.store);
         if (store === 'master') requireAdmin(auth);   // साझा Master Data सिर्फ़ Admin बदल सकता है
-        let q = '/rest/v1/est_kv?store=eq.' + encodeURIComponent(store);
-        if (store !== 'master') q += '&owner=eq.' + encodeURIComponent(auth.u);   // सिर्फ़ अपना store खाली
-        await sb(q, { method: 'DELETE' });
+        await sb('/rest/v1/est_kv?store=eq.' + encodeURIComponent(store), { method: 'DELETE' });
         return json({ ok: true, result: true });
       }
 

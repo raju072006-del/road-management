@@ -1034,60 +1034,65 @@
   }
   // सभी section-total/subtotal/grandtotal के formula + letters दोबारा बनाओ
   function rebuildAnalysisTotals(sheet) {
+    ensureGrandtotRole(sheet);   // MoRD/imported: "Total" पंक्ति grandtot मार्क हो (final rate हेतु ज़रूरी)
     const info = analysisScan(sheet);
-    if (info.subRow < 0 && info.sections.every((s) => s.tot < 0)) return; // structured नहीं
-    info.sections.forEach((sec, i) => {
-      const letter = String.fromCharCode(97 + i);
-      const hc = sheet.cells[addr(sec.head, 2)];
-      if (hc) { hc.v = letter + ")  " + (hc.secName || sec.name || ""); }
-      if (sec.tot >= 0) {
-        const tc = sheet.cells[addr(sec.tot, 2)] || (sheet.cells[addr(sec.tot, 2)] = {});
-        tc.v = "Total (" + letter + ")"; tc.role = "sectot";
-        const rng = sec.itemEnd >= sec.itemStart ? "=ROUND(SUM(" + addr(sec.itemStart, 6) + ":" + addr(sec.itemEnd, 6) + "),2)" : "=0";
-        putFormula(sheet, sec.tot, 6, rng);
-      }
-    });
-    const hasRoy = info.sections.some((s) => isRoyaltySec(sheet, s));
-    const hasGrand = info.grandRow >= 0;   // grandtot हो तो Royalty उसमें (Sub Total से बाहर); न हो तो Sub Total में
-    if (info.subRow >= 0) {
-      const sc = sheet.cells[addr(info.subRow, 2)] || (sheet.cells[addr(info.subRow, 2)] = {}); sc.v = (hasRoy && hasGrand) ? "Sub Total without Royality =" : "Sub Total ="; sc.role = "subtot";
-      const parts = info.sections.filter((s) => s.tot >= 0 && (hasGrand ? !isRoyaltySec(sheet, s) : true)).map((s) => addr(s.tot, 6));
-      putFormula(sheet, info.subRow, 6, parts.length ? "=ROUND(" + parts.join("+") + ",2)" : "=0");
-    }
-    // Overhead / Contractor Profit — A = Sub Total पर (सब 2 दशमलव); % इस sheet के OH group से
-    const oh = ohSettingsForSheet(sheet);
-    const grandParts = [];
-    if (info.subRow >= 0) {
-      const subA = addr(info.subRow, 6); grandParts.push(subA);
-      if (info.ohcpRow >= 0) {
-        const c = sheet.cells[addr(info.ohcpRow, 2)] || (sheet.cells[addr(info.ohcpRow, 2)] = {});
-        c.role = "ohcp"; c.v = "Overhead + Contractor Profit @ " + fmtPct(oh.combPct) + "%";
-        putFormula(sheet, info.ohcpRow, 6, "=ROUND(" + subA + "*" + mrNum(oh.combPct) + "/100,2)");
-        grandParts.push(addr(info.ohcpRow, 6));
-      }
-      let ohA = null;
-      if (info.ohRow >= 0) {
-        const c = sheet.cells[addr(info.ohRow, 2)] || (sheet.cells[addr(info.ohRow, 2)] = {});
-        c.role = "overhead"; c.v = "Overhead Charges @ " + fmtPct(oh.ohPct) + "%";
-        putFormula(sheet, info.ohRow, 6, "=ROUND(" + subA + "*" + mrNum(oh.ohPct) + "/100,2)");
-        ohA = addr(info.ohRow, 6); grandParts.push(ohA);
-      }
-      if (info.cpRow >= 0) {
-        const c = sheet.cells[addr(info.cpRow, 2)] || (sheet.cells[addr(info.cpRow, 2)] = {});
-        c.role = "profit"; c.v = "Contractor Profit @ " + fmtPct(oh.cpPct) + "%";
-        const base = ohA ? "(" + subA + "+" + ohA + ")" : subA;   // A + Overhead पर
-        putFormula(sheet, info.cpRow, 6, "=ROUND(" + base + "*" + mrNum(oh.cpPct) + "/100,2)");
-        grandParts.push(addr(info.cpRow, 6));
-      }
-    }
-    // Royalty section (हो तो) — grand Total में जोड़ो (OH/CP उस पर नहीं)
+    // structured = Sub Total या कोई section-total हो। unstructured (सिर्फ़ Total वाला MoRD/imported) में
+    // section/subtot/OH/grand की गणना नहीं होती (manual Total अछूता रहे), पर Rate per Unit/Say Rs फिर भी बनते हैं।
+    const structured = !(info.subRow < 0 && info.sections.every((s) => s.tot < 0));
     const roySec = info.sections.find((s) => isRoyaltySec(sheet, s) && s.tot >= 0);
-    if (info.grandRow >= 0) {
-      const gc = sheet.cells[addr(info.grandRow, 2)] || (sheet.cells[addr(info.grandRow, 2)] = {}); gc.v = hasRoy ? "Total incl Royality =" : "Total ="; gc.role = "grandtot";
-      const gParts = grandParts.slice(); if (roySec) gParts.push(addr(roySec.tot, 6));
-      putFormula(sheet, info.grandRow, 6, gParts.length ? "=ROUND(" + gParts.join("+") + ",2)" : "=0");
+    if (structured) {
+      info.sections.forEach((sec, i) => {
+        const letter = String.fromCharCode(97 + i);
+        const hc = sheet.cells[addr(sec.head, 2)];
+        if (hc) { hc.v = letter + ")  " + (hc.secName || sec.name || ""); }
+        if (sec.tot >= 0) {
+          const tc = sheet.cells[addr(sec.tot, 2)] || (sheet.cells[addr(sec.tot, 2)] = {});
+          tc.v = "Total (" + letter + ")"; tc.role = "sectot";
+          const rng = sec.itemEnd >= sec.itemStart ? "=ROUND(SUM(" + addr(sec.itemStart, 6) + ":" + addr(sec.itemEnd, 6) + "),2)" : "=0";
+          putFormula(sheet, sec.tot, 6, rng);
+        }
+      });
+      const hasRoy = info.sections.some((s) => isRoyaltySec(sheet, s));
+      const hasGrand = info.grandRow >= 0;   // grandtot हो तो Royalty उसमें (Sub Total से बाहर); न हो तो Sub Total में
+      if (info.subRow >= 0) {
+        const sc = sheet.cells[addr(info.subRow, 2)] || (sheet.cells[addr(info.subRow, 2)] = {}); sc.v = (hasRoy && hasGrand) ? "Sub Total without Royality =" : "Sub Total ="; sc.role = "subtot";
+        const parts = info.sections.filter((s) => s.tot >= 0 && (hasGrand ? !isRoyaltySec(sheet, s) : true)).map((s) => addr(s.tot, 6));
+        putFormula(sheet, info.subRow, 6, parts.length ? "=ROUND(" + parts.join("+") + ",2)" : "=0");
+      }
+      // Overhead / Contractor Profit — A = Sub Total पर (सब 2 दशमलव); % इस sheet के OH group से
+      const oh = ohSettingsForSheet(sheet);
+      const grandParts = [];
+      if (info.subRow >= 0) {
+        const subA = addr(info.subRow, 6); grandParts.push(subA);
+        if (info.ohcpRow >= 0) {
+          const c = sheet.cells[addr(info.ohcpRow, 2)] || (sheet.cells[addr(info.ohcpRow, 2)] = {});
+          c.role = "ohcp"; c.v = "Overhead + Contractor Profit @ " + fmtPct(oh.combPct) + "%";
+          putFormula(sheet, info.ohcpRow, 6, "=ROUND(" + subA + "*" + mrNum(oh.combPct) + "/100,2)");
+          grandParts.push(addr(info.ohcpRow, 6));
+        }
+        let ohA = null;
+        if (info.ohRow >= 0) {
+          const c = sheet.cells[addr(info.ohRow, 2)] || (sheet.cells[addr(info.ohRow, 2)] = {});
+          c.role = "overhead"; c.v = "Overhead Charges @ " + fmtPct(oh.ohPct) + "%";
+          putFormula(sheet, info.ohRow, 6, "=ROUND(" + subA + "*" + mrNum(oh.ohPct) + "/100,2)");
+          ohA = addr(info.ohRow, 6); grandParts.push(ohA);
+        }
+        if (info.cpRow >= 0) {
+          const c = sheet.cells[addr(info.cpRow, 2)] || (sheet.cells[addr(info.cpRow, 2)] = {});
+          c.role = "profit"; c.v = "Contractor Profit @ " + fmtPct(oh.cpPct) + "%";
+          const base = ohA ? "(" + subA + "+" + ohA + ")" : subA;   // A + Overhead पर
+          putFormula(sheet, info.cpRow, 6, "=ROUND(" + base + "*" + mrNum(oh.cpPct) + "/100,2)");
+          grandParts.push(addr(info.cpRow, 6));
+        }
+      }
+      // Royalty section (हो तो) — grand Total में जोड़ो (OH/CP उस पर नहीं)
+      if (info.grandRow >= 0) {
+        const gc = sheet.cells[addr(info.grandRow, 2)] || (sheet.cells[addr(info.grandRow, 2)] = {}); gc.v = hasRoy ? "Total incl Royality =" : "Total ="; gc.role = "grandtot";
+        const gParts = grandParts.slice(); if (roySec) gParts.push(addr(roySec.tot, 6));
+        putFormula(sheet, info.grandRow, 6, gParts.length ? "=ROUND(" + gParts.join("+") + ",2)" : "=0");
+      }
     }
-    // Rate per Unit = Total ÷ Quantity;  Say Rs. = FLOOR(rate, 0.10) — Analysis का final Rate
+    // Rate per Unit = Total ÷ Quantity;  Say Rs. = FLOOR(rate, 0.10) — हर analysis (MoRD सहित) में
     const qtyRef = takingOutputQtyRef(sheet);   // "Taking output =" पंक्ति का D (row जोड़ने/हटाने पर भी सही — slip नहीं)
     if (info.perRow >= 0 && info.grandRow >= 0) {
       const pc = sheet.cells[addr(info.perRow, 2)] || (sheet.cells[addr(info.perRow, 2)] = {}); pc.v = "Rate per Unit ="; pc.role = "perunit";
@@ -1097,8 +1102,8 @@
       const fc = sheet.cells[addr(info.finalRow, 2)] || (sheet.cells[addr(info.finalRow, 2)] = {}); fc.v = "Say Rs. ="; fc.role = "finalrate";
       putFormula(sheet, info.finalRow, 6, "=IFERROR(FLOOR(" + addr(info.perRow, 6) + ",0.1),\"\")");
     }
-    // lock: Royalty हो तो सिर्फ़ Total/perunit/finalrate lock (royalty items editable रहें); वरना Sub Total से नीचे सब
-    const lockFrom = roySec ? (info.grandRow >= 0 ? info.grandRow : info.subRow) : (info.subRow >= 0 ? info.subRow : -1);
+    // lock: Royalty हो तो सिर्फ़ Total/perunit/finalrate lock; वरना Sub Total (या Total) से नीचे सब
+    const lockFrom = roySec ? (info.grandRow >= 0 ? info.grandRow : info.subRow) : (info.subRow >= 0 ? info.subRow : (info.grandRow >= 0 ? info.grandRow : -1));
     if (lockFrom >= 0) sheet.lockBottom = Math.max(1, sheet.rows - lockFrom);
     persistSheet(sheet);
     if (hfReady && !_suppressEngine) buildEngine();
@@ -1106,8 +1111,13 @@
 
   // एक analysis में Overhead/Contractor Profit पंक्तियाँ (ohSettings अनुसार) बना/अपडेट करो
   function applyOverheadToSheet(sheet) {
-    if (!sheet || !isStructuredAnalysis(sheet)) return false;
+    if (!sheet) return false;
     ensureGrandtotRole(sheet); // MoRD/पुराने analysis: "Total" पंक्ति को grandtot मार्क करो ताकि OH/CP लग सके
+    if (!isStructuredAnalysis(sheet)) {
+      // structured नहीं (सिर्फ़ Total वाला MoRD/imported) — OH/CP नहीं लग सकते, पर Rate per Unit/Say Rs अपडेट कर दो
+      if (rowWithRole(sheet, "grandtot") >= 0) rebuildAnalysisTotals(sheet);
+      return false;
+    }
     if (rowWithRole(sheet, "grandtot") < 0) return false;
     const needRoles = ohSettingsForSheet(sheet).sep ? ["overhead", "profit"] : ["ohcp"];
     // पहले से सही charge-पंक्तियाँ हों तो सिर्फ़ % (formula/label) अपडेट करो — structural churn नहीं

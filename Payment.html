@@ -352,12 +352,20 @@ select.inp{appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmln
 /* report */
 .report-card{padding:18px}
 .print-only{display:none}
+/* नाप/भुगतान की चौड़ी तालिकाएँ पूरी छपें — landscape + पर्याप्त हाशिया */
+@page{ size:A4 landscape; margin:8mm }
 @media print{
   body{background:#fff}
   .nav,.topbar .btn,.no-print,.icon-btn,.btn,.row-actions,.toolbar{display:none !important}
-  .card{box-shadow:none; border-color:#ccc}
+  .card{box-shadow:none; border-color:#ccc; overflow:visible !important; max-height:none !important}
+  /* scroll-container तालिका को न काटे (यही "पूरी नाप नहीं छपती" का कारण था) */
+  .tbl-wrap{overflow:visible !important; max-height:none !important}
+  .app{padding:0 !important}
+  table{width:100% !important; table-layout:auto; border-collapse:collapse; font-size:10px}
+  .meas-tbl th,.meas-tbl td,.sep th,.sep td{padding:2px 4px !important; white-space:normal !important; word-break:break-word}
   .meas-tbl thead th{background:#e9eef5 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact}
-  table, tr, td, th{page-break-inside:avoid}
+  thead{display:table-header-group}          /* लंबी तालिका के हर पन्ने पर header दोहराए */
+  tr,td,th{page-break-inside:avoid}           /* सिर्फ़ पंक्ति अखंड रहे; तालिका पन्नों में बँट सके */
   .print-only{display:block}
 }
 
@@ -742,6 +750,14 @@ function paySum(arr,f){ return arr.reduce((s,x)=>s+toNum(f(x)),0); }
 function measQty(m){ return toNum(m.Quantity); }
 function measPaid(measId, excludePay){
   return paySum(detailsOf('MeasID',measId).filter(d=> !excludePay || String(d.PayID)!==String(excludePay)), d=>d.Qty);
+}
+/* इस नाप के विरुद्ध वह मात्रा जो वास्तव में भुगतान (चेक जारी = Paid) हो चुके बिलों में है —
+   सिर्फ़ इतनी मात्रा वाली नाप पूरी तरह लॉक; बिल बना पर भुगतान शेष हो तो नाप सुधार सकते हैं (मात्रा बिल-मात्रा से कम न हो) */
+function measBilledPaidQty(measId){
+  return paySum(detailsOf('MeasID',measId).filter(function(d){
+    const p=D().payments.find(x=>String(x.PayID)===String(d.PayID));
+    return p && payBoolJs(p.Paid);
+  }), d=>d.Qty);
 }
 function measRemain(m, excludePay){ return round(measQty(m)-measPaid(m.MeasID,excludePay),3); }
 
@@ -1298,10 +1314,12 @@ function engineerOptionsHtml(cur){
   if(cur && list.indexOf(cur)===-1) list.unshift(cur);
   return '<option value="">— अभियंता —</option>'+list.map(e=>`<option ${e===cur?'selected':''}>${esc(e)}</option>`).join('');
 }
-/* किसी नाप का अभियंता — निर्धारित का अपना; वास्तविक का = उसके parent निर्धारित का */
+/* किसी नाप का अभियंता — निर्धारित का अपना; वास्तविक का अपना (चुना हो) वरना उसके parent निर्धारित का */
 function measEngineer(m){
   if(!m) return '';
   if(isSanc(m)) return String(m.Engineer||'').trim();
+  const own=String(m.Engineer||'').trim();
+  if(own) return own;   // साइट-नाप का अपना अभियंता (जिसने बदले में नाप की)
   const s=sancById(m.SancRef); return s? String(s.Engineer||'').trim() : '';
 }
 /* इकाई के अनुसार कौन-कौन से सेल (नग1/नग2/लं/चौ/ऊँ) लगेंगे — सेटिंग में परिभाषित इकाई-config से;
@@ -1383,7 +1401,7 @@ function itemMeasCard(it){
       <td class="r num" style="color:var(--accent)">${nf2(meas)}</td>
       <td class="r num" style="color:var(--red-2)">${over?`<span style="background:#fef9c3">${nf2(rem)}</span>`:nf2(rem)}</td>
       <td class="c muted">${unit}</td><td class="c">${st}</td>
-      <td class="faint">${esc(measEngineer(m))||'—'}</td>
+      <td class="faint" style="white-space:nowrap">${esc(measEngineer(m))||'—'}</td>
       <td><div class="row-actions" style="align-items:center">
         <button class="btn btn-ghost btn-sm" title="इसके सापेक्ष साइट-नाप जोड़ें/संपादित (builder)" onclick='openMeasBuilder(${JSON.stringify(m.MeasID)})'>＋ नाप</button>
         <button class="icon-btn" title="निर्धारित नाप संपादित (linear builder)" onclick='openSancBuilder(${iid})'>✎</button>
@@ -1407,16 +1425,20 @@ function itemMeasCard(it){
         <td class="faint">${esc(sancRefLabel(m))||'—'}</td>
         <td class="r num" style="color:var(--green)"><b>${nf2(d.Qty)}</b></td><td class="c muted">${unit}</td>
         <td><b>${esc(p.BillNo||'—')}</b> <span class="badge ${p.BillType==='अंतिम'?'b-blue':'b-grey'}" style="font-size:10px">${esc(p.BillType||'चालू')}</span></td>
-        ${mbTd(m)}<td class="muted">${dmy(m.MDate)}</td>${recTd(m)}
+        <td class="faint">${esc(p.MBNo||'')||'—'}${p.MBPages?(' / पृ.'+esc(p.MBPages)):''}</td>
+        <td class="muted">${p.PDate?dmy(p.PDate):'—'}</td>
+        <td class="faint">${esc(m.MBNo||'')||'—'}${m.MBPage?(' / पृ.'+esc(m.MBPage)):''}${m.MDate?(' · '+dmy(m.MDate)):''}</td>
+        <td class="faint" style="white-space:nowrap">${esc(measEngineer(m))||'—'}</td>
         <td><div class="row-actions">
+          <button class="icon-btn" title="इस नाप को हिस्सों में बाँटें (बिल यथावत रहेगा)" onclick='openSplitModal(${JSON.stringify(m.MeasID)})'>✂</button>
           <button class="icon-btn" title="भुगतान/बिल संख्या संपादित" onclick='openPayBuilder(${JSON.stringify(d.PayID)})'>✎</button>
           <button class="icon-btn danger" title="यह भुगतान हटाएँ" onclick='delPayDetail(${JSON.stringify(d.PayID)},${JSON.stringify(m.MeasID)})'>🗑</button>
         </div></td></tr>`;
     });
   });
   const block2=blockTable('② भुगतान हो चुका', `भुगतान मात्रा योग: ${nf2(pQ)} ${unit} · राशि ${inr(fPaidA)}`,
-    `<th>संबंधित निर्धारित</th><th class="r">भु. मात्रा</th><th class="c">इकाई</th><th>बिल संख्या</th><th>MB / पृष्ठ</th><th>दिनांक</th><th>Record MB / तारीख</th><th></th>`,
-    paidRows, 16, '');
+    `<th>संबंधित निर्धारित</th><th class="r">भु. मात्रा</th><th class="c">इकाई</th><th>बिल संख्या</th><th>MB / पृष्ठ</th><th>दिनांक</th><th>Record MB / तारीख</th><th>अभियंता</th><th></th>`,
+    paidRows, 17, '');
 
   // ---- भाग 3: बचा हुआ (वास्तविक नाप का शेष) — ऋणात्मक मात्रा (कटौती/समायोजन) वाली नाप भी यहाँ दिखेगी, जब तक उसका भुगतान/समायोजन न हो जाए ----
   let remRows='';
@@ -1430,6 +1452,7 @@ function itemMeasCard(it){
         <td class="faint">${esc(sancRefLabel(m))||'—'}</td>
         <td class="r num" style="color:var(--red-2)"><b>${nf2(rem)}</b></td><td class="c muted">${unit}</td>
         <td class="c">${st}</td>${mbTd(m)}<td class="muted">${dmy(m.MDate)}</td>
+        <td class="faint" style="white-space:nowrap">${esc(measEngineer(m))||'—'}</td>
         <td><div class="row-actions">
           <button class="icon-btn" title="भुगतान इतिहास" onclick='measHistory(${JSON.stringify(m.MeasID)})'>☷</button>
           <button class="icon-btn" title="संपादित" onclick='openMeasModal(${JSON.stringify(m.MeasID)})'>✎</button>
@@ -1438,8 +1461,8 @@ function itemMeasCard(it){
     }
   });
   const block3=blockTable('③ Record हो गया, लेकिन भुगतान शेष है', `शेष भुगतान-योग्य मात्रा: ${nf2(rQ)} ${unit}`,
-    `<th>संबंधित निर्धारित</th><th class="r">शेष मात्रा</th><th class="c">इकाई</th><th class="c">स्थिति</th><th>Record MB/Page</th><th>दिनांक</th><th></th>`,
-    remRows, 15, '');
+    `<th>संबंधित निर्धारित</th><th class="r">शेष मात्रा</th><th class="c">इकाई</th><th class="c">स्थिति</th><th>Record MB/Page</th><th>दिनांक</th><th>अभियंता</th><th></th>`,
+    remRows, 16, '');
 
   const ignored = state.ignoredOverlaps||[];
   const pairs = overlapList(sanc,'sanc').map(p=>({sig:p.sig,text:'निर्धारित — '+p.text}))
@@ -1567,7 +1590,7 @@ function viewPay(){
         <td class="faint">${esc(p.MBNo||'—')}${p.MBPages?(' / पृ.'+esc(p.MBPages)):''}</td>
         <td class="muted">${dmy(p.PDate)}</td>
         <td><b>${esc(p.BillNo||'—')}</b></td>
-        <td class="faint">${esc(measEngineer(mm))||'—'}</td>
+        <td class="faint" style="white-space:nowrap">${esc(measEngineer(mm))||'—'}</td>
         <td><div class="row-actions">
           <button class="icon-btn" title="बिल संपादित" onclick='openPayBuilder(${JSON.stringify(d.PayID)})'>✎</button>
           <button class="icon-btn danger" title="यह भुगतान-लाइन हटाएँ" onclick='delPayDetail(${JSON.stringify(d.PayID)},${JSON.stringify(d.MeasID)})'>🗑</button>
@@ -2086,7 +2109,7 @@ function openMeasModal(id, kind, itemId, sancRef){
     ${dims.L===false?'':`<div class="field"><label>लंबाई</label><input id="mf_l" class="inp num mcalc" type="number" step="any" value="${m.Length!=null?esc(m.Length):''}"></div>`}
     ${dims.B===false?'':`<div class="field"><label>चौड़ाई</label><input id="mf_b" class="inp num mcalc" type="number" step="any" value="${m.Breadth!=null?esc(m.Breadth):''}"></div>`}
     ${dims.D===false?'':`<div class="field"><label>ऊँचाई / गहराई</label><input id="mf_d" class="inp num mcalc" type="number" step="any" value="${m.Depth!=null?esc(m.Depth):''}"></div>`}
-    ${isS?`<div class="field"><label>अवर अभियंता</label><select id="mf_eng" class="inp">${engineerOptionsHtml(m.Engineer)}</select></div>`:''}
+    <div class="field"><label>अवर अभियंता${isS?'':` <span class="faint" style="font-weight:400;font-size:11px">(खाली = निर्धारित वाला)</span>`}</label><select id="mf_eng" class="inp">${engineerOptionsHtml(m.Engineer)}</select></div>
     <div class="field"><label>MB संख्या</label><input id="mf_mb" class="inp" value="${esc(m.MBNo||'')}" placeholder="MB-21"></div>
     <div class="field"><label>MB पृष्ठ</label><input id="mf_pg" class="inp" value="${esc(m.MBPage||'')}" placeholder="12"></div>
     <div class="field"><label>नाप दिनांक</label><input id="mf_date" class="inp" type="date" value="${esc((m.MDate||'').slice(0,10))}"></div>
@@ -2142,8 +2165,14 @@ function saveMeasModal(id){
     const hasSanc = sancMeasOfItem(itemId).length>0;
     if(hasSanc && !sancRef){ toast('संबंधित निर्धारित नाप चुनें (किसके सापेक्ष)',true); return; }
     if(id){
-      // भुगतान हो चुकी नाप पूरी तरह लॉक — निगेटिव मात्रा वाला भुगतान भी (इसलिए Math.abs), नाप builder जैसा ही व्यवहार
-      const paid=measPaid(id); if(Math.abs(paid)>0.0005){ toast('इस नाप का भुगतान ('+qf(paid)+') हो चुका है — अब इसमें बदलाव नहीं किया जा सकता',true); return; }
+      // भुगतान (चेक) हो चुकी नाप पूरी तरह लॉक; बिल बना पर भुगतान शेष → संपादन खुला, पर मात्रा बिल-मात्रा से कम न हो
+      const paidHard=measBilledPaidQty(id);
+      if(Math.abs(paidHard)>0.0005){ toast('इस नाप का भुगतान ('+qf(paidHard)+') हो चुका है (चेक जारी) — अब इसमें बदलाव नहीं किया जा सकता',true); return; }
+      const billed=measPaid(id);
+      if(billed>0.0005){   // बिल बना (भुगतान शेष) — मात्रा original से बदल नहीं सकती (कम या अधिक, दोनों)
+        const orig=measQty(D().measurements.find(x=>String(x.MeasID)===String(id))||{});
+        if(Math.abs(q-orig)>0.0005){ toast('इस नाप का बिल बन चुका है (भुगतान शेष) — इसके लिए मात्रा '+qf(orig)+' चाहिए, अभी '+qf(q)+' है। मात्रा बदल नहीं सकती।',true); return; }
+      }
     }
   }
   // अधिक नाप (निर्धारित नाप के शेष से ज्यादा) — सिर्फ़ चेतावनी, सेव को रोकें नहीं; जो वास्तव में नापा गया है उसी का भुगतान बनना चाहिए
@@ -2163,7 +2192,7 @@ function saveMeasModal(id){
 }
 function _saveMeasModalDo(id,itemId,kind,sancRef,q){
   const prevM = id? D().measurements.find(x=>String(x.MeasID)===String(id)) : null;
-  const m={ MeasID:id||'', ItemID:itemId, Kind:kind, SancRef:sancRef, Engineer:(kind==='sanctioned'?val('mf_eng'):''),
+  const m={ MeasID:id||'', ItemID:itemId, Kind:kind, SancRef:sancRef, Engineer:val('mf_eng'),
     Ord:(prevM&&prevM.Ord!=null?prevM.Ord:''),
     Description:val('mf_desc'), ChFrom:val('mf_chf'), ChTo:val('mf_cht'), Side:val('mf_side'),
     MBNo:val('mf_mb'), MBPage:val('mf_pg'), MDate:val('mf_date'), RecordMB:val('mf_rmb'), RecordDate:val('mf_rdate'),
@@ -2283,7 +2312,7 @@ function mbCols(){
   if(d.B) th+=`<th>चौ</th>`;
   if(d.D) th+=`<th>ऊँ</th>`;
   if(MB.mode==='sanctioned') th+=`<th>अभियंता</th>`;
-  else th+=`<th>MB</th><th>पृ.</th><th>दिनांक</th>`;
+  else th+=`<th>MB</th><th>पृ.</th><th>दिनांक</th><th>अभियंता</th>`;
   th+=`<th class="r">मात्रा</th>`;
   return th;
 }
@@ -2365,10 +2394,12 @@ function builderRow(m){
   const id=m.MeasID||'', n1=nos1Of(m);
   // floor = वह न्यूनतम जिससे कम मात्रा नहीं हो सकती, और >0 हो तो पंक्ति हटाई नहीं जा सकती
   const floor = id ? (MB.mode==='sanctioned' ? sancMeasuredQty(id) : measPaid(id)) : 0;
-  // जिस (साइट/वास्तविक) नाप का भुगतान हो चुका है — उसकी पूरी पंक्ति संपादन के लिए डिसेबल (निगेटिव मात्रा वाला भुगतान भी, इसलिए Math.abs)
-  const paidLock = !!(id && MB.mode!=='sanctioned' && Math.abs(floor)>0.0005);
-  const lockTitle = paidLock ? ('इस नाप का भुगतान ('+qf(floor)+') हो चुका है — संपादन डिसेबल')
-    : (MB.mode==='sanctioned' ? ('इसके सापेक्ष नाप '+qf(floor)+' — हटाया नहीं जा सकता') : ('भुगतान '+qf(floor)+' — हटाया नहीं जा सकता'));
+  // पूरी तरह लॉक सिर्फ़ तब जब बिल का भुगतान (चेक) हो चुका हो। बिल बना पर भुगतान शेष हो तो संपादन खुला —
+  // पर मात्रा बिल-मात्रा (floor) से कम नहीं हो सकती (mbSave में जाँच)। पंक्ति हटाई भी नहीं जा सकती (floor>0)।
+  const paidHardQ = (id && MB.mode!=='sanctioned') ? measBilledPaidQty(id) : 0;
+  const paidLock = Math.abs(paidHardQ)>0.0005;
+  const lockTitle = paidLock ? ('इस नाप का भुगतान ('+qf(paidHardQ)+') हो चुका है (चेक जारी) — संपादन डिसेबल')
+    : (MB.mode==='sanctioned' ? ('इसके सापेक्ष नाप '+qf(floor)+' — हटाया नहीं जा सकता') : ('बिल बना ('+qf(floor)+') — हटाया नहीं जा सकता; मात्रा इससे कम नहीं हो सकती'));
   const dis = paidLock ? 'disabled' : '';
   const sideOpts=['','बायाँ','दायाँ','मध्य'].map(x=>`<option ${String(m.Side||'')===x?'selected':''}>${x||'—'}</option>`).join('');
   const v=(x)=> (x!=null&&String(x).trim()!=='')?esc(x):'';
@@ -2386,9 +2417,13 @@ function builderRow(m){
       ? `<td><select class="mb-in mb-grow" style="min-width:90px" data-f="Engineer" ${dis}>${engineerOptionsHtml(m.Engineer)}</select></td>`
       : `<td><input class="mb-in" style="width:58px" data-f="MBNo" value="${v(m.MBNo)}" placeholder="MB" ${dis}></td>
     <td><input class="mb-in" style="width:42px" data-f="MBPage" value="${v(m.MBPage)}" placeholder="पृ." ${dis}></td>
-    <td><input class="mb-in" style="width:130px" type="date" data-f="MDate" value="${v((m.MDate||'').slice(0,10))}" ${dis}></td>`}
+    <td><input class="mb-in" style="width:130px" type="date" data-f="MDate" value="${v((m.MDate||'').slice(0,10))}" ${dis}></td>
+    <td><select class="mb-in" data-f="Engineer" style="min-width:96px;max-width:150px;font-size:12px" title="जिस अभियंता ने नाप की (खाली = निर्धारित नाप वाला)" ${dis}>${engineerOptionsHtml(m.Engineer)}</select></td>`}
     <td class="r num" data-qcell>${mbQcellHTML(paidLock)}</td>
-    <td>${Math.abs(floor)>0.0005?`<span class="badge b-amber" style="font-size:10px" title="${lockTitle}">🔒</span>`:`<button class="icon-btn danger" title="पंक्ति हटाएँ" onclick="mbDelRow(this)">🗑</button>`}</td>
+    <td>${Math.abs(floor)>0.0005
+      ? (`<span class="badge b-amber" style="font-size:10px" title="${lockTitle}">🔒</span>`
+         + (MB.mode!=='sanctioned' ? ` <button class="icon-btn" title="इस नाप को हिस्सों में बाँटें (बिल यथावत रहेगा)" onclick='openSplitModal(${JSON.stringify(id)})'>✂</button>` : ''))
+      : `<button class="icon-btn danger" title="पंक्ति हटाएँ" onclick="mbDelRow(this)">🗑</button>`}</td>
   </tr>`;
 }
 function mbRows(){ return Array.from(document.querySelectorAll('#mbBody tr')); }
@@ -2522,9 +2557,11 @@ function mbSave(){
     if(id && tr.dataset.paidlock==='1') return; // भुगतान हो चुकी नाप — DOM से छेड़छाड़ हो भी जाए तो भी अनदेखा करें, मूल मान सुरक्षित रहे
     const q=mbRowQty(tr);
     if(q===0){ if(id) err=err||'किसी पंक्ति की मात्रा शून्य है — भरें या पंक्ति हटाएँ'; return; } // खाली/शून्य पंक्ति → छोड़ें (ऋणात्मक=कटौती मान्य)
-    if(id && floor>0.0005 && q<floor-0.0005){ err=err||(isSancMode
-        ? ('एक निर्धारित पंक्ति की मात्रा ('+qf(q)+') इसके सापेक्ष नापी गई ('+qf(floor)+') से कम नहीं हो सकती')
-        : ('एक पंक्ति की मात्रा ('+qf(q)+') उसके भुगतान ('+qf(floor)+') से कम नहीं हो सकती')); return; }
+    if(id && isSancMode && floor>0.0005 && q<floor-0.0005){ err=err||('एक निर्धारित पंक्ति की मात्रा ('+qf(q)+') इसके सापेक्ष नापी गई ('+qf(floor)+') से कम नहीं हो सकती'); return; }
+    if(id && !isSancMode && floor>0.0005){   // बिल बना (भुगतान शेष) — मात्रा original से बदल नहीं सकती (कम या अधिक, दोनों)
+      const orig=measQty(D().measurements.find(x=>String(x.MeasID)===String(id))||{});
+      if(Math.abs(q-orig)>0.0005){ err=err||('इस नाप का बिल बन चुका है (भुगतान शेष) — इसके लिए मात्रा '+qf(orig)+' चाहिए, अभी '+qf(q)+' है। मात्रा बदल नहीं सकती — नाप सही करें या अलग नाप जोड़ें।'); return; }
+    }
     total+=q;
     const bRaw=mbRowVal(tr,'Breadth'), dRaw=mbRowVal(tr,'Depth'), lRaw=mbRowVal(tr,'Length'), n1Raw=mbRowVal(tr,'Nos1'), n2Raw=mbRowVal(tr,'Nos2');
     const bNum=evalNum(bRaw), dNum=evalNum(dRaw);
@@ -2533,7 +2570,7 @@ function mbSave(){
       MBNo:mbRowVal(tr,'MBNo'), MBPage:mbRowVal(tr,'MBPage'), MDate:mbRowVal(tr,'MDate'),
       Nos1:(String(n1Raw).trim()===''?'':toNum(n1Raw)), Nos2:(String(n2Raw).trim()===''?'':toNum(n2Raw)), Length:(String(lRaw).trim()===''?'':toNum(lRaw)),
       Breadth:(bNum==null?'':bNum), BreadthExpr:exprIfAny(bRaw), Depth:(dNum==null?'':dNum), DepthExpr:exprIfAny(dRaw), Quantity:q };
-    if(isSancMode) row.Engineer=mbRowVal(tr,'Engineer'); else row.SancRef=MB.sancId;
+    if(isSancMode){ row.Engineer=mbRowVal(tr,'Engineer'); } else { row.SancRef=MB.sancId; row.Engineer=mbRowVal(tr,'Engineer'); }
     if(id){ const pv=D().measurements.find(x=>String(x.MeasID)===String(id)); if(pv && pv.Ord!=null && String(pv.Ord)!=='') row.Ord=pv.Ord; }  // मैनुअल क्रम बनाए रखें
     saves.push(row);
   });
@@ -2558,6 +2595,85 @@ function _doMbSave(saves){
     closeModal(); render(); loader(false);
     toast('नाप सहेजी गई '+(IS_GAS?'(सर्वर)':'(लोकल — सिंक नहीं)'));
   }).catch(e=>{ loader(false); toast('त्रुटि: '+e, true); });
+}
+
+/* ===== नाप बाँटें (Split) — बिल-जुड़ी नाप को कई हिस्सों में; बिल की कुल मात्रा/राशि नहीं बदलती ===== */
+let SPLIT = null;
+function openSplitModal(measId){
+  const m = D().measurements.find(x=>String(x.MeasID)===String(measId));
+  if(!m){ toast('नाप नहीं मिली',true); return; }
+  const it = itemById(m.ItemID)||{};
+  SPLIT = { measId:measId, target: round(measQty(m),3), dims: itemDims(it) };
+  const rowsHtml = [splitRow(m), splitRow({})].join('');
+  const body = `
+    <div class="faint" style="margin-bottom:10px">इस नाप (मूल मात्रा <b>${qf(SPLIT.target)}</b>) को नीचे हिस्सों में बाँटें — सभी हिस्सों की मात्रा का योग मूल मात्रा के बराबर होना चाहिए। इससे <b>बिल की कुल मात्रा/राशि नहीं बदलेगी</b>, बिल हर हिस्से पर लागू हो जाएगा।</div>
+    <div class="tbl-wrap" style="border:1px solid var(--line);border-radius:10px;max-height:46vh;overflow:auto"><table class="mb-grid">
+      <thead><tr>${splitCols()}<th class="r">मात्रा</th><th></th></tr></thead>
+      <tbody id="splitBody">${rowsHtml}</tbody></table></div>
+    <div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-ghost btn-sm" onclick="splitAddRow()"><span class="ic">＋</span> हिस्सा जोड़ें</button></div>
+    <div class="pb-total"><span class="lbl">हिस्सों का योग / लक्ष्य</span><span class="amt"><b id="split_sum">0</b> / ${qf(SPLIT.target)}</span></div>
+    <div class="mb-warn" id="split_warn"></div>`;
+  openModal('✂ नाप बाँटें', body,
+    `<button class="btn btn-ghost" onclick="closeModal()">रद्द</button>
+     <button class="btn btn-primary" id="split_btn" onclick="doSplit()"><span class="ic">✂</span> बाँटें</button>`, 'full');
+  document.getElementById('splitBody').addEventListener('input', splitRecalc);
+  splitRecalc();
+}
+function splitCols(){
+  const d=SPLIT.dims||{};
+  let th='<th>चै.से</th><th>चै.तक</th><th>पक्ष</th><th>विवरण</th>';
+  if(d.N1!==false) th+='<th>नग1</th>'; if(d.N2!==false) th+='<th>नग2</th>';
+  if(d.L!==false) th+='<th>लं</th>'; if(d.B) th+='<th>चौ</th>'; if(d.D) th+='<th>ऊँ</th>';
+  return th;
+}
+function splitRow(m){
+  m=m||{}; const d=SPLIT.dims||{};
+  const sideOpts=['','बायाँ','दायाँ','मध्य'].map(x=>`<option ${String(m.Side||'')===x?'selected':''}>${x||'—'}</option>`).join('');
+  const v=(x)=>(x!=null&&String(x).trim()!=='')?esc(x):'';
+  return `<tr>
+    <td><input class="mb-in" style="width:60px" data-f="ChFrom" value="${v(m.ChFrom)}" placeholder="से"></td>
+    <td><input class="mb-in" style="width:60px" data-f="ChTo" value="${v(m.ChTo)}" placeholder="तक"></td>
+    <td><select class="mb-in" data-f="Side" style="width:70px">${sideOpts}</select></td>
+    <td><input class="mb-in mb-grow" style="min-width:90px;max-width:280px" data-f="Description" value="${v(m.Description)}" placeholder="विवरण"></td>
+    ${d.N1===false?'':`<td><input class="mb-in num" style="width:50px" type="number" step="any" data-f="Nos1" value="${v(nos1Of(m))}"></td>`}
+    ${d.N2===false?'':`<td><input class="mb-in num" style="width:50px" type="number" step="any" data-f="Nos2" value="${v(m.Nos2)}"></td>`}
+    ${d.L===false?'':`<td><input class="mb-in num" style="width:64px" type="number" step="any" data-f="Length" value="${v(m.Length)}"></td>`}
+    ${d.B?`<td><input class="mb-in num" style="width:64px" type="number" step="any" data-f="Breadth" value="${v(m.BreadthExpr||m.Breadth)}"></td>`:''}
+    ${d.D?`<td><input class="mb-in num" style="width:64px" type="number" step="any" data-f="Depth" value="${v(m.DepthExpr||m.Depth)}"></td>`:''}
+    <td class="r num" data-qcell>0</td>
+    <td><button class="icon-btn danger" title="हिस्सा हटाएँ" onclick="this.closest('tr').remove();splitRecalc()">🗑</button></td>
+  </tr>`;
+}
+function splitRowVal(tr,f){ const el=tr.querySelector('[data-f="'+f+'"]'); return el?el.value:''; }
+function splitRowQty(tr){ return calcQty(splitRowVal(tr,'Nos1'),splitRowVal(tr,'Nos2'),splitRowVal(tr,'Length'),splitRowVal(tr,'Breadth'),splitRowVal(tr,'Depth')); }
+function splitRecalc(){
+  let sum=0; const rows=document.querySelectorAll('#splitBody tr');
+  rows.forEach(tr=>{ const q=splitRowQty(tr); const qc=tr.querySelector('[data-qcell]'); if(qc) qc.textContent=qf(q); sum+=q; });
+  sum=round(sum,3);
+  const se=document.getElementById('split_sum'); if(se) se.textContent=qf(sum);
+  const ok=Math.abs(sum-SPLIT.target)<=0.0005 && rows.length>=2;
+  const btn=document.getElementById('split_btn'); if(btn) btn.disabled=!ok;
+  const w=document.getElementById('split_warn'); if(w) w.textContent = ok?'' : ('हिस्सों का योग '+qf(sum)+' — मूल मात्रा '+qf(SPLIT.target)+' के बराबर होना चाहिए (कम-से-कम 2 हिस्से)।');
+}
+function splitAddRow(){ document.getElementById('splitBody').insertAdjacentHTML('beforeend', splitRow({})); splitRecalc(); }
+function doSplit(){
+  const parts=[];
+  document.querySelectorAll('#splitBody tr').forEach(tr=>{
+    const q=splitRowQty(tr); if(q===0) return;
+    const bRaw=splitRowVal(tr,'Breadth'), dRaw=splitRowVal(tr,'Depth');
+    const n1=splitRowVal(tr,'Nos1'), n2=splitRowVal(tr,'Nos2'), l=splitRowVal(tr,'Length');
+    parts.push({ ChFrom:splitRowVal(tr,'ChFrom'), ChTo:splitRowVal(tr,'ChTo'), Side:splitRowVal(tr,'Side'), Description:splitRowVal(tr,'Description'),
+      Nos1:(String(n1).trim()===''?'':toNum(n1)), Nos2:(String(n2).trim()===''?'':toNum(n2)), Length:(String(l).trim()===''?'':toNum(l)),
+      Breadth:(evalNum(bRaw)==null?'':evalNum(bRaw)), BreadthExpr:exprIfAny(bRaw), Depth:(evalNum(dRaw)==null?'':evalNum(dRaw)), DepthExpr:exprIfAny(dRaw),
+      Quantity:round(q,3) });
+  });
+  if(parts.length<2){ toast('कम-से-कम दो हिस्से भरें',true); return; }
+  const sum=round(parts.reduce((s,p)=>s+p.Quantity,0),3);
+  if(Math.abs(sum-SPLIT.target)>0.0005){ toast('हिस्सों का योग ('+qf(sum)+') मूल मात्रा ('+qf(SPLIT.target)+') के बराबर होना चाहिए',true); return; }
+  loader(true);
+  api('splitMeasurement',{oldMeasId:SPLIT.measId, parts:parts})
+    .then(()=>{ closeModal(); refresh(); toast('नाप '+parts.length+' हिस्सों में बाँटी गई'); })
+    .catch(e=>{ loader(false); toast('त्रुटि: '+e,true); });
 }
 
 /* ===================================================================

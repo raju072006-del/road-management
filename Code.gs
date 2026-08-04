@@ -4435,6 +4435,65 @@ function pay_saveMeasurementsBatch(payload){
   payInvalidateCache_();
   return ids;
 }
+function payR3_(n){ return Math.round((Number(n)||0)*1000)/1000; }
+function payDelDetailsByMeas_(measId){
+  var sh = paySS_().getSheetByName('PaymentDetails');
+  var hdrs = payGetHdrs_(sh);
+  var mc = hdrs.indexOf('MeasID');
+  if (mc < 0) return;
+  var data = sh.getDataRange().getValues();
+  for (var i = data.length - 1; i >= 1; i--) { if (String(data[i][mc]) === String(measId)) sh.deleteRow(i + 1); }
+}
+// किसी नाप को कई हिस्सों में बाँटो — बिल की कुल मात्रा/राशि अपरिवर्तित; हर बिल-detail हिस्सों पर पुनर्वितरित।
+// payload = { oldMeasId, parts:[ {ChFrom,ChTo,Side,Description,Nos1,Nos2,Length,Breadth,Depth,BreadthExpr,DepthExpr,Quantity,MBNo,MBPage,MDate,Engineer}, ... ] }
+function pay_splitMeasurement(payload){
+  payEnsureSheets_();
+  var ss = paySS_();
+  var mSh = ss.getSheetByName('Measurements');
+  var dSh = ss.getSheetByName('PaymentDetails');
+  var oldMeasId = payload && payload.oldMeasId;
+  var parts = (payload && payload.parts) || [];
+  if (!oldMeasId) throw new Error('नाप ID नहीं मिली');
+  if (parts.length < 2) throw new Error('कम-से-कम दो हिस्से ज़रूरी');
+  var orig = payReadSheet_('Measurements', ss).filter(function(r){ return String(r.MeasID) === String(oldMeasId); })[0];
+  if (!orig) throw new Error('नाप नहीं मिली');
+  var origQty = Number(orig.Quantity) || 0;
+  if (origQty <= 0.0005) throw new Error('मूल मात्रा शून्य है');
+  var sumParts = parts.reduce(function(s, p){ return s + (Number(p.Quantity) || 0); }, 0);
+  if (Math.abs(sumParts - origQty) > 0.005) throw new Error('हिस्सों का योग (' + payR3_(sumParts) + ') मूल मात्रा (' + payR3_(origQty) + ') के बराबर होना चाहिए');
+
+  // इस नाप के मौजूदा bill-details (पुनर्वितरण के लिए पहले पढ़ लो)
+  var origDetails = payReadSheet_('PaymentDetails', ss).filter(function(r){ return String(r.MeasID) === String(oldMeasId); });
+
+  // हिस्सों के लिए नाप बनाओ — पहला हिस्सा वही नाप (oldMeasId reuse), बाकी नए
+  var ids = [];
+  parts.forEach(function(pt, i){
+    var m = {};
+    ['ItemID', 'Kind', 'SancRef', 'Ord'].forEach(function(k){ if (orig[k] !== undefined) m[k] = orig[k]; });
+    ['ChFrom','ChTo','Side','Description','Nos1','Nos2','Length','Breadth','Depth','BreadthExpr','DepthExpr','Quantity','MBNo','MBPage','MDate','RecordMB','RecordDate','Engineer'].forEach(function(k){ if (pt[k] !== undefined) m[k] = pt[k]; });
+    m.MeasID = (i === 0) ? oldMeasId : Utilities.getUuid();
+    var row = payRowFor_(mSh, m);
+    var idx = payFindRow_(mSh, m.MeasID);
+    if (idx === -1) mSh.appendRow(row); else mSh.getRange(idx, 1, 1, row.length).setValues([row]);
+    ids.push(m.MeasID);
+  });
+
+  // पुराने details हटाओ, फिर हर बिल की मात्रा हिस्सों पर बाँटो (प्रति बिल योग वही → बिल राशि अपरिवर्तित)
+  payDelDetailsByMeas_(oldMeasId);
+  origDetails.forEach(function(d){
+    var Qd = Number(d.Qty) || 0, rate = Number(d.Rate) || 0, itemId = d.ItemID, used = 0;
+    parts.forEach(function(pt, i){
+      var share = (i === parts.length - 1) ? payR3_(Qd - used) : payR3_(Qd * (Number(pt.Quantity) || 0) / origQty);
+      used += share;
+      var nd = { DetailID: Utilities.getUuid(), PayID: d.PayID, MeasID: ids[i], ItemID: itemId, Qty: share, Rate: rate, Amount: payR2_(share * rate) };
+      dSh.appendRow(payRowFor_(dSh, nd));
+    });
+  });
+
+  if (orig.ItemID) paySyncSanc_(orig.ItemID);
+  payInvalidateCache_();
+  return ids;
+}
 
 // ── Payments ───────────────────────────────────────────────────
 function payDelDetails_(payId){

@@ -245,6 +245,9 @@ select.inp{appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmln
 .mb-grid td{padding:5px 5px; white-space:nowrap}
 .mb-grid input.num{text-align:right; font-family:var(--mono)}
 .mb-grid thead th{font-size:11px; padding:8px 6px}
+/* हर कॉलम के बीच हल्की vertical separation लाइन (header + data) */
+.mb-grid th, .mb-grid td{border-right:1px solid rgba(0,0,0,.07)}
+.mb-grid th:last-child, .mb-grid td:last-child{border-right:none}
 .mb-grow{field-sizing:content}
 .mb-mini{flex:none; width:17px; height:17px; padding:0; font-size:10px; line-height:1;
   border:1px solid var(--line); border-radius:4px; background:var(--surface-2); color:var(--muted);
@@ -2306,11 +2309,11 @@ let MB = { mode:'actual', sancId:null, itemId:null, dims:{B:true,D:true}, delete
 function mbCols(){
   const d=MB.dims||{L:true,B:true,D:true};
   let th=`<th>चै. से</th><th>चै. तक</th><th>पक्ष</th><th>विवरण</th>`;
-  if(d.N1!==false) th+=`<th>नग1</th>`;
-  if(d.N2!==false) th+=`<th>नग2</th>`;
-  if(d.L!==false) th+=`<th>लं</th>`;
-  if(d.B) th+=`<th>चौ</th>`;
-  if(d.D) th+=`<th>ऊँ</th>`;
+  if(d.N1!==false) th+=`<th class="r">नग1</th>`;
+  if(d.N2!==false) th+=`<th class="r">नग2</th>`;
+  if(d.L!==false) th+=`<th class="r">लं</th>`;
+  if(d.B) th+=`<th class="r">चौ</th>`;
+  if(d.D) th+=`<th class="r">ऊँ</th>`;
   if(MB.mode==='sanctioned') th+=`<th>अभियंता</th>`;
   else th+=`<th>MB</th><th>पृ.</th><th>दिनांक</th><th>अभियंता</th>`;
   th+=`<th class="r">मात्रा</th>`;
@@ -2387,6 +2390,7 @@ function sancRefCells(s){
     +(d.N1===false?'':num(nos1Of(s)))+(d.N2===false?'':num(s.Nos2))+(d.L===false?'':num(s.Length))
     +(d.B===false?'':dn(s.Breadth,s.BreadthExpr))+(d.D===false?'':dn(s.Depth,s.DepthExpr))
     +c(s.MBNo)+c(s.MBPage)+`<td>${s.MDate?dmy(s.MDate):'—'}</td>`
+    +c(s.Engineer)
     +`<td class="r num"><b>${nf2(measQty(s))}</b></td>`;
 }
 function builderRow(m){

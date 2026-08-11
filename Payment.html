@@ -1515,6 +1515,7 @@ function viewPay(){
   const itemOpts='<option value="">— सभी आइटम —</option>'+items().map(it=>`<option value="${esc(it.ItemID)}" ${state.payItem===it.ItemID?'selected':''}>${esc(it.ItemNo)} · ${esc(it.Description)}</option>`).join('');
   const engs=projectEngineers();
   const engOpts='<option value="">— सभी अभियंता —</option>'+engs.map(e=>`<option ${state.payEng===e?'selected':''}>${esc(e)}</option>`).join('');
+  const uptoOpts='<option value="">— चुनें —</option>'+billSeqSorted().map(p=>`<option value="${esc(p.PayID)}" ${state.payUpto===p.PayID?'selected':''}>${esc(p.BillNo||'(बिना नाम)')}</option>`).join('');
   const selP2 = state.payBill ? (D().payments.find(x=>String(x.PayID)===String(state.payBill))||null) : null;
   const dupCount = selP2 ? D().payments.filter(x=>String(x.BillNo||'')===String(selP2.BillNo||'')&&String(x.PayID)!==String(selP2.PayID)).length : 0;
   const billBtns = selP2 ? `
@@ -1523,14 +1524,19 @@ function viewPay(){
   const toolbar=`<div class="toolbar">
     <div class="field" style="min-width:150px"><label>भुगतान / बिल संख्या</label>
       <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">
-        <select class="inp" style="flex:1;min-width:120px" onchange="state.payBill=this.value; render()">${billOpts}</select>${billBtns}
+        <select class="inp" style="flex:1;min-width:120px" onchange="state.payBill=this.value; state.payUpto=''; render()">${billOpts}</select>${billBtns}
       </div></div>
+    <div class="field" style="min-width:170px"><label>बिल संख्या तक — संचयी</label>
+      <select class="inp" onchange="state.payUpto=this.value; state.payBill=''; render()">${uptoOpts}</select></div>
     <div class="field" style="min-width:210px"><label>आइटम का नाम</label><select class="inp" onchange="state.payItem=this.value; render()">${itemOpts}</select></div>
     ${engs.length?`<div class="field" style="min-width:180px"><label>अवर अभियंता</label><select class="inp" onchange="state.payEng=this.value; render()">${engOpts}</select></div>`:''}
     <div class="field" style="min-width:170px"><label>दृश्य</label><select class="inp" onchange="state.payView=this.value; render()">
       <option value="item" ${(state.payView||'item')==='item'?'selected':''}>आइटम-वार (कुल मात्रा)</option>
       <option value="line" ${state.payView==='line'?'selected':''}>लाइन-वार (विस्तृत)</option></select></div>
-    ${(state.payBill||state.payItem||state.payEng)?`<button class="btn btn-ghost btn-sm" style="align-self:flex-end" onclick="state.payBill='';state.payItem='';state.payEng='';render()">फ़िल्टर हटाएँ</button>`:''}</div>`;
+    ${(state.payBill||state.payItem||state.payEng||state.payUpto)?`<button class="btn btn-ghost btn-sm" style="align-self:flex-end" onclick="state.payBill='';state.payItem='';state.payEng='';state.payUpto='';render()">फ़िल्टर हटाएँ</button>`:''}</div>`;
+
+  // बिल संख्या तक — संचयी (Updated) रिपोर्ट
+  if(state.payUpto){ return head+toolbar+cumulativeUptoHtml(state.payUpto); }
 
   // फ़िल्टर अनुसार भुगतान-लाइनें
   const fB=state.payBill, fI=state.payItem, fE=state.payEng;
@@ -1625,6 +1631,79 @@ function viewPay(){
   return head+toolbar+summary+`<div class="card tbl-wrap"><table class="sep">
     <thead><tr>${thead}</tr></thead>
     <tbody>${rows}${totRow}</tbody></table></div>`+billDetail;
+}
+
+/* बिल-क्रम — दिनांक → बिल-संख्या (अंक) → बनाने का समय; "किसी बिल तक" का क्रम इसी से तय */
+function billSeqSorted(){
+  return D().payments.slice().sort(function(a,b){
+    const d=String(a.PDate||'').localeCompare(String(b.PDate||'')); if(d) return d;
+    const na=toNum(String(a.BillNo||'').replace(/\D/g,'')), nb=toNum(String(b.BillNo||'').replace(/\D/g,'')); if(na!==nb) return na-nb;
+    return String(a.CreatedAt||'').localeCompare(String(b.CreatedAt||''));
+  });
+}
+/* कई बिलों का संचयी T1–T18 (योग) — Updated कुल भुगतान */
+function cumBreakdownHtml(pmts){
+  const S=(f)=>pmts.reduce((s,p)=>s+toNum(p[f]),0);
+  const base=S('BaseAmount'), above=S('AboveAmt'), deduct=S('DeductTotal'), adv=S('AdvanceTotal'),
+        withheld=S('WithheldAmt'), a=S('AmtA'), gst=S('GstAmt'), f=S('AmtF'),
+        lc=S('LaborCessAmt'), itx=S('IncomeTaxAmt'), ret=S('RetentionAmt'), cg=S('CgstAmt'), sg=S('SgstAmt'), nett=S('NettPaid');
+  const R=(t,l,v,cls)=>`<div class="pb-row"><span class="lbl"><span class="t">${t}</span>${l}</span><b class="amt ${cls||''}">${v}</b></div>`;
+  return `<div class="pb-steps">
+    <div class="pb-card">
+      <div class="pb-card-head"><span class="pb-ic">🧮</span><b>संचयी — आधार व Above/Below</b></div>
+      ${R('T1','निर्धारित राशि (योग)',inr(base))}
+      ${R('T3','Above/Below राशि (योग)',(above<0?'− ':'+ ')+inr(Math.abs(above)))}
+      <div class="pb-row subtotal"><span class="lbl"><span class="t">T4</span>कुल (Above/Below सहित)</span><b class="amt">${inr(base+above)}</b></div>
+    </div>
+    ${deduct?`<div class="pb-card"><div class="pb-card-head"><span class="pb-ic">➖</span><b>कटौती (योग)</b></div>${R('T5','कुल कटौती',inr(deduct),'neg')}</div>`:''}
+    ${adv?`<div class="pb-card"><div class="pb-card-head"><span class="pb-ic">➕</span><b>Advance (योग)</b></div>${R('T7','कुल Advance',inr(adv),'pos')}</div>`:''}
+    <div class="pb-card">
+      <div class="pb-card-head"><span class="pb-ic">⏸</span><b>Withheld व आधार</b></div>
+      ${R('T9','Withheld (योग)',withheld?('− '+inr(withheld)):'—','neg')}
+      ${R('T10','A (आधार, योग)',inr(a))}
+    </div>
+    ${gst?`<div class="pb-card"><div class="pb-card-head"><span class="pb-ic">🧾</span><b>GST (योग)</b></div>${R('T11','GST',inr(gst),'pos')}</div>`:''}
+    <div class="pb-total" style="margin:0"><span class="lbl">T12 · F (GST सहित कुल)</span><span class="amt">${inr(f)}</span></div>
+    ${(lc||itx||ret||cg||sg)?`<div class="pb-card"><div class="pb-card-head"><span class="pb-ic">📋</span><b>सांविधिक कटौतियाँ (योग)</b></div>
+      ${lc?R('T13','Labour Cess',inr(lc),'neg'):''}${itx?R('T14','Income Tax',inr(itx),'neg'):''}${ret?R('T15','Retention',inr(ret),'neg'):''}${cg?R('T16','CGST',inr(cg),'neg'):''}${sg?R('T17','SGST',inr(sg),'neg'):''}
+    </div>`:''}
+    <div class="pb-total" style="margin:0"><span class="lbl">T18 · कुल Nett Paid (अब तक — Updated)</span><span class="amt">${inr(nett)}</span></div>
+  </div>`;
+}
+/* चुने बिल तक — संचयी विवरण (आइटम-वार कुल मात्रा + T1–T18 योग), प्रिंट-योग्य */
+function cumulativeUptoHtml(payId){
+  const seq=billSeqSorted();
+  const idx=seq.findIndex(p=>String(p.PayID)===String(payId));
+  if(idx<0) return `<div class="empty">बिल नहीं मिला</div>`;
+  const included=seq.slice(0, idx+1);
+  const incIds={}; included.forEach(p=>incIds[String(p.PayID)]=1);
+  const selBill=included[included.length-1];
+  const dets=D().paymentDetails.filter(d=>incIds[String(d.PayID)]);
+  const groups={}, order=[];
+  dets.forEach(function(d){ const k=String(d.ItemID); if(!groups[k]){groups[k]={qty:0,amt:0}; order.push(k);} groups[k].qty+=toNum(d.Qty); groups[k].amt+=toNum(d.Amount); });
+  order.sort((a,b)=>{ const ia=itemById(a)||{}, ib=itemById(b)||{}; return toNum(ia.ItemNo)-toNum(ib.ItemNo) || String(ia.ItemNo).localeCompare(String(ib.ItemNo)); });
+  let tq=0, ta=0;
+  const rows=order.map(function(k){ const it=itemById(k)||{}, g=groups[k]; tq+=g.qty; ta+=g.amt; const rate=g.qty?round(g.amt/g.qty,2):0;
+    return `<tr><td><span class="item-no">${esc(it.ItemNo||'')}</span></td><td style="max-width:320px"><b>${esc(it.Description||'')}</b></td>
+      <td class="c muted">${esc(it.Unit||'—')}</td><td class="r num" style="color:${g.qty<0?'var(--red-2)':'var(--green)'}"><b>${nf2(g.qty)}</b></td>
+      <td class="r num">₹${nf2(rate)}</td><td class="r num" style="color:${g.amt<0?'var(--red-2)':'var(--green)'}"><b>${inr(g.amt)}</b></td></tr>`;
+  }).join('') || `<tr><td colspan="6" class="muted" style="text-align:center;padding:16px">इस बिल तक कोई भुगतान नहीं</td></tr>`;
+  const billsList=included.map(p=>esc(p.BillNo||'—')).join(', ');
+  return `
+    <div class="exportbar no-print" style="display:flex;justify-content:flex-end;gap:8px;margin:-4px 2px 12px"><button class="btn btn-ghost btn-sm" onclick="window.print()"><span class="ic">🖨</span> प्रिंट / PDF</button></div>
+    <div class="card" style="padding:12px 16px;margin-bottom:12px;background:var(--surface-2)">
+      <b style="font-size:15px">बिल संख्या ${esc(selBill.BillNo||'—')} तक — संचयी (Updated) भुगतान</b>
+      <div class="muted" style="font-size:12px;margin-top:4px">सम्मिलित बिल (${included.length}): ${billsList} · दिनांक तक ${dmy(selBill.PDate)}</div>
+    </div>
+    <div class="card tbl-wrap" style="margin-bottom:14px"><table class="sep">
+      <thead><tr><th>आइटम</th><th>विवरण</th><th class="c">इकाई</th><th class="r">कुल भु. मात्रा (Updated)</th><th class="r">औसत दर</th><th class="r">कुल राशि</th></tr></thead>
+      <tbody>${rows}<tr style="font-weight:700;background:#f1f5fa"><td colspan="5" style="text-align:right">कुल आधार राशि (T1) →</td><td class="r num" style="color:var(--green)">${inr(ta)}</td></tr></tbody>
+    </table></div>
+    <div class="card" style="padding:14px 16px">
+      <div class="section-head" style="margin-bottom:0"><h2 style="font-size:14px">बिल ${esc(selBill.BillNo||'—')} तक — कुल Updated भुगतान (T1–T18)</h2>
+        <span class="sub">सभी सम्मिलित बिलों का योग</span></div>
+      ${cumBreakdownHtml(included)}
+    </div>`;
 }
 
 /* ===================================================================
@@ -2580,14 +2659,31 @@ function mbSave(){
   });
   if(err){ toast(err,true); return; }
   if(!isSancMode){ const nirdharit=measQty(s); if(round(total,3) > round(nirdharit,3)+0.0005){
-    confirmModal('⚠️ अधिक नाप — चेतावनी 1',
-      'कुल नापी मात्रा ('+qf(round(total,3))+') निर्धारित ('+qf(nirdharit)+') से अधिक है। क्या आप फिर भी सहेजना चाहते हैं?',
-      function(){
-        confirmModal('⚠️ अधिक नाप — पुनः पुष्टि',
-          'यह नाप निर्धारित से अधिक है और स्थिति में "अधिक नाप" दर्ज होगी। क्या आप निश्चित हैं?',
-          function(){ _doMbSave(saves); }, 'हाँ, सहेजें');
-      }, 'हाँ, जारी रखें'); return; } }
+    mbOverflowConfirm('कुल नापी मात्रा <b>'+qf(round(total,3))+'</b> निर्धारित <b>'+qf(nirdharit)+'</b> से अधिक है। सहेजने पर स्थिति में "अधिक नाप" दर्ज होगी।<br><br>क्या करें?',
+      function(){ _doMbSave(saves); });
+    return; } }
   _doMbSave(saves);
+}
+/* अधिक-नाप चेतावनी — अलग overlay (नाप builder अछूता रहता है, इसलिए "सुधार करें" पर भरा डेटा सुरक्षित) */
+function mbOverflowConfirm(msgHtml, onSaveAll){
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML='<div style="background:var(--surface);border-radius:14px;max-width:460px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.35);overflow:hidden">'
+    +'<div style="padding:16px 18px;border-bottom:1px solid var(--line);font-weight:700;color:var(--red-2)">⚠️ अधिक नाप — चेतावनी</div>'
+    +'<div style="padding:16px 18px;color:var(--muted);line-height:1.6">'+msgHtml+'</div>'
+    +'<div style="padding:12px 18px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;border-top:1px solid var(--line)">'
+    +'<button class="btn btn-ghost" id="ovf_edit">✎ सुधार करें</button>'
+    +'<button class="btn btn-ghost" id="ovf_cancel">रद्द करें</button>'
+    +'<button class="btn btn-primary" id="ovf_save">सब सहेजें</button>'
+    +'</div></div>';
+  document.body.appendChild(ov);
+  function close(){ ov.remove(); document.removeEventListener('keydown', onKey, true); }
+  // Esc: पहले सिर्फ़ यह warning हटे (builder व भरा डेटा सुरक्षित) — capture phase में ताकि global Esc (closeModal) न चले
+  function onKey(e){ if(e.key==='Escape'){ e.preventDefault(); e.stopImmediatePropagation(); close(); } }
+  document.addEventListener('keydown', onKey, true);
+  ov.querySelector('#ovf_edit').onclick=function(){ close(); };                    // builder खुला रहेगा — भरा डेटा सुरक्षित
+  ov.querySelector('#ovf_cancel').onclick=function(){ close(); closeModal(); };     // builder बंद (डेटा छोड़ दें)
+  ov.querySelector('#ovf_save').onclick=function(){ close(); onSaveAll(); };        // सहेजें
 }
 function _doMbSave(saves){
   if(!saves.length && !MB.deletes.length){ toast('कोई बदलाव नहीं',true); return; }

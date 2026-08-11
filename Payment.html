@@ -1678,32 +1678,70 @@ function cumulativeUptoHtml(payId){
   const included=seq.slice(0, idx+1);
   const incIds={}; included.forEach(p=>incIds[String(p.PayID)]=1);
   const selBill=included[included.length-1];
-  const dets=D().paymentDetails.filter(d=>incIds[String(d.PayID)]);
-  const groups={}, order=[];
-  dets.forEach(function(d){ const k=String(d.ItemID); if(!groups[k]){groups[k]={qty:0,amt:0}; order.push(k);} groups[k].qty+=toNum(d.Qty); groups[k].amt+=toNum(d.Amount); });
-  order.sort((a,b)=>{ const ia=itemById(a)||{}, ib=itemById(b)||{}; return toNum(ia.ItemNo)-toNum(ib.ItemNo) || String(ia.ItemNo).localeCompare(String(ib.ItemNo)); });
-  let tq=0, ta=0;
-  const rows=order.map(function(k){ const it=itemById(k)||{}, g=groups[k]; tq+=g.qty; ta+=g.amt; const rate=g.qty?round(g.amt/g.qty,2):0;
-    return `<tr><td><span class="item-no">${esc(it.ItemNo||'')}</span></td><td style="max-width:320px"><b>${esc(it.Description||'')}</b></td>
-      <td class="c muted">${esc(it.Unit||'—')}</td><td class="r num" style="color:${g.qty<0?'var(--red-2)':'var(--green)'}"><b>${nf2(g.qty)}</b></td>
-      <td class="r num">₹${nf2(rate)}</td><td class="r num" style="color:${g.amt<0?'var(--red-2)':'var(--green)'}"><b>${inr(g.amt)}</b></td></tr>`;
-  }).join('') || `<tr><td colspan="6" class="muted" style="text-align:center;padding:16px">इस बिल तक कोई भुगतान नहीं</td></tr>`;
+  const fI=state.payItem, fE=state.payEng, view=state.payView||'item';
+  let dets=D().paymentDetails.filter(d=>incIds[String(d.PayID)]);
+  if(fI) dets=dets.filter(d=>String(d.ItemID)===String(fI));
+  if(fE) dets=dets.filter(d=>{ const mm=D().measurements.find(x=>String(x.MeasID)===String(d.MeasID)); return measEngineer(mm)===fE; });
+  const filtered=!!(fI||fE);
+
+  let ta=0, tableHtml='';
+  if(view==='line'){
+    // लाइन-वार (विस्तृत) — बिल-तारीख → आइटम क्रम
+    const list=dets.slice().sort(function(a,b){ const pa=D().payments.find(x=>String(x.PayID)===String(a.PayID))||{}, pb=D().payments.find(x=>String(x.PayID)===String(b.PayID))||{};
+      const c=String(pa.PDate||'').localeCompare(String(pb.PDate||'')); if(c) return c;
+      const ia=itemById(a.ItemID)||{}, ib=itemById(b.ItemID)||{}; return toNum(ia.ItemNo)-toNum(ib.ItemNo); });
+    const rows=list.map(function(d){ const it=itemById(d.ItemID)||{}, p=D().payments.find(x=>String(x.PayID)===String(d.PayID))||{}, mm=D().measurements.find(x=>String(x.MeasID)===String(d.MeasID))||{};
+      const detail=String(it.DetailDesc||'').trim(); ta+=toNum(d.Amount);
+      return `<tr><td><span class="item-no">${esc(it.ItemNo||'')}</span></td>
+        <td style="max-width:300px"><b>${esc(it.Description||'')}</b>${detail?`<div class="faint">${esc(snip(detail,120))}</div>`:''}</td>
+        <td class="c muted">${esc(it.Unit||'—')}</td><td class="r num"><b>${nf2(d.Qty)}</b></td><td class="r num">${inr(d.Rate)}</td>
+        <td class="r num">${inr(d.Amount)}</td><td class="faint">${esc(p.MBNo||'—')}${p.MBPages?(' / पृ.'+esc(p.MBPages)):''}</td>
+        <td class="muted">${dmy(p.PDate)}</td><td><b>${esc(p.BillNo||'—')}</b></td>
+        <td class="faint" style="white-space:nowrap">${esc(measEngineer(mm))||'—'}</td></tr>`;
+    }).join('') || `<tr><td colspan="10" class="muted" style="text-align:center;padding:16px">इस बिल तक कोई भुगतान-लाइन नहीं</td></tr>`;
+    tableHtml=`<div class="card tbl-wrap" style="margin-bottom:14px"><table class="sep">
+      <thead><tr><th>आइटम</th><th>विवरण (short + detail)</th><th class="c">इकाई</th><th class="r">भु. मात्रा</th><th class="r">दर</th><th class="r">राशि</th><th>MB / पृष्ठ</th><th>दिनांक</th><th>बिल</th><th>अभियंता</th></tr></thead>
+      <tbody>${rows}<tr style="font-weight:700;background:#f1f5fa"><td colspan="5" style="text-align:right">कुल आधार राशि →</td><td class="r num" style="color:var(--green)">${inr(ta)}</td><td colspan="4"></td></tr></tbody></table></div>`;
+  } else {
+    // आइटम-वार (कुल Updated मात्रा) — बिल व अभियंता सहित
+    const groups={}, order=[];
+    dets.forEach(function(d){ const k=String(d.ItemID); if(!groups[k]){groups[k]={qty:0,amt:0,bills:{},engs:{}}; order.push(k);} const g=groups[k]; g.qty+=toNum(d.Qty); g.amt+=toNum(d.Amount);
+      const p=D().payments.find(x=>String(x.PayID)===String(d.PayID))||{}; if(p.BillNo) g.bills[p.BillNo]=1;
+      const mm=D().measurements.find(x=>String(x.MeasID)===String(d.MeasID))||{}; const e=measEngineer(mm); if(e) g.engs[e]=1; });
+    order.sort((a,b)=>{ const ia=itemById(a)||{}, ib=itemById(b)||{}; return toNum(ia.ItemNo)-toNum(ib.ItemNo) || String(ia.ItemNo).localeCompare(String(ib.ItemNo)); });
+    const rows=order.map(function(k){ const it=itemById(k)||{}, g=groups[k]; ta+=g.amt; const rate=g.qty?round(g.amt/g.qty,2):0; const detail=String(it.DetailDesc||'').trim();
+      return `<tr><td><span class="item-no">${esc(it.ItemNo||'')}</span></td>
+        <td style="max-width:320px"><b>${esc(it.Description||'')}</b>${detail?`<div class="faint">${esc(snip(detail,120))}</div>`:''}</td>
+        <td class="c muted">${esc(it.Unit||'—')}</td><td class="r num" style="color:${g.qty<0?'var(--red-2)':'var(--green)'}"><b>${nf2(g.qty)}</b></td>
+        <td class="r num">₹${nf2(rate)}</td><td class="r num" style="color:${g.amt<0?'var(--red-2)':'var(--green)'}"><b>${inr(g.amt)}</b></td>
+        <td class="faint">${esc(Object.keys(g.bills).join(', '))||'—'}</td><td class="faint">${esc(Object.keys(g.engs).join(', '))||'—'}</td></tr>`;
+    }).join('') || `<tr><td colspan="8" class="muted" style="text-align:center;padding:16px">इस बिल तक कोई भुगतान नहीं</td></tr>`;
+    tableHtml=`<div class="card tbl-wrap" style="margin-bottom:14px"><table class="sep">
+      <thead><tr><th>आइटम</th><th>विवरण (short + detail)</th><th class="c">इकाई</th><th class="r">कुल भु. मात्रा (Updated)</th><th class="r">दर</th><th class="r">कुल राशि</th><th>बिल</th><th>अभियंता</th></tr></thead>
+      <tbody>${rows}<tr style="font-weight:700;background:#f1f5fa"><td colspan="5" style="text-align:right">कुल आधार राशि (T1) →</td><td class="r num" style="color:var(--green)">${inr(ta)}</td><td colspan="2"></td></tr></tbody></table></div>`;
+  }
+
   const billsList=included.map(p=>esc(p.BillNo||'—')).join(', ');
+  const fName = fI ? ((itemById(fI)||{}).Description||'') : '';
+  const filterNote = filtered ? `<div class="muted" style="font-size:12px;margin-top:4px">🔎 फ़िल्टर: ${esc([fName?('मद: '+fName):'', fE?('अभियंता: '+fE):''].filter(Boolean).join(' · '))} — केवल इसी का संचयी</div>` : '';
+  // T1–T18 पूरे बिल (कटौती/GST सहित) का है — किसी एक मद/अभियंता के लिए अलग नहीं; इसलिए फ़िल्टर पर नोट दिखाओ
+  const breakCard = filtered
+    ? `<div class="card" style="padding:14px 16px;color:var(--muted);font-size:13px;line-height:1.6">ℹ️ T1–T18 (कटौती, GST सहित पूर्ण बिल राशि) पूरे बिल पर आधारित है — किसी एक मद/अभियंता के लिए अलग से नहीं निकाला जा सकता। ऊपर इस फ़िल्टर का <b>कुल आधार राशि = ${inr(ta)}</b> है।<br>पूर्ण T1–T18 देखने के लिए मद/अभियंता फ़िल्टर हटाएँ।</div>`
+    : `<div class="card" style="padding:14px 16px">
+        <div class="section-head" style="margin-bottom:0"><h2 style="font-size:14px">बिल ${esc(selBill.BillNo||'—')} तक — कुल Updated भुगतान (T1–T18)</h2>
+          <span class="sub">सभी सम्मिलित बिलों का योग</span></div>
+        ${cumBreakdownHtml(included)}
+      </div>`;
+
   return `
     <div class="exportbar no-print" style="display:flex;justify-content:flex-end;gap:8px;margin:-4px 2px 12px"><button class="btn btn-ghost btn-sm" onclick="window.print()"><span class="ic">🖨</span> प्रिंट / PDF</button></div>
     <div class="card" style="padding:12px 16px;margin-bottom:12px;background:var(--surface-2)">
       <b style="font-size:15px">बिल संख्या ${esc(selBill.BillNo||'—')} तक — संचयी (Updated) भुगतान</b>
       <div class="muted" style="font-size:12px;margin-top:4px">सम्मिलित बिल (${included.length}): ${billsList} · दिनांक तक ${dmy(selBill.PDate)}</div>
+      ${filterNote}
     </div>
-    <div class="card tbl-wrap" style="margin-bottom:14px"><table class="sep">
-      <thead><tr><th>आइटम</th><th>विवरण</th><th class="c">इकाई</th><th class="r">कुल भु. मात्रा (Updated)</th><th class="r">औसत दर</th><th class="r">कुल राशि</th></tr></thead>
-      <tbody>${rows}<tr style="font-weight:700;background:#f1f5fa"><td colspan="5" style="text-align:right">कुल आधार राशि (T1) →</td><td class="r num" style="color:var(--green)">${inr(ta)}</td></tr></tbody>
-    </table></div>
-    <div class="card" style="padding:14px 16px">
-      <div class="section-head" style="margin-bottom:0"><h2 style="font-size:14px">बिल ${esc(selBill.BillNo||'—')} तक — कुल Updated भुगतान (T1–T18)</h2>
-        <span class="sub">सभी सम्मिलित बिलों का योग</span></div>
-      ${cumBreakdownHtml(included)}
-    </div>`;
+    ${tableHtml}
+    ${breakCard}`;
 }
 
 /* ===================================================================

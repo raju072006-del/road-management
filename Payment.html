@@ -1158,13 +1158,15 @@ function viewDashboard(){
   // per item progress
   let rows = its.map(function(it){
     const sancA=itemSancAmt(it), measA=itemMeasAmt(it), paidA=itemPaidAmt(it);
-    const pPaid=pct(paidA,sancA), pDone=pct(measA,sancA);
+    const pPaid=pct(paidA,sancA), pDone=pct(measA,sancA);   // वास्तविक % (100% से अधिक भी)
+    const barPaid=Math.min(100,Math.max(0,pPaid)), barDone=Math.min(100,Math.max(0,pDone));   // bar केवल 0–100% में
+    const over=(measA>sancA+0.5)||(paidA>sancA+0.5);   // निर्धारित से अधिक नाप या भुगतान
     return `<tr>
       <td><span class="item-no">${esc(it.ItemNo)}</span></td>
-      <td><b>${esc(it.Description)}</b><div class="faint">${esc(it.Unit||'')} · दर ${inr(itemRate(it))}</div></td>
+      <td><b>${esc(it.Description)}</b>${over?' <span title="⚠ इस मद का निर्धारित से अधिक नाप/भुगतान हुआ है" style="color:#dc2626;font-size:14px">🚩</span>':''}<div class="faint">${esc(it.Unit||'')} · दर ${inr(itemRate(it))}</div></td>
       <td style="min-width:200px">
-        <div class="pbar"><i class="paid" style="width:${pPaid}%"></i><i class="done" style="width:${Math.max(0,pDone-pPaid)}%"></i></div>
-        <div class="pct num" style="font-size:11px;color:var(--muted);margin-top:4px">भुगतान ${pPaid}% · नापा ${pDone}%</div>
+        <div class="pbar"><i class="paid" style="width:${barPaid}%"></i><i class="done" style="width:${Math.max(0,barDone-barPaid)}%"></i></div>
+        <div class="pct num" style="font-size:11px;color:${over?'#dc2626':'var(--muted)'};margin-top:4px;font-weight:${over?'700':'400'}">भुगतान ${pPaid}% · नापा ${pDone}%</div>
       </td>
       <td class="r num">${inr(sancA)}</td>
       <td class="r num" style="color:var(--accent)">${inr(measA)}</td>
@@ -1197,7 +1199,7 @@ function viewDashboard(){
     <thead><tr><th>बिल</th><th>तारीख</th><th>MB</th><th class="r">राशि</th></tr></thead>
     <tbody>${recent}</tbody></table></div>`;
 }
-function pct(a,b){ b=toNum(b); if(!b) return 0; return round(Math.min(100, a/b*100),1); }
+function pct(a,b){ b=toNum(b); if(!b) return 0; return round(a/b*100,1); }   // वास्तविक % (100% पर नहीं रुकता; bar की चौड़ाई अलग से सीमित)
 
 /* ===================================================================
    Items (BOQ)

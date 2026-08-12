@@ -2593,8 +2593,9 @@ function mbForceStart(btn){
   const cur=mbRowQty(tr);
   const lOpt=(MB.dims&&MB.dims.L===false)?'':'<option value="Length">लंबाई</option>';
   const bOpt=(MB.dims&&MB.dims.B===false)?'':'<option value="Breadth">चौड़ाई</option>';
+  const dOpt=(MB.dims&&MB.dims.D===false)?'':'<option value="Depth">ऊँचाई</option>';
   tr.querySelector('[data-qcell]').innerHTML=`<input type="number" step="any" class="mb-in num" data-qforce style="width:66px" value="${cur||''}" placeholder="मात्रा">
-    <select class="mb-in" data-qadjust style="width:74px" onchange="mbForceApply(this)"><option value="">बदलें…</option>${lOpt}${bOpt}</select>
+    <select class="mb-in" data-qadjust style="width:74px" onchange="mbForceApply(this)"><option value="">बदलें…</option>${lOpt}${bOpt}${dOpt}</select>
     <button type="button" class="icon-btn" title="रद्द" onclick="mbForceCancel(this)">✕</button>`;
   const inp=tr.querySelector('[data-qforce]'); if(inp) inp.focus();
 }
@@ -2602,13 +2603,14 @@ function mbForceApply(sel){
   const tr=sel.closest('tr'); const dim=sel.value; if(!dim) return;
   const Q=round(toNum(tr.querySelector('[data-qforce]').value),3);   // byforce मात्रा — अधिकतम 3 दशमलव
   if(Q===0){ toast('पहले byforce मात्रा भरें',true); sel.value=''; return; }
-  const others=['Nos1','Nos2','Depth', dim==='Length'?'Breadth':'Length'];
+  const others=['Nos1','Nos2','Length','Breadth','Depth'].filter(f=>f!==dim);   // चुनी विमा को छोड़ बाक़ी सब गुणक
   let prod=1; others.forEach(f=>{ const n=mbFieldNum(tr,f); if(n!=null) prod*=n; });
-  if(Math.abs(prod)<1e-9){ toast('अन्य मानों के कारण गणना संभव नहीं — पहले नग/गहराई/अन्य भरें',true); return; }
+  if(Math.abs(prod)<1e-9){ toast('अन्य मानों के कारण गणना संभव नहीं — पहले नग/अन्य विमाएँ भरें',true); return; }
   const dimVal=round(Q/prod,9);    // विमा को पूरी परिशुद्धता से, ताकि मात्रा ठीक Q बने रहे (3 दशमलव)
   const el=tr.querySelector('[data-f="'+dim+'"]'); el.value=dimVal; if(dim==='Length') el.dataset.manual='1';
   delete tr.dataset.forcing; mbRestoreQcell(tr); mbRecalc();
-  toast((dim==='Length'?'लंबाई':'चौड़ाई')+' '+dimVal+' सेट — मात्रा '+qf(Q));
+  const lbl={Length:'लंबाई',Breadth:'चौड़ाई',Depth:'ऊँचाई'}[dim]||dim;
+  toast(lbl+' '+dimVal+' सेट — मात्रा '+qf(Q));
 }
 function mbForceCancel(btn){ const tr=btn.closest('tr'); delete tr.dataset.forcing; mbRestoreQcell(tr); mbRecalc(); }
 function mbRestoreQcell(tr){ tr.querySelector('[data-qcell]').innerHTML=mbQcellHTML(); }
@@ -3315,7 +3317,9 @@ function payBreakdownHtml(p){
   const isPaid = payBoolJs(p.Paid);
   const payBtn = isPaid
     ? `<div class="pb-row" style="background:var(--green-bg)"><span class="lbl" style="color:var(--green);font-weight:600">✅ भुगतान हो गया</span><b class="amt" style="color:var(--green)">${dmy(p.PaidDate)}</b></div>`
-    : `<div class="pb-row" style="padding:10px 14px"><span class="lbl"></span><button class="btn btn-primary btn-sm" onclick='markBillPaid(${JSON.stringify(p.PayID)})'>✅ Payment — चेक जारी हुआ चिह्नित करें</button></div>`;
+    : `<div class="pb-row" style="padding:10px 14px;gap:8px;flex-wrap:wrap"><span class="lbl" style="font-size:12px;color:var(--muted)">चेक जारी होने तक T2–T18 बदले जा सकते हैं</span>
+        <button class="btn btn-ghost btn-sm" onclick='openPayBuilder(${JSON.stringify(p.PayID)})' title="कटौती, Advance, Withheld, GST व सांविधिक कटौतियाँ (T2–T18) बदलें">✎ T2–T18 संपादित करें</button>
+        <button class="btn btn-primary btn-sm" onclick='markBillPaid(${JSON.stringify(p.PayID)})'>✅ Payment — चेक जारी हुआ चिह्नित करें</button></div>`;
   return `<div class="pb-steps">
     <div class="pb-card">
       <div class="pb-card-head"><span class="pb-ic">🧮</span><b>निर्धारित राशि व Above/Below</b></div>

@@ -951,6 +951,8 @@ body{
 .print-area{display:none}
 @page{size:A4 portrait; margin:9mm}
 @media print{
+  /* पूरा रंग/डिज़ाइन छपे — background व रंग (color printer → रंग; B&W → अपने-आप grey, text गहरा) */
+  *, *::before, *::after{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important }
   body{background:#fff}
   .app-shell{display:none !important}
   .print-area{display:block}
@@ -1120,6 +1122,8 @@ body{
 
 @media print{
   @page{size:A4; margin:8mm}
+  /* पूरा रंग/डिज़ाइन छपे — background व रंग (color printer → रंग; B&W → अपने-आप grey, text गहरा) */
+  *, *::before, *::after{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important }
   .cover-doc.cover-print{width:100%; min-height:279mm; height:279mm; border:3px double #000; box-shadow:none; padding:12mm 12mm;
     -webkit-print-color-adjust:exact; print-color-adjust:exact}
   .cover-doc.cover-print .cov-gov{font-size:46px}

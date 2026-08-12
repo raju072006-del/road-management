@@ -967,10 +967,12 @@ tr.sec-row-new  td { background: #effcf6; }
 
 /* ── PRINT ── */
 @media print {
+  /* पूरा रंग/डिज़ाइन छपे — background व रंग (color printer → रंग; B&W → अपने-आप grey, text गहरा) */
+  *, *::before, *::after { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   .site-header, .navbar, .left-panel, .filter-bar, .btn-primary, .btn-sm { display:none!important; }
   .main-content { padding:0; }
   .card { box-shadow:none; border:1px solid #ccc; }
-  .tbl thead tr { background: #eef1f7 !important; -webkit-print-color-adjust: exact; }
+  .tbl thead tr { background: #eef1f7 !important; }
 }
 
 /* हैम्बर्गर मेन्यू बटन — केवल मोबाइल/टैबलेट पर दिखे */

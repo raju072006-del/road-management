@@ -358,6 +358,8 @@ select.inp{appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmln
 /* नाप/भुगतान की चौड़ी तालिकाएँ पूरी छपें — landscape + पर्याप्त हाशिया */
 @page{ size:A4 landscape; margin:8mm }
 @media print{
+  /* पूरा रंग/डिज़ाइन छपे — background व रंग (color printer → रंग; B&W → अपने-आप grey, text गहरा) */
+  *, *::before, *::after{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important }
   body{background:#fff}
   .nav,.topbar .btn,.no-print,.icon-btn,.btn,.row-actions,.toolbar{display:none !important}
   .card{box-shadow:none; border-color:#ccc; overflow:visible !important; max-height:none !important}

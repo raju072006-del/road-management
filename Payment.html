@@ -792,7 +792,7 @@ window.addEventListener('DOMContentLoaded', function(){
   document.querySelectorAll('#nav button').forEach(function(b){
     b.addEventListener('click', function(){ switchTab(b.dataset.tab); });
   });
-  document.getElementById('overlay').addEventListener('click', function(e){ if(e.target.id==='overlay') closeModal(); });
+  document.getElementById('overlay').addEventListener('click', function(e){ if(e.target.id==='overlay' && !_modalLockClose) closeModal(); });
   document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeModal(); });
   renderConnMode();
   refresh();
@@ -1897,16 +1897,19 @@ function emptyState(ic,title,desc,btns){
 /* ===================================================================
    Modal infra
 =================================================================== */
+let _modalLockClose=false;   // बड़े (full/wide) data-entry builder में बाहर-click से बंद न हो — मेहनत न जाए
 function openModal(title, body, foot, size){
   document.getElementById('modalTitle').textContent=title;
   document.getElementById('modalBody').innerHTML=body;
   document.getElementById('modalFoot').innerHTML=foot||'';
   const modal=document.getElementById('modal');
+  const big = (size===true||size==='wide'||size==='full');
   modal.classList.toggle('wide', size===true||size==='wide');
   modal.classList.toggle('full', size==='full');
+  _modalLockClose = big;   // full/wide = नाप/भुगतान/split builder → backdrop-click बंद न करे
   document.getElementById('overlay').classList.add('show');
 }
-function closeModal(){ document.getElementById('overlay').classList.remove('show'); }
+function closeModal(){ _modalLockClose=false; document.getElementById('overlay').classList.remove('show'); }
 function bindView(){ /* placeholder for future delegated events */ }
 
 /* ---- Project modal ---- */

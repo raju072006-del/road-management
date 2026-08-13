@@ -248,6 +248,9 @@ select.inp{appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmln
 /* हर कॉलम के बीच हल्की vertical separation लाइन (header + data) */
 .mb-grid th, .mb-grid td{border-right:1px solid rgba(0,0,0,.07)}
 .mb-grid th:last-child, .mb-grid td:last-child{border-right:none}
+/* Edit से खोली गई पंक्ति को highlight (कौन-सी लाइन edit की, एक नज़र में पता चले) */
+.mb-grid tr.mb-hl > td{background:#fef08a !important; transition:background .3s}
+.mb-grid tr.mb-hl > td:first-child{box-shadow:inset 3px 0 0 #dc2626}
 .mb-grow{field-sizing:content}
 .mb-mini{flex:none; width:17px; height:17px; padding:0; font-size:10px; line-height:1;
   border:1px solid var(--line); border-radius:4px; background:var(--surface-2); color:var(--muted);
@@ -1371,6 +1374,28 @@ function clearSancFilter(tbodyId, itemId){
   if(itemId!=null && state.sancSearch) delete state.sancSearch[String(itemId)];
   filterSancRows(tbodyId, itemId);
 }
+/* block2/block3 के लिए खोज-टूलबार (persist नहीं — DOM पर तुरंत filter) */
+function measSearchBar(tbId, count){
+  if(count<2) return '';
+  return `<input id="${tbId}-q" class="inp" style="width:140px;font-size:13px;padding:4px 8px;margin-right:4px" placeholder="🔍 पंक्ति खोजें..." onkeydown='if(event.key==="Enter"){event.preventDefault();filterSancRows(${JSON.stringify(tbId)},null)}'> <button class="btn btn-ghost btn-sm" style="margin-right:6px" onclick='filterSancRows(${JSON.stringify(tbId)},null)'>Search</button><button class="btn btn-ghost btn-sm" style="margin-right:6px" onclick='clearSancFilter(${JSON.stringify(tbId)},null)'>Clear</button>`;
+}
+/* block2/block3 के Edit से संबंधित नाप builder खोलो + उस पंक्ति को scroll कर highlight करो */
+function editMeasInBuilder(measId){
+  const m=D().measurements.find(x=>String(x.MeasID)===String(measId));
+  if(!m){ toast('नाप नहीं मिली',true); return; }
+  const sancRef=m.SancRef||(typeof sancRefOf==='function'?sancRefOf(m):'');
+  if(!sancRef){ openMeasModal(measId); return; }   // निर्धारित संदर्भ न हो तो सामान्य edit
+  openMeasBuilder(sancRef);
+  requestAnimationFrame(function(){ setTimeout(function(){ mbHighlightRow(measId); }, 40); });
+}
+function mbHighlightRow(measId){
+  const key=(window.CSS&&CSS.escape)?CSS.escape(String(measId)):String(measId);
+  const tr=document.querySelector('#mbBody tr[data-meas="'+key+'"]');
+  if(!tr) return;
+  try{ tr.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){ tr.scrollIntoView(); }
+  tr.classList.add('mb-hl');
+  setTimeout(function(){ tr.classList.remove('mb-hl'); }, 2800);
+}
 
 function itemMeasCard(it){
   const unit=esc(it.Unit||''), iid=JSON.stringify(it.ItemID);
@@ -1424,11 +1449,14 @@ function itemMeasCard(it){
     sancRows, 15, sancBtn, sancTbId);
 
   // ---- भाग 2: भुगतान हो चुका (वास्तविक नाप × बिल) ----
-  let paidRows='';
+  let paidRows='', paidCount=0;
+  const paidTbId='paidTb-'+String(it.ItemID).replace(/[^\w-]/g,'');
   actual.forEach(function(m){
     detInBill(m).forEach(function(d){
       const p=D().payments.find(x=>String(x.PayID)===String(d.PayID))||{};
-      paidRows += `<tr>${leadCells(m)}
+      paidCount++;
+      const srch=esc([String(p.BillNo||''),String(m.Description||''),chRange(m)||'',sideLabel(m)||'',measEngineer(m)||'',String(p.MBNo||''),String(m.MBNo||'')].join(' ').toLowerCase());
+      paidRows += `<tr data-search="${srch}">${leadCells(m)}
         <td class="faint">${esc(sancRefLabel(m))||'—'}</td>
         <td class="r num" style="color:var(--green)"><b>${nf2(d.Qty)}</b></td><td class="c muted">${unit}</td>
         <td><b>${esc(p.BillNo||'—')}</b> <span class="badge ${p.BillType==='अंतिम'?'b-blue':'b-grey'}" style="font-size:10px">${esc(p.BillType||'चालू')}</span></td>
@@ -1438,38 +1466,41 @@ function itemMeasCard(it){
         <td class="faint" style="white-space:nowrap">${esc(measEngineer(m))||'—'}</td>
         <td><div class="row-actions">
           <button class="icon-btn" title="इस नाप को हिस्सों में बाँटें (बिल यथावत रहेगा)" onclick='openSplitModal(${JSON.stringify(m.MeasID)})'>✂</button>
-          <button class="icon-btn" title="भुगतान/बिल संख्या संपादित" onclick='openPayBuilder(${JSON.stringify(d.PayID)})'>✎</button>
+          <button class="icon-btn" title="इस नाप को नाप-builder में खोलें/संपादित करें" onclick='editMeasInBuilder(${JSON.stringify(m.MeasID)})'>✎</button>
           <button class="icon-btn danger" title="यह भुगतान हटाएँ" onclick='delPayDetail(${JSON.stringify(d.PayID)},${JSON.stringify(m.MeasID)})'>🗑</button>
         </div></td></tr>`;
     });
   });
   const block2=blockTable('② भुगतान हो चुका', `भुगतान मात्रा योग: ${nf2(pQ)} ${unit} · राशि ${inr(fPaidA)}`,
     `<th>संबंधित निर्धारित</th><th class="r">भु. मात्रा</th><th class="c">इकाई</th><th>बिल संख्या</th><th>MB / पृष्ठ</th><th>दिनांक</th><th>Record MB / तारीख</th><th>अभियंता</th><th></th>`,
-    paidRows, 17, '');
+    paidRows, 17, measSearchBar(paidTbId, paidCount), paidTbId);
 
   // ---- भाग 3: बचा हुआ (वास्तविक नाप का शेष) — ऋणात्मक मात्रा (कटौती/समायोजन) वाली नाप भी यहाँ दिखेगी, जब तक उसका भुगतान/समायोजन न हो जाए ----
-  let remRows='';
+  let remRows='', remCount=0;
+  const remTbId='remTb-'+String(it.ItemID).replace(/[^\w-]/g,'');
   actual.forEach(function(m){
     const rem=measRemain(m);
     if(Math.abs(rem)>0.0005){
       const paid=measPaid(m.MeasID);
+      remCount++;
+      const srch=esc([String(m.Description||''),chRange(m)||'',sideLabel(m)||'',measEngineer(m)||'',String(m.MBNo||'')].join(' ').toLowerCase());
       const st = rem<0 ? '<span class="badge b-red" style="font-size:10px">➖ ऋणात्मक समायोजन</span>'
         : (paid>0 ? '<span class="badge b-amber" style="font-size:10px">आंशिक</span>' : '<span class="badge b-grey" style="font-size:10px">शेष</span>');
-      remRows += `<tr>${leadCells(m)}
+      remRows += `<tr data-search="${srch}">${leadCells(m)}
         <td class="faint">${esc(sancRefLabel(m))||'—'}</td>
         <td class="r num" style="color:var(--red-2)"><b>${nf2(rem)}</b></td><td class="c muted">${unit}</td>
         <td class="c">${st}</td>${mbTd(m)}<td class="muted">${dmy(m.MDate)}</td>
         <td class="faint" style="white-space:nowrap">${esc(measEngineer(m))||'—'}</td>
         <td><div class="row-actions">
           <button class="icon-btn" title="भुगतान इतिहास" onclick='measHistory(${JSON.stringify(m.MeasID)})'>☷</button>
-          <button class="icon-btn" title="संपादित" onclick='openMeasModal(${JSON.stringify(m.MeasID)})'>✎</button>
+          <button class="icon-btn" title="इस नाप को नाप-builder में खोलें/संपादित करें" onclick='editMeasInBuilder(${JSON.stringify(m.MeasID)})'>✎</button>
           <button class="icon-btn danger" title="हटाएँ" onclick='delMeas(${JSON.stringify(m.MeasID)})'>🗑</button>
         </div></td></tr>`;
     }
   });
   const block3=blockTable('③ Record हो गया, लेकिन भुगतान शेष है', `शेष भुगतान-योग्य मात्रा: ${nf2(rQ)} ${unit}`,
     `<th>संबंधित निर्धारित</th><th class="r">शेष मात्रा</th><th class="c">इकाई</th><th class="c">स्थिति</th><th>Record MB/Page</th><th>दिनांक</th><th>अभियंता</th><th></th>`,
-    remRows, 16, '');
+    remRows, 16, measSearchBar(remTbId, remCount), remTbId);
 
   const ignored = state.ignoredOverlaps||[];
   const pairs = overlapList(sanc,'sanc').map(p=>({sig:p.sig,text:'निर्धारित — '+p.text}))

@@ -1374,10 +1374,29 @@ function clearSancFilter(tbodyId, itemId){
   if(itemId!=null && state.sancSearch) delete state.sancSearch[String(itemId)];
   filterSancRows(tbodyId, itemId);
 }
-/* block2/block3 के लिए खोज-टूलबार (persist नहीं — DOM पर तुरंत filter) */
+/* block2/block3 के लिए 3-बॉक्स खोज-टूलबार — विवरण / चैनेज / पक्ष (persist नहीं — DOM पर तुरंत filter) */
 function measSearchBar(tbId, count){
   if(count<2) return '';
-  return `<input id="${tbId}-q" class="inp" style="width:140px;font-size:13px;padding:4px 8px;margin-right:4px" placeholder="🔍 पंक्ति खोजें..." onkeydown='if(event.key==="Enter"){event.preventDefault();filterSancRows(${JSON.stringify(tbId)},null)}'> <button class="btn btn-ghost btn-sm" style="margin-right:6px" onclick='filterSancRows(${JSON.stringify(tbId)},null)'>Search</button><button class="btn btn-ghost btn-sm" style="margin-right:6px" onclick='clearSancFilter(${JSON.stringify(tbId)},null)'>Clear</button>`;
+  const inp=(sfx,ph)=>`<input id="${tbId}-${sfx}" class="inp" style="width:118px;font-size:12px;padding:4px 8px;margin-right:4px" placeholder="${ph}" onkeydown='if(event.key==="Enter"){event.preventDefault();filterMeasRows3(${JSON.stringify(tbId)})}'>`;
+  return inp('qd','🔍 विवरण')+inp('qc','🔍 चैनेज (से–तक)')+inp('qs','🔍 पक्ष')
+    +`<button class="btn btn-ghost btn-sm" style="margin-right:6px" onclick='filterMeasRows3(${JSON.stringify(tbId)})'>Search</button>`
+    +`<button class="btn btn-ghost btn-sm" style="margin-right:6px" onclick='clearMeasRows3(${JSON.stringify(tbId)})'>Clear</button>`;
+}
+/* तीनों बॉक्स (विवरण/चैनेज/पक्ष) से मिलान — सभी भरे मानदंड मेल खाने पर ही पंक्ति दिखे */
+function filterMeasRows3(tbId){
+  const tbody=document.getElementById(tbId); if(!tbody) return;
+  const g=(sfx)=>{ const el=document.getElementById(tbId+'-'+sfx); return el?el.value.trim().toLowerCase():''; };
+  const qd=g('qd'), qc=g('qc'), qs=g('qs');
+  tbody.querySelectorAll('tr').forEach(function(tr){
+    const okD=!qd||(tr.getAttribute('data-sdesc')||'').indexOf(qd)!==-1;
+    const okC=!qc||(tr.getAttribute('data-sch')||'').indexOf(qc)!==-1;
+    const okS=!qs||(tr.getAttribute('data-sside')||'').indexOf(qs)!==-1;
+    tr.style.display=(okD&&okC&&okS)?'':'none';
+  });
+}
+function clearMeasRows3(tbId){
+  ['qd','qc','qs'].forEach(sfx=>{ const el=document.getElementById(tbId+'-'+sfx); if(el) el.value=''; });
+  filterMeasRows3(tbId);
 }
 /* block2/block3 के Edit से संबंधित नाप builder खोलो + उस पंक्ति को scroll कर highlight करो */
 function editMeasInBuilder(measId){
@@ -1455,8 +1474,7 @@ function itemMeasCard(it){
     detInBill(m).forEach(function(d){
       const p=D().payments.find(x=>String(x.PayID)===String(d.PayID))||{};
       paidCount++;
-      const srch=esc([String(p.BillNo||''),String(m.Description||''),chRange(m)||'',sideLabel(m)||'',measEngineer(m)||'',String(p.MBNo||''),String(m.MBNo||'')].join(' ').toLowerCase());
-      paidRows += `<tr data-search="${srch}">${leadCells(m)}
+      paidRows += `<tr data-sdesc="${esc(String(m.Description||'').toLowerCase())}" data-sch="${esc((chRange(m)||'').toLowerCase())}" data-sside="${esc((sideLabel(m)||'').toLowerCase())}">${leadCells(m)}
         <td class="faint">${esc(sancRefLabel(m))||'—'}</td>
         <td class="r num" style="color:var(--green)"><b>${nf2(d.Qty)}</b></td><td class="c muted">${unit}</td>
         <td><b>${esc(p.BillNo||'—')}</b> <span class="badge ${p.BillType==='अंतिम'?'b-blue':'b-grey'}" style="font-size:10px">${esc(p.BillType||'चालू')}</span></td>
@@ -1483,10 +1501,9 @@ function itemMeasCard(it){
     if(Math.abs(rem)>0.0005){
       const paid=measPaid(m.MeasID);
       remCount++;
-      const srch=esc([String(m.Description||''),chRange(m)||'',sideLabel(m)||'',measEngineer(m)||'',String(m.MBNo||'')].join(' ').toLowerCase());
       const st = rem<0 ? '<span class="badge b-red" style="font-size:10px">➖ ऋणात्मक समायोजन</span>'
         : (paid>0 ? '<span class="badge b-amber" style="font-size:10px">आंशिक</span>' : '<span class="badge b-grey" style="font-size:10px">शेष</span>');
-      remRows += `<tr data-search="${srch}">${leadCells(m)}
+      remRows += `<tr data-sdesc="${esc(String(m.Description||'').toLowerCase())}" data-sch="${esc((chRange(m)||'').toLowerCase())}" data-sside="${esc((sideLabel(m)||'').toLowerCase())}">${leadCells(m)}
         <td class="faint">${esc(sancRefLabel(m))||'—'}</td>
         <td class="r num" style="color:var(--red-2)"><b>${nf2(rem)}</b></td><td class="c muted">${unit}</td>
         <td class="c">${st}</td>${mbTd(m)}<td class="muted">${dmy(m.MDate)}</td>

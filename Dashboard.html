@@ -2695,6 +2695,39 @@ tr.sec-row-new  td { background: #effcf6; }
   </div>
 </div>
 
+<!-- ══ SET USER PASSWORD MODAL ══ -->
+<div class="modal-overlay" id="set-pass-modal" style="z-index:600;">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-header" style="background:linear-gradient(135deg,#b45309,#d97706);">
+      <div>
+        <div class="modal-title">🔑 पासवर्ड बदलें</div>
+        <div class="modal-sub" id="spm-sub">—</div>
+      </div>
+      <div class="modal-close" onclick="closeModal('set-pass-modal')">✕</div>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="spm-user">
+      <div>
+        <label class="form-label">नया पासवर्ड <span class="req">*</span></label>
+        <input class="config-input" id="spm-pass1" type="password" placeholder="कम-से-कम 4 अक्षर" style="width:100%;font-family:var(--font-en);">
+      </div>
+      <div style="margin-top:12px;">
+        <label class="form-label">पासवर्ड दोबारा <span class="req">*</span></label>
+        <input class="config-input" id="spm-pass2" type="password" placeholder="वही पासवर्ड फिर से" style="width:100%;font-family:var(--font-en);"
+               onkeydown="if(event.key==='Enter')submitSetPass()">
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:12px;color:var(--text2);cursor:pointer;">
+        <input type="checkbox" id="spm-show" onchange="spmToggleShow()"> पासवर्ड दिखाएँ
+      </label>
+      <div id="spm-result" style="margin-top:10px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('set-pass-modal')">रद्द करें</button>
+      <button class="btn-primary" id="spm-submit-btn" onclick="submitSetPass()" style="background:#d97706;">💾 बदलें</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ ADD LETTER TO CONVERSATION MODAL ══ -->
 <div class="modal-overlay" id="add-letter-conv-modal" style="z-index:500;">
   <div class="modal" style="max-width:680px;">
@@ -5306,13 +5339,43 @@ function createUser() {
     .adminCreateUser({user:user, pass:pass, role:role, name:name||user, email:email});
 }
 function resetUserPassword(user) {
-  var np=prompt('"'+user+'" के लिए नया Password (कम-से-कम 4 अक्षर):','');
-  if(np===null) return;
-  if(np.length<4){ alert('❌ Password कम-से-कम 4 अक्षर का हो'); return; }
+  var u = _usersCache.find(function(x){ return String(x.username)===user; }) || {};
+  document.getElementById('spm-user').value = user;
+  document.getElementById('spm-sub').textContent = (u.name ? u.name+' — ' : '') + user;
+  document.getElementById('spm-pass1').value = '';
+  document.getElementById('spm-pass2').value = '';
+  document.getElementById('spm-show').checked = false;
+  spmToggleShow();
+  document.getElementById('spm-result').innerHTML = '';
+  document.getElementById('set-pass-modal').classList.add('open');
+  setTimeout(function(){ document.getElementById('spm-pass1').focus(); }, 60);
+}
+function spmToggleShow() {
+  var t = document.getElementById('spm-show').checked ? 'text' : 'password';
+  document.getElementById('spm-pass1').type = t;
+  document.getElementById('spm-pass2').type = t;
+}
+function submitSetPass() {
+  var user = document.getElementById('spm-user').value;
+  var p1 = document.getElementById('spm-pass1').value;
+  var p2 = document.getElementById('spm-pass2').value;
+  var res = document.getElementById('spm-result');
+  var btn = document.getElementById('spm-submit-btn');
+  res.innerHTML = '';
+  if (p1.length < 4) { res.innerHTML = '<div class="status-box error">❌ पासवर्ड कम-से-कम 4 अक्षर का हो</div>'; return; }
+  if (p1 !== p2) { res.innerHTML = '<div class="status-box error">❌ दोनों पासवर्ड मेल नहीं खा रहे</div>'; return; }
+  btn.disabled = true; btn.textContent = '⏳ बदल रहे हैं...';
   google.script.run
-    .withSuccessHandler(function(res){ alert(res&&res.success?'✅ Password बदला गया':'❌ '+((res&&res.msg)||'नहीं बदला')); })
-    .withFailureHandler(function(e){ alert('❌ '+(e.message||e)); })
-    .adminSetPassword({user:user, pass:np});
+    .withSuccessHandler(function(r){
+      btn.disabled = false; btn.textContent = '💾 बदलें';
+      if (r && r.success) { closeModal('set-pass-modal'); }
+      else res.innerHTML = '<div class="status-box error">❌ '+((r&&r.msg)||'नहीं बदला')+'</div>';
+    })
+    .withFailureHandler(function(e){
+      btn.disabled = false; btn.textContent = '💾 बदलें';
+      res.innerHTML = '<div class="status-box error">❌ '+(e.message||e)+'</div>';
+    })
+    .adminSetPassword({user:user, pass:p1});
 }
 function toggleUserActive(user, active) {
   google.script.run

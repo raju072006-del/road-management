@@ -5167,7 +5167,8 @@ function doForgot() {
     .withSuccessHandler(function(res){
       btn.disabled = false; btn.textContent = '📧 रीसेट लिंक भेजें';
       var ok = res && res.success;
-      msg.innerHTML = '<div class="status-box '+(ok?'ok':'err')+'">'+((res&&res.msg)||(ok?'यदि यह खाता मौजूद है तो रीसेट लिंक ईमेल पर भेज दिया गया है।':'त्रुटि — दोबारा प्रयास करें।'))+'</div>';
+      var m = (res && (res.message || res.msg)) || (ok?'रीसेट लिंक ईमेल पर भेज दिया गया है।':'त्रुटि — दोबारा प्रयास करें।');
+      msg.innerHTML = '<div class="status-box '+(ok?'ok':'err')+'">'+m+'</div>';
     })
     .withFailureHandler(function(err){
       btn.disabled = false; btn.textContent = '📧 रीसेट लिंक भेजें';
@@ -5193,7 +5194,7 @@ function doReset() {
         try { history.replaceState(null, '', location.pathname); } catch(e){}
         setTimeout(function(){ showLoginCard(); }, 1600);
       } else {
-        msg.innerHTML = '<div class="status-box err">❌ '+((res&&res.msg)||'लिंक अमान्य या समय-सीमा समाप्त।')+'</div>';
+        msg.innerHTML = '<div class="status-box err">❌ '+((res&&(res.message||res.msg))||'लिंक अमान्य या समय-सीमा समाप्त।')+'</div>';
       }
     })
     .withFailureHandler(function(err){

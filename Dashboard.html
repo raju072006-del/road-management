@@ -2654,6 +2654,47 @@ tr.sec-row-new  td { background: #effcf6; }
   </div>
 </div>
 
+<!-- ══ EDIT USER ACCOUNT MODAL ══ -->
+<div class="modal-overlay" id="edit-user-modal" style="z-index:600;">
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-header" style="background:linear-gradient(135deg,#4056d6,#5b21b6);">
+      <div>
+        <div class="modal-title">✏️ यूज़र विवरण संपादित करें</div>
+        <div class="modal-sub" id="eum-sub">—</div>
+      </div>
+      <div class="modal-close" onclick="closeModal('edit-user-modal')">✕</div>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="eum-user">
+      <div>
+        <label class="form-label">प्रदर्शित नाम <span class="req">*</span></label>
+        <input class="config-input" id="eum-name" placeholder="जैसे: नंद किशोर" style="width:100%;">
+      </div>
+      <div style="margin-top:12px;">
+        <label class="form-label">यूज़र ID</label>
+        <input class="config-input" id="eum-userid" readonly style="width:100%;font-family:var(--font-en);background:var(--bg);color:var(--text3);cursor:not-allowed;">
+        <div style="font-size:11px;color:var(--text3);margin-top:4px;">यूज़र ID बदली नहीं जा सकती।</div>
+      </div>
+      <div style="margin-top:12px;">
+        <label class="form-label">ईमेल <span style="font-weight:400;color:var(--text3);">(पासवर्ड रीसेट इसी पर जाएगा)</span></label>
+        <input class="config-input" id="eum-email" type="email" placeholder="user@example.com" style="width:100%;font-family:var(--font-en);">
+      </div>
+      <div style="margin-top:12px;" id="eum-role-wrap">
+        <label class="form-label">भूमिका</label>
+        <select class="config-input" id="eum-role" style="width:100%;">
+          <option value="user">👤 User</option>
+          <option value="admin">👑 Admin</option>
+        </select>
+      </div>
+      <div id="eum-result" style="margin-top:10px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('edit-user-modal')">रद्द करें</button>
+      <button class="btn-primary" id="eum-submit-btn" onclick="submitEditUser()" style="background:var(--indigo,#4056d6);">💾 सहेजें</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ ADD LETTER TO CONVERSATION MODAL ══ -->
 <div class="modal-overlay" id="add-letter-conv-modal" style="z-index:500;">
   <div class="modal" style="max-width:680px;">
@@ -5202,21 +5243,46 @@ function _renderUserRows(list) {
 function editUserAcc(user) {
   var u = _usersCache.find(function(x){ return String(x.username)===user; }) || {};
   var isSuper = String(user)==='Admin';
-  var name = prompt('"'+user+'" का प्रदर्शित नाम:', u.name || '');
-  if (name===null) return;
-  var email = prompt('"'+user+'" का ईमेल (पासवर्ड रीसेट इसी पर जाएगा):', u.email || '');
-  if (email===null) return;
-  var role;
+  document.getElementById('eum-user').value   = user;
+  document.getElementById('eum-userid').value = user;
+  document.getElementById('eum-name').value   = u.name || '';
+  document.getElementById('eum-email').value  = u.email || '';
+  document.getElementById('eum-sub').textContent = isSuper ? '⭐ Super Admin' : (u.role==='admin' ? '👑 Admin' : '👤 User');
+  document.getElementById('eum-result').innerHTML = '';
+  var roleWrap = document.getElementById('eum-role-wrap');
+  var roleSel  = document.getElementById('eum-role');
   if (isSuper) {
-    role = 'admin';   // Super Admin की भूमिका नहीं बदलती
+    roleWrap.style.display = 'none';       // Super Admin की भूमिका नहीं बदलती
   } else {
-    var mkAdmin = confirm('भूमिका चुनें:\n\n[ OK ] = 👑 Admin\n[ Cancel ] = 👤 User\n\n(अभी: '+(u.role==='admin'?'Admin':'User')+')');
-    role = mkAdmin ? 'admin' : 'user';
+    roleWrap.style.display = '';
+    roleSel.value = (u.role==='admin') ? 'admin' : 'user';
   }
+  document.getElementById('edit-user-modal').classList.add('open');
+  setTimeout(function(){ document.getElementById('eum-name').focus(); }, 60);
+}
+function submitEditUser() {
+  var user  = document.getElementById('eum-user').value;
+  var name  = document.getElementById('eum-name').value.trim();
+  var email = document.getElementById('eum-email').value.trim();
+  var isSuper = String(user)==='Admin';
+  var role  = isSuper ? 'admin' : document.getElementById('eum-role').value;
+  var res   = document.getElementById('eum-result');
+  var btn   = document.getElementById('eum-submit-btn');
+  res.innerHTML = '';
+  if (!name) { res.innerHTML = '<div class="status-box error">❌ प्रदर्शित नाम भरें</div>'; return; }
+  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { res.innerHTML = '<div class="status-box error">❌ ईमेल सही रूप में नहीं है</div>'; return; }
+  btn.disabled = true; btn.textContent = '⏳ सहेज रहे हैं...';
   google.script.run
-    .withSuccessHandler(function(res){ if(res&&res.success) renderUserMgmt(); else alert('❌ '+((res&&res.msg)||'')); })
-    .withFailureHandler(function(e){ alert('❌ '+(e.message||e)); })
-    .adminUpdateUser({user:user, name:name, email:email.trim(), role: role});
+    .withSuccessHandler(function(r){
+      btn.disabled = false; btn.textContent = '💾 सहेजें';
+      if (r && r.success) { closeModal('edit-user-modal'); renderUserMgmt(); }
+      else res.innerHTML = '<div class="status-box error">❌ '+((r&&r.msg)||'सहेजा नहीं जा सका')+'</div>';
+    })
+    .withFailureHandler(function(e){
+      btn.disabled = false; btn.textContent = '💾 सहेजें';
+      res.innerHTML = '<div class="status-box error">❌ '+(e.message||e)+'</div>';
+    })
+    .adminUpdateUser({user:user, name:name, email:email, role: role});
 }
 function createUser() {
   var name=document.getElementById('nu-name').value.trim();

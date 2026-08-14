@@ -234,17 +234,24 @@ export default async (req) => {
       // ईमेल या username — दोनों से खोजो
       let row = idf.indexOf('@') >= 0 ? await userByEmail(idf) : await dbUser(cleanUname(idf));
       if (!row) row = idf.indexOf('@') >= 0 ? await dbUser(cleanUname(idf)) : await userByEmail(idf);
-      if (row && row.email) {
-        try {
-          const base = String(a.origin || '').replace(/\/+$/, '');
-          const link = base + '/?reset=' + encodeURIComponent(makeResetToken(row.username));
-          await sendResetEmail(row.email, row.name, link);
-        } catch (e) {
-          return json({ ok: true, result: { success: false, message: String(e.message || e) } });
-        }
+      // खाता नहीं मिला
+      if (!row) {
+        return json({ ok: true, result: { success: false, message: 'इस ईमेल/ID से कोई खाता नहीं मिला। कृपया सही ईमेल या यूज़र ID दर्ज करें।' } });
       }
-      // सुरक्षा: चाहे मिले या न मिले — एक जैसा संदेश (existence उजागर न हो)
-      return json({ ok: true, result: { success: true, message: 'यदि यह ईमेल/ID पंजीकृत है, तो रीसेट-लिंक उस ईमेल पर भेज दिया गया है। इनबॉक्स/स्पैम देखें।' } });
+      // खाता है, पर ईमेल दर्ज नहीं
+      if (!row.email) {
+        return json({ ok: true, result: { success: false, message: 'इस खाते में कोई ईमेल दर्ज नहीं है — Admin से संपर्क कर ईमेल जुड़वाएँ या पासवर्ड रीसेट कराएँ।' } });
+      }
+      // खाता है और ईमेल भी — लिंक भेजो
+      try {
+        const base = String(a.origin || '').replace(/\/+$/, '');
+        const link = base + '/?reset=' + encodeURIComponent(makeResetToken(row.username));
+        await sendResetEmail(row.email, row.name, link);
+      } catch (e) {
+        return json({ ok: true, result: { success: false, message: 'ईमेल भेजने में समस्या: ' + String(e.message || e) } });
+      }
+      const masked = row.email.replace(/^(.).*(@.*)$/, (m, a2, b) => a2 + '****' + b);
+      return json({ ok: true, result: { success: true, message: 'रीसेट-लिंक ' + masked + ' पर भेज दिया गया है। इनबॉक्स/स्पैम देखें (लिंक 30 मिनट तक वैध)।' } });
     }
     if (op === 'resetPassword') {
       const o = checkResetToken(a.token);

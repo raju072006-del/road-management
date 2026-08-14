@@ -261,9 +261,12 @@ function validateLogin(username, password) {
 function adminListUsers() {
   _seedLocalUsersIfNeeded_();
   var out = [], dyn = _localUsers_();
-  Object.keys(dyn).forEach(function (k) { out.push({ username: k, role: dyn[k].role, name: dyn[k].name, active: dyn[k].active !== false }); });
+  Object.keys(dyn).forEach(function (k) { out.push({ username: k, role: dyn[k].role, name: dyn[k].name, email: dyn[k].email || '', active: dyn[k].active !== false }); });
   return out;
 }
+// LOCAL (offline) मोड में ईमेल-रीसेट संभव नहीं (कोई email-server नहीं) — CLOUD में __cloudPatch override करता है
+function requestPasswordReset(idf, origin) { return { success: false, message: 'ईमेल द्वारा रीसेट ऑनलाइन (होस्ट) मोड में उपलब्ध है। यहाँ (offline) Admin से पासवर्ड रीसेट कराएँ।' }; }
+function doPasswordReset(token, pass) { return { success: false, message: 'ईमेल द्वारा रीसेट ऑनलाइन (होस्ट) मोड में उपलब्ध है।' }; }
 function adminCreateUser(a) {
   a = a || {};
   _seedLocalUsersIfNeeded_();
@@ -272,7 +275,7 @@ function adminCreateUser(a) {
   if (String(a.pass || '').length < 4) return { success: false, msg: 'password कम-से-कम 4 अक्षर का हो' };
   var dyn = _localUsers_();
   if (dyn[uname]) return { success: false, msg: 'यह username पहले से मौजूद है' };
-  dyn[uname] = { hash: sha256Hex_(String(a.pass)), role: a.role === 'admin' ? 'admin' : 'user', name: a.name || uname, active: true };
+  dyn[uname] = { hash: sha256Hex_(String(a.pass)), role: a.role === 'admin' ? 'admin' : 'user', name: a.name || uname, email: String(a.email || '').trim(), active: true };
   _saveLocalUsers_(dyn);
   return { success: true };
 }
@@ -286,6 +289,7 @@ function adminUpdateUser(a) {
   if (uname === SUPER_ADMIN_) role = 'admin';   // Super Admin हमेशा Admin रहेगा
   if (dyn[uname].role === 'admin' && role !== 'admin' && _isLastActiveAdmin_(dyn, uname)) return { success: false, msg: 'कम-से-कम एक सक्रिय Admin ज़रूरी है' };
   if (a.name !== undefined) dyn[uname].name = a.name || uname;
+  if (a.email !== undefined) dyn[uname].email = String(a.email || '').trim();
   dyn[uname].role = role;
   _saveLocalUsers_(dyn);
   return { success: true };

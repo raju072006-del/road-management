@@ -882,6 +882,15 @@ function __cloudPatch() {
   listShareTargets = function () {
     try { return sbCall_('userTargets') || []; } catch (e) { return []; }
   };
+  // पासवर्ड रीसेट — ईमेल पर लिंक (public; बिना login) → Netlify /api/db
+  requestPasswordReset = function (idf, origin) {
+    try { return sbCall_('requestReset', { idf: idf, origin: origin }); }
+    catch (e) { return { success: false, message: String(e.message || e) }; }
+  };
+  doPasswordReset = function (token, pass) {
+    try { return sbCall_('resetPassword', { token: token, pass: pass }); }
+    catch (e) { return { success: false, message: String(e.message || e) }; }
+  };
   adminSetPassword = function (a) {
     try { sbCall_('userSetPassword', a || {}); return { success: true }; }
     catch (e) { return { success: false, msg: String(e.message || e) }; }

@@ -403,11 +403,13 @@ create table if not exists public.app_users (
   pass_salt   text not null,
   role        text not null default 'user',   -- 'admin' | 'user'
   name        text not null default '',
+  email       text,                           -- पासवर्ड-रीसेट इसी ईमेल पर जाएगा
   active      boolean not null default true,
   created_at  timestamptz not null default now()
 );
 
 alter table public.app_users enable row level security;
+alter table public.app_users add column if not exists email text;
 
 -- ── मुख्य वर्कबुक seed ───────────────────────────────────────────
 

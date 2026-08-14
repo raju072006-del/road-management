@@ -59,6 +59,23 @@ function checkToken(t) {
     return Date.now() > o.e ? null : o;
   } catch (e) { return null; }
 }
+// ── पासवर्ड-रीसेट टोकन (30 मिनट, stateless HMAC) ──
+function makeResetToken(username) {
+  const payload = Buffer.from(JSON.stringify({ u: username, p: 'reset', e: Date.now() + 30 * 60 * 1000 })).toString('base64url');
+  return payload + '.' + sign(payload);
+}
+function checkResetToken(t) {
+  t = String(t || '');
+  const i = t.lastIndexOf('.');
+  if (i < 1) return null;
+  const payload = t.slice(0, i), sig = t.slice(i + 1);
+  if (sig !== sign(payload)) return null;
+  try {
+    const o = JSON.parse(Buffer.from(payload, 'base64url').toString());
+    if (o.p !== 'reset') return null;
+    return Date.now() > o.e ? null : o;
+  } catch (e) { return null; }
+}
 
 // ── Supabase helpers ──
 async function sb(pathname, opts = {}) {
@@ -95,6 +112,31 @@ function verifyPw(pw, salt, hash) {
 async function dbUser(uname) {
   const rows = await sb('/rest/v1/app_users?username=eq.' + encodeURIComponent(uname) + '&select=*');
   return (rows && rows[0]) ? rows[0] : null;
+}
+async function userByEmail(email) {
+  email = String(email || '').trim();
+  if (!email) return null;
+  const rows = await sb('/rest/v1/app_users?email=eq.' + encodeURIComponent(email) + '&select=*');
+  return (rows && rows[0]) ? rows[0] : null;
+}
+// Resend के ज़रिए पासवर्ड-रीसेट ईमेल भेजो (RESEND_API_KEY + RESET_FROM env)
+async function sendResetEmail(toEmail, toName, link) {
+  const key = env('RESEND_API_KEY');
+  if (!key) throw new Error('email-service सेट नहीं है (Netlify env में RESEND_API_KEY जोड़ें)');
+  const from = env('RESET_FROM') || 'Road Management <onboarding@resend.dev>';
+  const html = '<div style="font-family:Arial,sans-serif;font-size:14px;color:#222;line-height:1.6">'
+    + 'नमस्ते ' + (toName || '') + ',<br><br>'
+    + 'आपने अपने Road Management खाते के पासवर्ड-रीसेट का अनुरोध किया है। नया पासवर्ड सेट करने के लिए नीचे क्लिक करें '
+    + '(यह लिंक 30 मिनट में समाप्त हो जाएगा):<br><br>'
+    + '<a href="' + link + '" style="background:#1e3a5f;color:#fff;padding:11px 20px;border-radius:6px;text-decoration:none;display:inline-block">🔑 पासवर्ड रीसेट करें</a><br><br>'
+    + 'या यह लिंक ब्राउज़र में खोलें:<br><span style="word-break:break-all;color:#1e3a5f">' + link + '</span><br><br>'
+    + 'अगर आपने यह अनुरोध नहीं किया, तो इस मेल को अनदेखा करें — आपका पासवर्ड नहीं बदलेगा।</div>';
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + key, 'content-type': 'application/json' },
+    body: JSON.stringify({ from: from, to: [toEmail], subject: 'पासवर्ड रीसेट — Road Management', html: html })
+  });
+  if (!res.ok) { const t = await res.text(); throw new Error('email भेजने में त्रुटि: ' + t.slice(0, 200)); }
 }
 async function tableHasUsers() {
   const r = await sb('/rest/v1/app_users?select=username&limit=1');
@@ -185,6 +227,37 @@ export default async (req) => {
       const o = checkToken(a.token);
       return json({ ok: true, result: o ? { valid: true, role: o.r, name: o.n, u: o.u } : { valid: false } });
     }
+    // ── पासवर्ड रीसेट (public — बिना login) ──
+    if (op === 'requestReset') {
+      try { await ensureSuperAdmin(); } catch (e) {}
+      const idf = String(a.idf || '').trim();
+      // ईमेल या username — दोनों से खोजो
+      let row = idf.indexOf('@') >= 0 ? await userByEmail(idf) : await dbUser(cleanUname(idf));
+      if (!row) row = idf.indexOf('@') >= 0 ? await dbUser(cleanUname(idf)) : await userByEmail(idf);
+      if (row && row.email) {
+        try {
+          const base = String(a.origin || '').replace(/\/+$/, '');
+          const link = base + '/?reset=' + encodeURIComponent(makeResetToken(row.username));
+          await sendResetEmail(row.email, row.name, link);
+        } catch (e) {
+          return json({ ok: true, result: { success: false, message: String(e.message || e) } });
+        }
+      }
+      // सुरक्षा: चाहे मिले या न मिले — एक जैसा संदेश (existence उजागर न हो)
+      return json({ ok: true, result: { success: true, message: 'यदि यह ईमेल/ID पंजीकृत है, तो रीसेट-लिंक उस ईमेल पर भेज दिया गया है। इनबॉक्स/स्पैम देखें।' } });
+    }
+    if (op === 'resetPassword') {
+      const o = checkResetToken(a.token);
+      if (!o) return json({ ok: true, result: { success: false, message: 'रीसेट-लिंक अमान्य या समय-समाप्त — दोबारा अनुरोध करें।' } });
+      if (String(a.pass || '').length < 4) return json({ ok: true, result: { success: false, message: 'password कम-से-कम 4 अक्षर का हो' } });
+      const salt = makeSalt();
+      await sb('/rest/v1/app_users?username=eq.' + encodeURIComponent(o.u), {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ pass_hash: hashPw(a.pass, salt), pass_salt: salt })
+      });
+      return json({ ok: true, result: { success: true, user: o.u } });
+    }
 
     // ── बाक़ी सबके लिए token अनिवार्य ──
     const auth = checkToken(body.token);
@@ -199,7 +272,7 @@ export default async (req) => {
     // ── Admin: user-प्रबंधन ops (role=admin अनिवार्य) ──
     if (op === 'userList') {
       requireAdmin(auth);
-      const rows = await sb('/rest/v1/app_users?select=username,role,name,active,created_at&order=created_at') || [];
+      const rows = await sb('/rest/v1/app_users?select=username,role,name,email,active,created_at&order=created_at') || [];
       return json({ ok: true, result: rows });
     }
     if (op === 'userCreate') {
@@ -213,7 +286,7 @@ export default async (req) => {
       await sb('/rest/v1/app_users', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'Prefer': 'return=minimal' },
-        body: JSON.stringify([{ username: uname, pass_hash: hashPw(a.pass, salt), pass_salt: salt, role, name: String(a.name || uname), active: true }])
+        body: JSON.stringify([{ username: uname, pass_hash: hashPw(a.pass, salt), pass_salt: salt, role, name: String(a.name || uname), email: String(a.email || '').trim(), active: true }])
       });
       return json({ ok: true, result: true });
     }
@@ -242,6 +315,7 @@ export default async (req) => {
       }
       const patch = { role };
       if (a.name !== undefined) patch.name = String(a.name || uname);
+      if (a.email !== undefined) patch.email = String(a.email || '').trim();
       await sb('/rest/v1/app_users?username=eq.' + encodeURIComponent(uname), {
         method: 'PATCH',
         headers: { 'content-type': 'application/json', 'Prefer': 'return=minimal' },

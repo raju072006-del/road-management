@@ -1024,26 +1024,30 @@ tr.sec-row-new  td { background: #effcf6; }
     linear-gradient(150deg,#0e1424 0%,#131a2e 55%,#1d2650 100%);
   display:flex; align-items:center; justify-content:center;
 }
-#login-card {
+#login-card, #forgot-card, #reset-card {
   background:#fff; border-radius:18px; padding:40px 36px;
   width:400px; max-width:92vw;
   box-shadow:0 30px 80px -18px rgba(0,0,0,0.55);
   animation: modalIn .25s var(--ease);
 }
-#login-card .lc-logo { text-align:center; margin-bottom:24px; }
-#login-card .lc-logo .lc-icon {
+#login-card .lc-logo, #forgot-card .lc-logo, #reset-card .lc-logo { text-align:center; margin-bottom:24px; }
+#login-card .lc-logo .lc-icon, #forgot-card .lc-logo .lc-icon, #reset-card .lc-logo .lc-icon {
   font-size:30px; display:inline-flex; align-items:center; justify-content:center;
   width:64px; height:64px; border-radius:18px;
   background:var(--grad); box-shadow:0 12px 28px -8px rgba(64,86,214,.6);
   margin-bottom:12px;
 }
-#login-card .lc-logo .lc-title { font-size:18px; font-weight:700; color:var(--navy2); letter-spacing:-0.01em; }
-#login-card .lc-logo .lc-sub   { font-size:12px; color:var(--text3); margin-top:3px; }
+#login-card .lc-logo .lc-title, #forgot-card .lc-logo .lc-title, #reset-card .lc-logo .lc-title { font-size:18px; font-weight:700; color:var(--navy2); letter-spacing:-0.01em; }
+#login-card .lc-logo .lc-sub, #forgot-card .lc-logo .lc-sub, #reset-card .lc-logo .lc-sub   { font-size:12px; color:var(--text3); margin-top:3px; }
 #login-error {
   display:none; background:var(--red-lt); color:var(--red-gov);
   padding:10px 14px; border-radius:10px; font-size:13px;
   margin-bottom:14px; border:1px solid #f5c2c8;
 }
+#forgot-msg, #reset-msg { margin-bottom:14px; }
+#forgot-msg .status-box, #reset-msg .status-box { padding:10px 14px; border-radius:10px; font-size:13px; }
+#forgot-msg .ok, #reset-msg .ok { background:#e8f5e9; color:#1b5e20; border:1px solid #a5d6a7; }
+#forgot-msg .err, #reset-msg .err { background:var(--red-lt); color:var(--red-gov); border:1px solid #f5c2c8; }
 .lc-field { margin-bottom:14px; }
 .lc-field label { display:block; font-size:12px; font-weight:600; color:var(--text2); margin-bottom:5px; }
 .lc-field input {
@@ -1052,16 +1056,16 @@ tr.sec-row-new  td { background: #effcf6; }
   outline:none; transition:border-color .18s var(--ease), box-shadow .18s var(--ease);
 }
 .lc-field input:focus { border-color:var(--indigo); box-shadow:var(--ring); }
-#login-btn {
+#login-btn, #forgot-btn, #reset-btn {
   width:100%; padding:12px; background:var(--grad); color:#fff;
   border:none; border-radius:12px; font-size:15px; font-weight:600;
   cursor:pointer; font-family:inherit;
   box-shadow:0 8px 20px -6px rgba(64,86,214,.55);
   transition:filter .18s var(--ease), transform .15s var(--ease), box-shadow .18s var(--ease);
 }
-#login-btn:hover:not(:disabled) { filter:brightness(1.07); transform:translateY(-1px); }
-#login-btn:active:not(:disabled) { transform:scale(.98); }
-#login-btn:disabled { opacity:0.6; cursor:not-allowed; }
+#login-btn:hover:not(:disabled), #forgot-btn:hover:not(:disabled), #reset-btn:hover:not(:disabled) { filter:brightness(1.07); transform:translateY(-1px); }
+#login-btn:active:not(:disabled), #forgot-btn:active:not(:disabled), #reset-btn:active:not(:disabled) { transform:scale(.98); }
+#login-btn:disabled, #forgot-btn:disabled, #reset-btn:disabled { opacity:0.6; cursor:not-allowed; }
 .lc-divider { border:none; border-top:1px solid var(--border); margin:18px 0; }
 /* User badge in header (light topbar) */
 #hdr-user-info {
@@ -1332,6 +1336,53 @@ tr.sec-row-new  td { background: #effcf6; }
     </div>
     <hr class="lc-divider">
     <button id="login-btn" onclick="doLogin()">🔐 लॉगिन करें</button>
+    <div style="text-align:center;margin-top:14px;">
+      <a href="javascript:void(0)" onclick="showForgot()" style="color:var(--accent,#2563eb);font-size:13px;text-decoration:none;">पासवर्ड भूल गए?</a>
+    </div>
+  </div>
+
+  <!-- FORGOT PASSWORD CARD -->
+  <div id="forgot-card" style="display:none;">
+    <div class="lc-logo">
+      <span class="lc-icon">🔑</span>
+      <div class="lc-title">पासवर्ड रीसेट</div>
+      <div class="lc-sub">अपना यूजर ID या ईमेल दर्ज करें</div>
+    </div>
+    <div id="forgot-msg"></div>
+    <div class="lc-field">
+      <label for="forgot-idf">यूजर ID या ईमेल</label>
+      <input type="text" id="forgot-idf" placeholder="Username या email"
+             onkeydown="if(event.key==='Enter')doForgot()">
+    </div>
+    <hr class="lc-divider">
+    <button id="forgot-btn" onclick="doForgot()">📧 रीसेट लिंक भेजें</button>
+    <div style="text-align:center;margin-top:14px;">
+      <a href="javascript:void(0)" onclick="showLoginCard()" style="color:var(--text2);font-size:13px;text-decoration:none;">← लॉगिन पर वापस जाएँ</a>
+    </div>
+  </div>
+
+  <!-- SET NEW PASSWORD CARD (via reset link) -->
+  <div id="reset-card" style="display:none;">
+    <div class="lc-logo">
+      <span class="lc-icon">🔒</span>
+      <div class="lc-title">नया पासवर्ड सेट करें</div>
+      <div class="lc-sub">कृपया अपना नया पासवर्ड दर्ज करें</div>
+    </div>
+    <div id="reset-msg"></div>
+    <div class="lc-field">
+      <label for="reset-pass1">नया पासवर्ड</label>
+      <input type="password" id="reset-pass1" placeholder="नया पासवर्ड" autocomplete="new-password">
+    </div>
+    <div class="lc-field">
+      <label for="reset-pass2">पासवर्ड दोबारा</label>
+      <input type="password" id="reset-pass2" placeholder="पासवर्ड दोबारा" autocomplete="new-password"
+             onkeydown="if(event.key==='Enter')doReset()">
+    </div>
+    <hr class="lc-divider">
+    <button id="reset-btn" onclick="doReset()">✅ पासवर्ड बदलें</button>
+    <div style="text-align:center;margin-top:14px;">
+      <a href="javascript:void(0)" onclick="showLoginCard()" style="color:var(--text2);font-size:13px;text-decoration:none;">← लॉगिन पर वापस जाएँ</a>
+    </div>
   </div>
 </div>
 
@@ -3056,6 +3107,7 @@ tr.sec-row-new  td { background: #effcf6; }
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
       <div><label class="form-label">नाम</label><input class="config-input" id="nu-name" placeholder="पूरा नाम" style="width:100%;"></div>
       <div><label class="form-label">User ID (username)</label><input class="config-input" id="nu-user" placeholder="जैसे: ramesh" autocomplete="off" style="width:100%;"></div>
+      <div><label class="form-label">ईमेल <span style="font-weight:400;color:var(--text3);font-size:11px;">(पासवर्ड रीसेट इसी पर जाएगा)</span></label><input class="config-input" id="nu-email" type="email" placeholder="user@example.com" autocomplete="off" style="width:100%;"></div>
       <div><label class="form-label">Password</label><input class="config-input" id="nu-pass" type="text" placeholder="कम-से-कम 4 अक्षर" autocomplete="new-password" style="width:100%;"></div>
       <div><label class="form-label">भूमिका</label>
         <select class="config-input" id="nu-role" style="width:100%;">
@@ -4941,6 +4993,12 @@ var _sessionToken = null;
 var _currentUser  = null;
 
 function checkSessionAndStart() {
+  // पासवर्ड रीसेट लिंक से आया? — नया पासवर्ड फॉर्म दिखाओ
+  try {
+    var qs = new URLSearchParams(location.search || '');
+    var rt = qs.get('reset');
+    if (rt) { _resetToken = rt; showResetCard(); return; }
+  } catch(e){}
   var token = sessionStorage.getItem('rms_token');
   if (!token) { return; }  // login screen remains visible
   google.script.run
@@ -4997,6 +5055,80 @@ function doLogin() {
     .validateLogin(un, pw);
 }
 
+// ===== पासवर्ड रीसेट (ईमेल आधारित) =====
+var _resetToken = null;
+
+function _showCard(which) {
+  var lc = document.getElementById('login-card');
+  var fc = document.getElementById('forgot-card');
+  var rc = document.getElementById('reset-card');
+  if (lc) lc.style.display = which==='login'  ? '' : 'none';
+  if (fc) fc.style.display = which==='forgot' ? '' : 'none';
+  if (rc) rc.style.display = which==='reset'  ? '' : 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+}
+function showLoginCard(){ _showCard('login'); }
+function showForgot(){
+  document.getElementById('forgot-msg').innerHTML = '';
+  document.getElementById('forgot-idf').value = document.getElementById('login-username').value || '';
+  _showCard('forgot');
+  setTimeout(function(){ document.getElementById('forgot-idf').focus(); }, 60);
+}
+function showResetCard(){
+  document.getElementById('reset-msg').innerHTML = '';
+  document.getElementById('reset-pass1').value = '';
+  document.getElementById('reset-pass2').value = '';
+  _showCard('reset');
+  setTimeout(function(){ document.getElementById('reset-pass1').focus(); }, 60);
+}
+
+function doForgot() {
+  var idf = (document.getElementById('forgot-idf').value || '').trim();
+  var msg = document.getElementById('forgot-msg');
+  var btn = document.getElementById('forgot-btn');
+  msg.innerHTML = '';
+  if (!idf) { msg.innerHTML = '<div class="status-box err">यूजर ID या ईमेल दर्ज करें।</div>'; return; }
+  btn.disabled = true; btn.textContent = '⏳ भेजा जा रहा है...';
+  google.script.run
+    .withSuccessHandler(function(res){
+      btn.disabled = false; btn.textContent = '📧 रीसेट लिंक भेजें';
+      var ok = res && res.success;
+      msg.innerHTML = '<div class="status-box '+(ok?'ok':'err')+'">'+((res&&res.msg)||(ok?'यदि यह खाता मौजूद है तो रीसेट लिंक ईमेल पर भेज दिया गया है।':'त्रुटि — दोबारा प्रयास करें।'))+'</div>';
+    })
+    .withFailureHandler(function(err){
+      btn.disabled = false; btn.textContent = '📧 रीसेट लिंक भेजें';
+      msg.innerHTML = '<div class="status-box err">सर्वर त्रुटि — कृपया दोबारा प्रयास करें।</div>';
+    })
+    .requestPasswordReset(idf, location.origin);
+}
+
+function doReset() {
+  var p1 = document.getElementById('reset-pass1').value;
+  var p2 = document.getElementById('reset-pass2').value;
+  var msg = document.getElementById('reset-msg');
+  var btn = document.getElementById('reset-btn');
+  msg.innerHTML = '';
+  if (!p1 || p1.length < 4) { msg.innerHTML = '<div class="status-box err">पासवर्ड कम से कम 4 अक्षर का होना चाहिए।</div>'; return; }
+  if (p1 !== p2) { msg.innerHTML = '<div class="status-box err">दोनों पासवर्ड मेल नहीं खा रहे।</div>'; return; }
+  btn.disabled = true; btn.textContent = '⏳ बदला जा रहा है...';
+  google.script.run
+    .withSuccessHandler(function(res){
+      btn.disabled = false; btn.textContent = '✅ पासवर्ड बदलें';
+      if (res && res.success) {
+        msg.innerHTML = '<div class="status-box ok">✅ पासवर्ड बदल दिया गया। अब लॉगिन करें।</div>';
+        try { history.replaceState(null, '', location.pathname); } catch(e){}
+        setTimeout(function(){ showLoginCard(); }, 1600);
+      } else {
+        msg.innerHTML = '<div class="status-box err">❌ '+((res&&res.msg)||'लिंक अमान्य या समय-सीमा समाप्त।')+'</div>';
+      }
+    })
+    .withFailureHandler(function(err){
+      btn.disabled = false; btn.textContent = '✅ पासवर्ड बदलें';
+      msg.innerHTML = '<div class="status-box err">सर्वर त्रुटि — कृपया दोबारा प्रयास करें।</div>';
+    })
+    .doPasswordReset(_resetToken, p1);
+}
+
 function doLogout() {
   var token = sessionStorage.getItem('rms_token');
   sessionStorage.removeItem('rms_token');
@@ -5042,9 +5174,9 @@ function renderUserMgmt() {
 function _renderUserRows(list) {
   var box = document.getElementById('user-mgmt-list'); if(!box) return;
   if(!list.length){ box.innerHTML='<div style="padding:12px;color:var(--text3);text-align:center;">कोई user नहीं</div>'; return; }
-  var html='<table style="width:100%;border-collapse:collapse;font-size:13px;min-width:560px;">'+
+  var html='<table style="width:100%;border-collapse:collapse;font-size:13px;min-width:640px;">'+
     '<thead><tr style="background:var(--bg);">'+
-    '<th style="text-align:left;padding:8px;">नाम</th><th style="text-align:left;padding:8px;">User ID</th>'+
+    '<th style="text-align:left;padding:8px;">नाम</th><th style="text-align:left;padding:8px;">User ID</th><th style="text-align:left;padding:8px;">ईमेल</th>'+
     '<th style="padding:8px;">भूमिका</th><th style="padding:8px;">स्थिति</th><th style="padding:8px;">क्रिया</th></tr></thead><tbody>';
   list.forEach(function(u){
     var un=String(u.username||'').replace(/'/g,"\\'");
@@ -5054,6 +5186,7 @@ function _renderUserRows(list) {
     html+='<tr style="border-top:1px solid var(--border);">'+
       '<td style="padding:8px;">'+(u.name||'')+'</td>'+
       '<td style="padding:8px;font-family:var(--font-en);">'+(u.username||'')+'</td>'+
+      '<td style="padding:8px;font-family:var(--font-en);font-size:12px;color:var(--text2);">'+(u.email||'<span style="color:var(--text3)">—</span>')+'</td>'+
       '<td style="padding:8px;text-align:center;">'+roleTxt+'</td>'+
       '<td style="padding:8px;text-align:center;">'+(active?'<span style="color:var(--green-gov);">सक्रिय</span>':'<span style="color:var(--red-gov);">निष्क्रिय</span>')+'</td>'+
       '<td style="padding:8px;text-align:center;white-space:nowrap;">'+
@@ -5071,6 +5204,8 @@ function editUserAcc(user) {
   var isSuper = String(user)==='Admin';
   var name = prompt('"'+user+'" का प्रदर्शित नाम:', u.name || '');
   if (name===null) return;
+  var email = prompt('"'+user+'" का ईमेल (पासवर्ड रीसेट इसी पर जाएगा):', u.email || '');
+  if (email===null) return;
   var role;
   if (isSuper) {
     role = 'admin';   // Super Admin की भूमिका नहीं बदलती
@@ -5081,26 +5216,28 @@ function editUserAcc(user) {
   google.script.run
     .withSuccessHandler(function(res){ if(res&&res.success) renderUserMgmt(); else alert('❌ '+((res&&res.msg)||'')); })
     .withFailureHandler(function(e){ alert('❌ '+(e.message||e)); })
-    .adminUpdateUser({user:user, name:name, role: role});
+    .adminUpdateUser({user:user, name:name, email:email.trim(), role: role});
 }
 function createUser() {
   var name=document.getElementById('nu-name').value.trim();
   var user=document.getElementById('nu-user').value.trim();
+  var email=document.getElementById('nu-email').value.trim();
   var pass=document.getElementById('nu-pass').value;
   var role=document.getElementById('nu-role').value;
   var st=document.getElementById('user-mgmt-status');
   if(!user||!pass){ st.innerHTML='<div class="status-box error">❌ User ID और Password दोनों भरें</div>'; return; }
+  if(email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ st.innerHTML='<div class="status-box error">❌ ईमेल सही रूप में नहीं है</div>'; return; }
   st.innerHTML='<div class="status-box loading">⏳ बना रहे हैं...</div>';
   google.script.run
     .withSuccessHandler(function(res){
       if(res&&res.success){
         st.innerHTML='<div class="status-box success">✅ User बना: '+user+'</div>';
-        document.getElementById('nu-name').value=''; document.getElementById('nu-user').value=''; document.getElementById('nu-pass').value='';
+        document.getElementById('nu-name').value=''; document.getElementById('nu-user').value=''; document.getElementById('nu-email').value=''; document.getElementById('nu-pass').value='';
         renderUserMgmt();
       } else st.innerHTML='<div class="status-box error">❌ '+((res&&res.msg)||'नहीं बना')+'</div>';
     })
     .withFailureHandler(function(e){ st.innerHTML='<div class="status-box error">❌ '+(e.message||e)+'</div>'; })
-    .adminCreateUser({user:user, pass:pass, role:role, name:name||user});
+    .adminCreateUser({user:user, pass:pass, role:role, name:name||user, email:email});
 }
 function resetUserPassword(user) {
   var np=prompt('"'+user+'" के लिए नया Password (कम-से-कम 4 अक्षर):','');

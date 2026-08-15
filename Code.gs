@@ -3899,6 +3899,7 @@ const PAY_HEADERS = {
                     'RetentionOn','RetentionPct','RetentionManual','RetentionManualAmt','RetentionAmt',
                     'CgstOn','CgstPct','CgstManual','CgstManualAmt','CgstAmt',
                     'SgstOn','SgstPct','SgstManual','SgstManualAmt','SgstAmt',
+                    'OtherTaxOn','OtherTaxPct','OtherTaxManual','OtherTaxManualAmt','OtherTaxAmt',
                     'NettPaid','TotalAmount','Paid','PaidDate','CreatedAt','DriveLink','FileName'],
   PaymentDetails: ['DetailID','PayID','MeasID','ItemID','Qty','Rate','Amount'],
   PaymentAdj:     ['AdjID','PayID','Kind','Note','Amount'],
@@ -4581,9 +4582,10 @@ function pay_savePayment(payload){
   var retention = statAdj('RetentionOn', 'RetentionPct', 'RetentionManual', 'RetentionManualAmt', amtA);
   var cgst      = statAdj('CgstOn',      'CgstPct',      'CgstManual',      'CgstManualAmt', amtA);
   var sgst      = statAdj('SgstOn',      'SgstPct',      'SgstManual',      'SgstManualAmt', amtA);
+  var otherTax  = statAdj('OtherTaxOn',  'OtherTaxPct',  'OtherTaxManual',  'OtherTaxManualAmt', amtA);
 
-  // T18: Nett Paid Amount (चेक राशि) — 1 रुपये के round में; भुगतान के लिए कुछ राशि होना ज़रूरी है
-  var nettPaid = Math.round(amtF - (laborCess.amt + incomeTax.amt + retention.amt + cgst.amt + sgst.amt));
+  // T19: Nett Paid Amount (चेक राशि) — 1 रुपये के round में; भुगतान के लिए कुछ राशि होना ज़रूरी है
+  var nettPaid = Math.round(amtF - (laborCess.amt + incomeTax.amt + retention.amt + cgst.amt + sgst.amt + otherTax.amt));
   if (Math.abs(nettPaid) < 0.005) {
     throw new Error('भुगतान के लिए कोई Amount नहीं है');
   }
@@ -4606,6 +4608,7 @@ function pay_savePayment(payload){
   payment.RetentionOn   = retention.on;  payment.RetentionPct = retention.pct;  payment.RetentionManual = retention.manual;  payment.RetentionManualAmt = retention.manualAmt;  payment.RetentionAmt = retention.amt;
   payment.CgstOn        = cgst.on;       payment.CgstPct      = cgst.pct;       payment.CgstManual      = cgst.manual;       payment.CgstManualAmt      = cgst.manualAmt;       payment.CgstAmt      = cgst.amt;
   payment.SgstOn        = sgst.on;       payment.SgstPct      = sgst.pct;       payment.SgstManual      = sgst.manual;       payment.SgstManualAmt      = sgst.manualAmt;       payment.SgstAmt      = sgst.amt;
+  payment.OtherTaxOn    = otherTax.on;   payment.OtherTaxPct  = otherTax.pct;   payment.OtherTaxManual  = otherTax.manual;   payment.OtherTaxManualAmt  = otherTax.manualAmt;   payment.OtherTaxAmt  = otherTax.amt;
   payment.NettPaid      = payR2_(nettPaid);
   // पूरे ऐप में "TotalAmount" = F (GST सहित Gross बिल राशि)
   payment.TotalAmount   = payR2_(amtF);

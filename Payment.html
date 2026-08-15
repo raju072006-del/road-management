@@ -547,8 +547,9 @@ const MOCK = (function(){
         return {on,pct,manual,manualAmt,amt:on?(manual?Math.round(manualAmt*100)/100:Math.round(base*pct/100*100)/100):0}; };
       // T13/T15/T16/T17 → amtA (T10); T14 (Income Tax) → t8 (T8)
       const lc=adj('LaborCessOn','LaborCessPct','LaborCessManual','LaborCessManualAmt',amtA), itx=adj('IncomeTaxOn','IncomeTaxPct','IncomeTaxManual','IncomeTaxManualAmt',t8),
-            rt=adj('RetentionOn','RetentionPct','RetentionManual','RetentionManualAmt',amtA), cg=adj('CgstOn','CgstPct','CgstManual','CgstManualAmt',amtA), sg=adj('SgstOn','SgstPct','SgstManual','SgstManualAmt',amtA);
-      const nett=Math.round(amtF-(lc.amt+itx.amt+rt.amt+cg.amt+sg.amt));  // चेक राशि — 1 रुपये के round में
+            rt=adj('RetentionOn','RetentionPct','RetentionManual','RetentionManualAmt',amtA), cg=adj('CgstOn','CgstPct','CgstManual','CgstManualAmt',amtA), sg=adj('SgstOn','SgstPct','SgstManual','SgstManualAmt',amtA),
+            ot=adj('OtherTaxOn','OtherTaxPct','OtherTaxManual','OtherTaxManualAmt',amtA);
+      const nett=Math.round(amtF-(lc.amt+itx.amt+rt.amt+cg.amt+sg.amt+ot.amt));  // चेक राशि — 1 रुपये के round में
       if(Math.abs(nett)<0.005) throw new Error('भुगतान के लिए कोई Amount नहीं है');
       Object.assign(pay,{BaseAmount:baseAmt,AbovePct:abovePct,AboveAmt:aboveAmt,DeductTotal:deductTotal,AdvanceTotal:advanceTotal,WithheldAmt:withheldAmt,AmtA:amtA,
         GstOn:gstOn,GstPct:gstPct,GstManual:gstManual,GstManualAmt:gstManualAmt,GstAmt:gstAmt,AmtF:amtF,
@@ -557,6 +558,7 @@ const MOCK = (function(){
         RetentionOn:rt.on,RetentionPct:rt.pct,RetentionManual:rt.manual,RetentionManualAmt:rt.manualAmt,RetentionAmt:rt.amt,
         CgstOn:cg.on,CgstPct:cg.pct,CgstManual:cg.manual,CgstManualAmt:cg.manualAmt,CgstAmt:cg.amt,
         SgstOn:sg.on,SgstPct:sg.pct,SgstManual:sg.manual,SgstManualAmt:sg.manualAmt,SgstAmt:sg.amt,
+        OtherTaxOn:ot.on,OtherTaxPct:ot.pct,OtherTaxManual:ot.manual,OtherTaxManualAmt:ot.manualAmt,OtherTaxAmt:ot.amt,
         NettPaid:nett,TotalAmount:amtF});
       upsert(db.payments,'PayID',pay);
       db.paymentDetails=db.paymentDetails.filter(d=>d.PayID!==pay.PayID);
@@ -1715,12 +1717,12 @@ function billSeqSorted(){
     return String(a.CreatedAt||'').localeCompare(String(b.CreatedAt||''));
   });
 }
-/* कई बिलों का संचयी T1–T18 (योग) — Updated कुल भुगतान */
+/* कई बिलों का संचयी T1–T19 (योग) — Updated कुल भुगतान */
 function cumBreakdownHtml(pmts){
   const S=(f)=>pmts.reduce((s,p)=>s+toNum(p[f]),0);
   const base=S('BaseAmount'), above=S('AboveAmt'), deduct=S('DeductTotal'), adv=S('AdvanceTotal'),
         withheld=S('WithheldAmt'), a=S('AmtA'), gst=S('GstAmt'), f=S('AmtF'),
-        lc=S('LaborCessAmt'), itx=S('IncomeTaxAmt'), ret=S('RetentionAmt'), cg=S('CgstAmt'), sg=S('SgstAmt'), nett=S('NettPaid');
+        lc=S('LaborCessAmt'), itx=S('IncomeTaxAmt'), ret=S('RetentionAmt'), cg=S('CgstAmt'), sg=S('SgstAmt'), ot=S('OtherTaxAmt'), nett=S('NettPaid');
   const R=(t,l,v,cls)=>`<div class="pb-row"><span class="lbl"><span class="t">${t}</span>${l}</span><b class="amt ${cls||''}">${v}</b></div>`;
   return `<div class="pb-steps">
     <div class="pb-card">
@@ -1748,13 +1750,13 @@ function cumBreakdownHtml(pmts){
     <div class="pb-total" style="margin:0"><span class="lbl">T10 · Advance के बाद कुल Amount (योग)</span><span class="amt">${inr(f-gst)}</span></div>
     ${gst?`<div class="pb-card"><div class="pb-card-head"><span class="pb-ic">🧾</span><b>GST (योग)</b></div>${R('T11','GST',inr(gst),'pos')}</div>`:''}
     <div class="pb-total" style="margin:0"><span class="lbl">T12 · F (GST सहित कुल)</span><span class="amt">${inr(f)}</span></div>
-    ${(lc||itx||ret||cg||sg)?`<div class="pb-card"><div class="pb-card-head"><span class="pb-ic">📋</span><b>सांविधिक कटौतियाँ (योग)</b></div>
-      ${lc?R('T13','Labour Cess',inr(lc),'neg'):''}${itx?R('T14','Income Tax',inr(itx),'neg'):''}${ret?R('T15','Retention',inr(ret),'neg'):''}${cg?R('T16','CGST',inr(cg),'neg'):''}${sg?R('T17','SGST',inr(sg),'neg'):''}
+    ${(lc||itx||ret||cg||sg||ot)?`<div class="pb-card"><div class="pb-card-head"><span class="pb-ic">📋</span><b>सांविधिक कटौतियाँ (योग)</b></div>
+      ${lc?R('T13','Labour Cess',inr(lc),'neg'):''}${itx?R('T14','Income Tax',inr(itx),'neg'):''}${ret?R('T15','Retention',inr(ret),'neg'):''}${cg?R('T16','CGST',inr(cg),'neg'):''}${sg?R('T17','SGST',inr(sg),'neg'):''}${ot?R('T18','Other Tax',inr(ot),'neg'):''}
     </div>`:''}
-    <div class="pb-total" style="margin:0"><span class="lbl">T18 · कुल Nett Paid (अब तक — Updated)</span><span class="amt">${inr(Math.round(nett))}</span></div>
+    <div class="pb-total" style="margin:0"><span class="lbl">T19 · कुल Nett Paid (अब तक — Updated)</span><span class="amt">${inr(Math.round(nett))}</span></div>
   </div>`;
 }
-/* चुने बिल तक — संचयी विवरण (आइटम-वार कुल मात्रा + T1–T18 योग), प्रिंट-योग्य */
+/* चुने बिल तक — संचयी विवरण (आइटम-वार कुल मात्रा + T1–T19 योग), प्रिंट-योग्य */
 function cumulativeUptoHtml(payId){
   const seq=billSeqSorted();
   const idx=seq.findIndex(p=>String(p.PayID)===String(payId));
@@ -1808,11 +1810,11 @@ function cumulativeUptoHtml(payId){
   const billsList=included.map(p=>esc(p.BillNo||'—')).join(', ');
   const fName = fI ? ((itemById(fI)||{}).Description||'') : '';
   const filterNote = filtered ? `<div class="muted" style="font-size:12px;margin-top:4px">🔎 फ़िल्टर: ${esc([fName?('मद: '+fName):'', fE?('अभियंता: '+fE):''].filter(Boolean).join(' · '))} — केवल इसी का संचयी</div>` : '';
-  // T1–T18 पूरे बिल (कटौती/GST सहित) का है — किसी एक मद/अभियंता के लिए अलग नहीं; इसलिए फ़िल्टर पर नोट दिखाओ
+  // T1–T19 पूरे बिल (कटौती/GST सहित) का है — किसी एक मद/अभियंता के लिए अलग नहीं; इसलिए फ़िल्टर पर नोट दिखाओ
   const breakCard = filtered
-    ? `<div class="card" style="padding:14px 16px;color:var(--muted);font-size:13px;line-height:1.6">ℹ️ T1–T18 (कटौती, GST सहित पूर्ण बिल राशि) पूरे बिल पर आधारित है — किसी एक मद/अभियंता के लिए अलग से नहीं निकाला जा सकता। ऊपर इस फ़िल्टर का <b>कुल आधार राशि = ${inr(ta)}</b> है।<br>पूर्ण T1–T18 देखने के लिए मद/अभियंता फ़िल्टर हटाएँ।</div>`
+    ? `<div class="card" style="padding:14px 16px;color:var(--muted);font-size:13px;line-height:1.6">ℹ️ T1–T19 (कटौती, GST सहित पूर्ण बिल राशि) पूरे बिल पर आधारित है — किसी एक मद/अभियंता के लिए अलग से नहीं निकाला जा सकता। ऊपर इस फ़िल्टर का <b>कुल आधार राशि = ${inr(ta)}</b> है।<br>पूर्ण T1–T19 देखने के लिए मद/अभियंता फ़िल्टर हटाएँ।</div>`
     : `<div class="card" style="padding:14px 16px">
-        <div class="section-head" style="margin-bottom:0"><h2 style="font-size:14px">बिल ${esc(selBill.BillNo||'—')} तक — कुल Updated भुगतान (T1–T18)</h2>
+        <div class="section-head" style="margin-bottom:0"><h2 style="font-size:14px">बिल ${esc(selBill.BillNo||'—')} तक — कुल Updated भुगतान (T1–T19)</h2>
           <span class="sub">सभी सम्मिलित बिलों का योग</span></div>
         ${cumBreakdownHtml(included)}
       </div>`;
@@ -3095,7 +3097,7 @@ function openPayBuilder(editId){
 
     <div class="pb-card">
       <div class="pb-card-head"><span class="pb-ic">➕</span><b>Advance Amount</b>
-        <button class="btn btn-ghost btn-sm" onclick="pbAdjAdd('advance')">+ Advance जोड़ें</button></div>
+        <button class="btn btn-ghost btn-sm" onclick="pbAdjAdd('advance')">+/− Advance जोड़ें / घटायें</button></div>
       <div class="pb-row" style="background:var(--blue-bg)"><span class="lbl">ठेकेदार को अब तक (पूर्व बिलों में) कुल Advance दिया गया</span><b class="amt">${pbSigned(priorAdvance)}</b></div>
       <div id="pbAdvanceList"></div>
       <div class="pb-row"><span class="lbl"><span class="t">T9</span>कुल Advance (इस बिल में)</span><b class="amt pos" id="pbT7">₹0</b></div>
@@ -3122,9 +3124,10 @@ function openPayBuilder(editId){
       ${statRow('Retention','T15','Retention Money','🔒',statSrc.RetentionOn,statSrc.RetentionPct,statSrc.RetentionManual,statSrc.RetentionManualAmt)}
       ${statRow('Cgst','T16','CGST','🏛',statSrc.CgstOn,statSrc.CgstPct,statSrc.CgstManual,statSrc.CgstManualAmt)}
       ${statRow('Sgst','T17','SGST','🏛',statSrc.SgstOn,statSrc.SgstPct,statSrc.SgstManual,statSrc.SgstManualAmt)}
+      ${statRow('OtherTax','T18','Other Tax','🧾',statSrc.OtherTaxOn,statSrc.OtherTaxPct,statSrc.OtherTaxManual,statSrc.OtherTaxManualAmt)}
     </div>
 
-    <div class="pb-total" style="margin-top:2px"><span class="lbl">T18 · Nett Paid Amount (चेक राशि)</span><span class="amt" id="pbT18">₹0</span></div>
+    <div class="pb-total" style="margin-top:2px"><span class="lbl">T19 · Nett Paid Amount (चेक राशि)</span><span class="amt" id="pbT18">₹0</span></div>
     </div>`;
 
   openModal(editId?'भुगतान संपादित करें':'नया भुगतान / RA Bill', refreshBar+header+lockBanner+table,
@@ -3251,8 +3254,8 @@ function pbRecalc(){
     return amt;
   };
   // T13, T15, T16, T17 → T10 पर; T14 (Income Tax) → T8 पर
-  const t13=statCalc('LaborCess',t10), t14=statCalc('IncomeTax',t8), t15=statCalc('Retention',t10), t16=statCalc('Cgst',t10), t17=statCalc('Sgst',t10);
-  const t18=Math.round(t12-(t13+t14+t15+t16+t17)); // चेक राशि — 1 रुपये के round में
+  const t13=statCalc('LaborCess',t10), t14=statCalc('IncomeTax',t8), t15=statCalc('Retention',t10), t16=statCalc('Cgst',t10), t17=statCalc('Sgst',t10), t18=statCalc('OtherTax',t10);
+  const t19=Math.round(t12-(t13+t14+t15+t16+t17+t18)); // चेक राशि — 1 रुपये के round में
 
   document.getElementById('pbT1').textContent=inr(t1);
   document.getElementById('pbT2').textContent=(t2===0?'0%':(t2>0?'+':'')+t2+'% '+(t2<0?'(Below)':'(Above)'));
@@ -3269,8 +3272,8 @@ function pbRecalc(){
   document.getElementById('pb_GstAmt').textContent=inr(t11);
   document.getElementById('pbT11').textContent=inr(t11);
   document.getElementById('pbT12').textContent=inr(t12);
-  document.getElementById('pbT18').textContent=inr(t18);
-  return {t1,t2,t3,t4,t5,t6,t7,t8,t9,t10,t11,t12,t13,t14,t15,t16,t17,t18};
+  document.getElementById('pbT18').textContent=inr(t19);
+  return {t1,t2,t3,t4,t5,t6,t7,t8,t9,t10,t11,t12,t13,t14,t15,t16,t17,t18,t19};
 }
 function pbFillAll(){ pbRows().forEach(tr=>{ tr.querySelector('.pb-input').value=round(toNum(tr.dataset.max),3); }); pbRecalc(); }
 function pbClearAll(){ pbRows().forEach(tr=>{ tr.querySelector('.pb-input').value=''; }); pbRecalc(); }
@@ -3336,7 +3339,7 @@ function savePayBuilder(){
   });
   if(over){ toast('कुछ लाइनों में मात्रा शेष से अधिक है — सुधारें',true); return; }
   const calc=pbRecalc();
-  if(Math.abs(calc.t18)<0.005){ toast('भुगतान के लिए कोई Amount नहीं है',true); return; }
+  if(Math.abs(calc.t19)<0.005){ toast('भुगतान के लिए कोई Amount नहीं है',true); return; }
   const billNo=val('pb_no');
   // नए भुगतान में यदि BillNo पहले से मौजूद हो → merge करें, duplicate न बनाएं
   if(!PB.editId && billNo){
@@ -3370,7 +3373,8 @@ function savePayBuilder(){
     IncomeTaxOn:document.getElementById('pb_IncomeTaxOn').checked, IncomeTaxPct:toNum(val('pb_IncomeTaxPct')),
     RetentionOn:document.getElementById('pb_RetentionOn').checked, RetentionPct:toNum(val('pb_RetentionPct')),
     CgstOn:document.getElementById('pb_CgstOn').checked, CgstPct:toNum(val('pb_CgstPct')),
-    SgstOn:document.getElementById('pb_SgstOn').checked, SgstPct:toNum(val('pb_SgstPct')) };
+    SgstOn:document.getElementById('pb_SgstOn').checked, SgstPct:toNum(val('pb_SgstPct')),
+    OtherTaxOn:document.getElementById('pb_OtherTaxOn').checked, OtherTaxPct:toNum(val('pb_OtherTaxPct')) };
   loader(true);
   api('savePayment',{payment:payment, details:details, deductions:PB.deductions, advances:PB.advances})
     .then(()=>pbSyncFinalIfNeeded(payment))
@@ -3379,7 +3383,7 @@ function savePayBuilder(){
 }
 /* GST/Labour Cess/Income Tax/Retention/CGST/SGST — मैनुअल checkbox व राशि के मान निकालें */
 function pbManualFields(){
-  const keys=['Gst','LaborCess','IncomeTax','Retention','Cgst','Sgst'], o={};
+  const keys=['Gst','LaborCess','IncomeTax','Retention','Cgst','Sgst','OtherTax'], o={};
   keys.forEach(function(k){
     const cb=document.getElementById('pb_'+k+'Manual');
     o[k+'Manual']=cb?cb.checked:false;
@@ -3416,8 +3420,8 @@ function payBreakdownHtml(p){
   const isPaid = payBoolJs(p.Paid);
   const payBtn = isPaid
     ? `<div class="pb-row" style="background:var(--green-bg)"><span class="lbl" style="color:var(--green);font-weight:600">✅ भुगतान हो गया</span><b class="amt" style="color:var(--green)">${dmy(p.PaidDate)}</b></div>`
-    : `<div class="pb-row" style="padding:10px 14px;gap:8px;flex-wrap:wrap"><span class="lbl" style="font-size:12px;color:var(--muted)">चेक जारी होने तक T2–T18 बदले जा सकते हैं</span>
-        <button class="btn btn-ghost btn-sm" onclick='openPayBuilder(${JSON.stringify(p.PayID)})' title="कटौती, Advance, Withheld, GST व सांविधिक कटौतियाँ (T2–T18) बदलें">✎ T2–T18 संपादित करें</button>
+    : `<div class="pb-row" style="padding:10px 14px;gap:8px;flex-wrap:wrap"><span class="lbl" style="font-size:12px;color:var(--muted)">चेक जारी होने तक T2–T19 बदले जा सकते हैं</span>
+        <button class="btn btn-ghost btn-sm" onclick='openPayBuilder(${JSON.stringify(p.PayID)})' title="कटौती, Advance, Withheld, GST व सांविधिक कटौतियाँ (T2–T19) बदलें">✎ T2–T19 संपादित करें</button>
         <button class="btn btn-primary btn-sm" onclick='markBillPaid(${JSON.stringify(p.PayID)})'>✅ Payment — चेक जारी हुआ चिह्नित करें</button></div>`;
   return `<div class="pb-steps">
     <div class="pb-card">
@@ -3459,15 +3463,16 @@ function payBreakdownHtml(p){
     </div>
     <div class="pb-total" style="margin:0"><span class="lbl">T12 · F (GST सहित Final)</span><span class="amt">${inr(p.AmtF)}</span></div>
 
-    ${(p.LaborCessOn||p.IncomeTaxOn||p.RetentionOn||p.CgstOn||p.SgstOn)?`<div class="pb-card">
+    ${(p.LaborCessOn||p.IncomeTaxOn||p.RetentionOn||p.CgstOn||p.SgstOn||p.OtherTaxOn)?`<div class="pb-card">
       <div class="pb-card-head"><span class="pb-ic">📋</span><b>सांविधिक कटौतियाँ</b></div>
       ${statLine('T13','Labour Cess',p.LaborCessOn,p.LaborCessAmt)}
       ${statLine('T14','Income Tax',p.IncomeTaxOn,p.IncomeTaxAmt)}
       ${statLine('T15','Retention Money',p.RetentionOn,p.RetentionAmt)}
       ${statLine('T16','CGST',p.CgstOn,p.CgstAmt)}
       ${statLine('T17','SGST',p.SgstOn,p.SgstAmt)}
+      ${statLine('T18','Other Tax',p.OtherTaxOn,p.OtherTaxAmt)}
     </div>`:''}
-    <div class="pb-total" style="margin:0"><span class="lbl">T18 · Nett Paid Amount (चेक राशि)</span><span class="amt">${inr(Math.round(toNum(p.NettPaid!=null && p.NettPaid!==''?p.NettPaid:p.TotalAmount)))}</span></div>
+    <div class="pb-total" style="margin:0"><span class="lbl">T19 · Nett Paid Amount (चेक राशि)</span><span class="amt">${inr(Math.round(toNum(p.NettPaid!=null && p.NettPaid!==''?p.NettPaid:p.TotalAmount)))}</span></div>
     <div class="pb-card">${payBtn}</div>
   </div>`;
 }

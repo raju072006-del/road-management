@@ -4549,37 +4549,38 @@ function pay_savePayment(payload){
   deductTotal = payR2_(deductTotal);
   var t6 = t4 - deductTotal;
 
-  // T7: Advance — T6 पर जोड़ी जाती है
+  // T9: Withheld, T10: A (Withheld के बाद) = T6 − T9
+  var withheldAmt = payR2_(payment.WithheldAmt);
+  var amtA = t6 - withheldAmt;
+
+  // T7: Advance, T8: इस बिल में Advance के बाद कुल Amount = T10 + T7
   var advanceTotal = 0; (advances || []).forEach(function(d){ advanceTotal += Number(d.amount) || 0; });
   advanceTotal = payR2_(advanceTotal);
-  var t8 = t6 + advanceTotal; // "कुल भुगतान Amount"
+  var t8 = amtA + advanceTotal;
 
-  // T9: Withheld, T10: A
-  var withheldAmt = payR2_(payment.WithheldAmt);
-  var amtA = t8 - withheldAmt;
-
-  // T11: GST (A पर % आधारित — या checkbox से मैनुअल राशि), T12: F
+  // T11: GST (T10 पर % आधारित — या checkbox से मैनुअल राशि), T12: F = T8 + GST
   var gstOn  = payBool_(payment.GstOn);
   var gstPct = Number(payment.GstPct) || 0;
   var gstManual    = payBool_(payment.GstManual);
   var gstManualAmt = Number(payment.GstManualAmt) || 0;
   var gstAmt = gstOn ? (gstManual ? payR2_(gstManualAmt) : payR2_(amtA * gstPct / 100)) : 0;
-  var amtF   = amtA + gstAmt;
+  var amtF   = t8 + gstAmt;
 
-  // T13-T17: सांविधिक कटौतियाँ — % A पर आधारित, या checkbox से मैनुअल राशि — F से घटेंगी
-  function statAdj(onKey, pctKey, manualKey, manualAmtKey){
+  // T13-T17: सांविधिक कटौतियाँ — या checkbox से मैनुअल राशि — F से घटेंगी
+  // T13/T15/T16/T17 → T10 (amtA) पर; T14 (Income Tax) → T8 पर
+  function statAdj(onKey, pctKey, manualKey, manualAmtKey, base){
     var on  = payBool_(payment[onKey]);
     var pct = Number(payment[pctKey]) || 0;
     var manual    = payBool_(payment[manualKey]);
     var manualAmt = Number(payment[manualAmtKey]) || 0;
-    var amt = on ? (manual ? payR2_(manualAmt) : payR2_(amtA * pct / 100)) : 0;
+    var amt = on ? (manual ? payR2_(manualAmt) : payR2_(base * pct / 100)) : 0;
     return { on: on, pct: pct, manual: manual, manualAmt: manualAmt, amt: amt };
   }
-  var laborCess = statAdj('LaborCessOn', 'LaborCessPct', 'LaborCessManual', 'LaborCessManualAmt');
-  var incomeTax = statAdj('IncomeTaxOn', 'IncomeTaxPct', 'IncomeTaxManual', 'IncomeTaxManualAmt');
-  var retention = statAdj('RetentionOn', 'RetentionPct', 'RetentionManual', 'RetentionManualAmt');
-  var cgst      = statAdj('CgstOn',      'CgstPct',      'CgstManual',      'CgstManualAmt');
-  var sgst      = statAdj('SgstOn',      'SgstPct',      'SgstManual',      'SgstManualAmt');
+  var laborCess = statAdj('LaborCessOn', 'LaborCessPct', 'LaborCessManual', 'LaborCessManualAmt', amtA);
+  var incomeTax = statAdj('IncomeTaxOn', 'IncomeTaxPct', 'IncomeTaxManual', 'IncomeTaxManualAmt', t8);
+  var retention = statAdj('RetentionOn', 'RetentionPct', 'RetentionManual', 'RetentionManualAmt', amtA);
+  var cgst      = statAdj('CgstOn',      'CgstPct',      'CgstManual',      'CgstManualAmt', amtA);
+  var sgst      = statAdj('SgstOn',      'SgstPct',      'SgstManual',      'SgstManualAmt', amtA);
 
   // T18: Nett Paid Amount — भुगतान के लिए कुछ राशि (धन/ऋणात्मक) होना ज़रूरी है
   var nettPaid = amtF - (laborCess.amt + incomeTax.amt + retention.amt + cgst.amt + sgst.amt);

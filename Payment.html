@@ -536,17 +536,18 @@ const MOCK = (function(){
       }
       const deductTotal=(deductions||[]).reduce((s,d)=>s+(+d.amount||0),0);
       const t6=t4-deductTotal;
-      const advanceTotal=(advances||[]).reduce((s,d)=>s+(+d.amount||0),0);
-      const t8=t6+advanceTotal;
       const withheldAmt=+(pay.WithheldAmt||0);
-      const amtA=t8-withheldAmt;
+      const amtA=t6-withheldAmt;                 // T10 = T6 − T9
+      const advanceTotal=(advances||[]).reduce((s,d)=>s+(+d.amount||0),0);
+      const t8=amtA+advanceTotal;                // T8 = T10 + T7
       const gstOn=!!pay.GstOn, gstPct=+(pay.GstPct||0), gstManual=!!pay.GstManual, gstManualAmt=+(pay.GstManualAmt||0);
-      const gstAmt=gstOn?(gstManual?Math.round(gstManualAmt*100)/100:Math.round(amtA*gstPct/100*100)/100):0;
-      const amtF=amtA+gstAmt;
-      const adj=(onK,pctK,manK,manAmtK)=>{ const on=!!pay[onK], pct=+(pay[pctK]||0), manual=!!pay[manK], manualAmt=+(pay[manAmtK]||0);
-        return {on,pct,manual,manualAmt,amt:on?(manual?Math.round(manualAmt*100)/100:Math.round(amtA*pct/100*100)/100):0}; };
-      const lc=adj('LaborCessOn','LaborCessPct','LaborCessManual','LaborCessManualAmt'), itx=adj('IncomeTaxOn','IncomeTaxPct','IncomeTaxManual','IncomeTaxManualAmt'),
-            rt=adj('RetentionOn','RetentionPct','RetentionManual','RetentionManualAmt'), cg=adj('CgstOn','CgstPct','CgstManual','CgstManualAmt'), sg=adj('SgstOn','SgstPct','SgstManual','SgstManualAmt');
+      const gstAmt=gstOn?(gstManual?Math.round(gstManualAmt*100)/100:Math.round(amtA*gstPct/100*100)/100):0;  // GST — T10 पर
+      const amtF=t8+gstAmt;
+      const adj=(onK,pctK,manK,manAmtK,base)=>{ const on=!!pay[onK], pct=+(pay[pctK]||0), manual=!!pay[manK], manualAmt=+(pay[manAmtK]||0);
+        return {on,pct,manual,manualAmt,amt:on?(manual?Math.round(manualAmt*100)/100:Math.round(base*pct/100*100)/100):0}; };
+      // T13/T15/T16/T17 → amtA (T10); T14 (Income Tax) → t8 (T8)
+      const lc=adj('LaborCessOn','LaborCessPct','LaborCessManual','LaborCessManualAmt',amtA), itx=adj('IncomeTaxOn','IncomeTaxPct','IncomeTaxManual','IncomeTaxManualAmt',t8),
+            rt=adj('RetentionOn','RetentionPct','RetentionManual','RetentionManualAmt',amtA), cg=adj('CgstOn','CgstPct','CgstManual','CgstManualAmt',amtA), sg=adj('SgstOn','SgstPct','SgstManual','SgstManualAmt',amtA);
       const nett=amtF-(lc.amt+itx.amt+rt.amt+cg.amt+sg.amt);
       if(Math.abs(nett)<0.005) throw new Error('भुगतान के लिए कोई Amount नहीं है');
       Object.assign(pay,{BaseAmount:baseAmt,AbovePct:abovePct,AboveAmt:aboveAmt,DeductTotal:deductTotal,AdvanceTotal:advanceTotal,WithheldAmt:withheldAmt,AmtA:amtA,
@@ -1728,13 +1729,23 @@ function cumBreakdownHtml(pmts){
       ${R('T3','Above/Below राशि (योग)',(above<0?'− ':'+ ')+inr(Math.abs(above)))}
       <div class="pb-row subtotal"><span class="lbl"><span class="t">T4</span>कुल (Above/Below सहित)</span><b class="amt">${inr(base+above)}</b></div>
     </div>
-    ${deduct?`<div class="pb-card"><div class="pb-card-head"><span class="pb-ic">➖</span><b>कटौती (योग)</b></div>${R('T5','कुल कटौती',inr(deduct),'neg')}</div>`:''}
-    ${adv?`<div class="pb-card"><div class="pb-card-head"><span class="pb-ic">➕</span><b>Advance (योग)</b></div>${R('T7','कुल Advance',inr(adv),'pos')}</div>`:''}
     <div class="pb-card">
-      <div class="pb-card-head"><span class="pb-ic">⏸</span><b>Withheld व आधार</b></div>
-      ${R('T9','Withheld (योग)',withheld?('− '+inr(withheld)):'—','neg')}
-      ${R('T10','A (आधार, योग)',inr(a))}
+      <div class="pb-card-head"><span class="pb-ic">➖</span><b>कटौती (योग)</b></div>
+      ${R('T5','कुल कटौती',deduct?('− '+inr(deduct)):'—','neg')}
+      <div class="pb-row subtotal"><span class="lbl"><span class="t">T6</span>कटौती के बाद राशि</span><b class="amt">${inr(base+above-deduct)}</b></div>
     </div>
+    <div class="pb-card">
+      <div class="pb-card-head"><span class="pb-ic">⏸</span><b>Withheld (योग)</b></div>
+      ${R('T7','Withheld राशि',withheld?('− '+inr(withheld)):'—','neg')}
+      <div class="pb-row subtotal" style="background:var(--accent-d);color:#fff;border-radius:9px;padding:11px 14px;margin-top:6px;align-items:center;box-shadow:0 5px 14px rgba(43,58,143,.28)">
+        <span class="lbl" style="font-weight:600;color:#fff"><span class="t" style="background:rgba(255,255,255,.25);color:#fff">T8</span>A — Withheld के बाद Amount (योग) <span style="font-weight:400;font-size:11px;opacity:.85">· GST इसी Amount पर</span></span>
+        <b class="amt" style="font-size:18px;color:#fff">${inr(a)}</b></div>
+    </div>
+    <div class="pb-card">
+      <div class="pb-card-head"><span class="pb-ic">➕</span><b>Advance (योग)</b></div>
+      ${R('T9','कुल Advance',adv?('+ '+inr(adv)):'—','pos')}
+    </div>
+    <div class="pb-total" style="margin:0"><span class="lbl">T10 · Advance के बाद कुल Amount (योग)</span><span class="amt">${inr(f-gst)}</span></div>
     ${gst?`<div class="pb-card"><div class="pb-card-head"><span class="pb-ic">🧾</span><b>GST (योग)</b></div>${R('T11','GST',inr(gst),'pos')}</div>`:''}
     <div class="pb-total" style="margin:0"><span class="lbl">T12 · F (GST सहित कुल)</span><span class="amt">${inr(f)}</span></div>
     ${(lc||itx||ret||cg||sg)?`<div class="pb-card"><div class="pb-card-head"><span class="pb-ic">📋</span><b>सांविधिक कटौतियाँ (योग)</b></div>
@@ -3072,23 +3083,25 @@ function openPayBuilder(editId){
     </div>
 
     <div class="pb-card">
+      <div class="pb-card-head"><span class="pb-ic">⏸</span><b>Withheld — कितना भुगतान रोकना है</b></div>
+      <div class="pb-row" style="background:var(--blue-bg)"><span class="lbl">ठेकेदार का अब तक (पूर्व बिलों में) कुल Withheld</span><b class="amt">${pbSigned(priorWithheld)}</b></div>
+      <div class="pb-row" style="padding:10px 14px"><input class="inp num" id="pb_withheld" type="number" step="any" style="max-width:160px;margin-left:auto" value="${esc(p.WithheldAmt||'')}" oninput="pbRecalc()" placeholder="₹0"></div>
+      <div class="pb-row"><span class="lbl"><span class="t">T7</span>Withheld राशि (इस बिल में)</span><b class="amt neg" id="pbT9">₹0</b></div>
+      <div class="pb-row subtotal"><span class="lbl">इस बिल के बाद अब तक कुल Withheld</span><b class="amt" id="pbWithheldRunning">₹0</b></div>
+      <div class="pb-row subtotal" style="background:var(--accent-d);color:#fff;border-radius:9px;padding:11px 14px;margin-top:6px;align-items:center;box-shadow:0 5px 14px rgba(43,58,143,.28)">
+        <span class="lbl" style="font-weight:600;color:#fff"><span class="t" style="background:rgba(255,255,255,.25);color:#fff">T8</span>A — Withheld के बाद Amount <span style="font-weight:400;font-size:11px;opacity:.85">· GST इसी Amount पर जुड़ेगा</span></span>
+        <b class="amt" id="pbT10" style="font-size:18px;color:#fff">₹0</b></div>
+    </div>
+
+    <div class="pb-card">
       <div class="pb-card-head"><span class="pb-ic">➕</span><b>Advance Amount</b>
         <button class="btn btn-ghost btn-sm" onclick="pbAdjAdd('advance')">+ Advance जोड़ें</button></div>
       <div class="pb-row" style="background:var(--blue-bg)"><span class="lbl">ठेकेदार को अब तक (पूर्व बिलों में) कुल Advance दिया गया</span><b class="amt">${pbSigned(priorAdvance)}</b></div>
       <div id="pbAdvanceList"></div>
-      <div class="pb-row"><span class="lbl"><span class="t">T7</span>कुल Advance (इस बिल में)</span><b class="amt pos" id="pbT7">₹0</b></div>
+      <div class="pb-row"><span class="lbl"><span class="t">T9</span>कुल Advance (इस बिल में)</span><b class="amt pos" id="pbT7">₹0</b></div>
       <div class="pb-row subtotal"><span class="lbl">इस बिल के बाद अब कुल Advance शेष</span><b class="amt" id="pbAdvanceRunning">₹0</b></div>
     </div>
-    <div class="pb-total" style="margin:0"><span class="lbl">T8 · कुल भुगतान Amount</span><span class="amt" id="pbT8">₹0</span></div>
-
-    <div class="pb-card">
-      <div class="pb-card-head"><span class="pb-ic">⏸</span><b>Withheld — कितना भुगतान रोकना है</b></div>
-      <div class="pb-row" style="background:var(--blue-bg)"><span class="lbl">ठेकेदार का अब तक (पूर्व बिलों में) कुल Withheld</span><b class="amt">${pbSigned(priorWithheld)}</b></div>
-      <div class="pb-row" style="padding:10px 14px"><input class="inp num" id="pb_withheld" type="number" step="any" style="max-width:160px;margin-left:auto" value="${esc(p.WithheldAmt||'')}" oninput="pbRecalc()" placeholder="₹0"></div>
-      <div class="pb-row"><span class="lbl"><span class="t">T9</span>Withheld राशि (इस बिल में)</span><b class="amt neg" id="pbT9">₹0</b></div>
-      <div class="pb-row subtotal"><span class="lbl">इस बिल के बाद अब तक कुल Withheld</span><b class="amt" id="pbWithheldRunning">₹0</b></div>
-      <div class="pb-row subtotal"><span class="lbl"><span class="t">T10</span>A (Withheld के बाद)</span><b class="amt" id="pbT10">₹0</b></div>
-    </div>
+    <div class="pb-total" style="margin:0"><span class="lbl">T10 · इस बिल में Advance के बाद कुल Amount</span><span class="amt" id="pbT8">₹0</span></div>
 
     <div class="pb-card">
       <div class="pb-stat-row" style="background:var(--surface-2)">
@@ -3103,7 +3116,7 @@ function openPayBuilder(editId){
     <div class="pb-total" style="margin:0"><span class="lbl">T12 · F (GST सहित Final)</span><span class="amt" id="pbT12">₹0</span></div>
 
     <div class="pb-card">
-      <div class="pb-card-head"><span class="pb-ic">📋</span><b>सांविधिक कटौतियाँ (F में से, % A पर आधारित — या मैनुअल राशि)</b></div>
+      <div class="pb-card-head"><span class="pb-ic">📋</span><b>सांविधिक कटौतियाँ (% पर आधारित — या मैनुअल राशि)</b></div>
       ${statRow('LaborCess','T13','Labour Cess','👷',statSrc.LaborCessOn,statSrc.LaborCessPct,statSrc.LaborCessManual,statSrc.LaborCessManualAmt)}
       ${statRow('IncomeTax','T14','Income Tax','🧾',statSrc.IncomeTaxOn,statSrc.IncomeTaxPct,statSrc.IncomeTaxManual,statSrc.IncomeTaxManualAmt)}
       ${statRow('Retention','T15','Retention Money','🔒',statSrc.RetentionOn,statSrc.RetentionPct,statSrc.RetentionManual,statSrc.RetentionManualAmt)}
@@ -3216,28 +3229,29 @@ function pbRecalc(){
   const t5=round((PB.deductions||[]).reduce((s,d)=>s+(toNum(d.amount)||0),0),2);
   const t6=round(t4-t5,2);
 
-  const t7=round((PB.advances||[]).reduce((s,d)=>s+(toNum(d.amount)||0),0),2);
-  const t8=round(t6+t7,2);
-
   const t9=round(toNum(val('pb_withheld')),2);
-  const t10=round(t8-t9,2); // A
+  const t10=round(t6-t9,2); // A (Withheld के बाद) = T6 − T9
+
+  const t7=round((PB.advances||[]).reduce((s,d)=>s+(toNum(d.amount)||0),0),2);
+  const t8=round(t10+t7,2); // इस बिल में Advance के बाद कुल Amount = T10 + T7
 
   const gstOn = document.getElementById('pb_GstOn').checked;
   const gstManual = document.getElementById('pb_GstManual') ? document.getElementById('pb_GstManual').checked : false;
   const gstPct = toNum(val('pb_GstPct'));
-  const t11 = gstOn ? (gstManual ? round(toNum(val('pb_GstManualAmt')),2) : round(t10*gstPct/100,2)) : 0;
-  const t12 = round(t10+t11,2); // F
+  const t11 = gstOn ? (gstManual ? round(toNum(val('pb_GstManualAmt')),2) : round(t10*gstPct/100,2)) : 0; // GST — T10 पर
+  const t12 = round(t8+t11,2); // F = T8 + GST
 
-  const statCalc=(key)=>{
+  const statCalc=(key, base)=>{
     const on=document.getElementById('pb_'+key+'On').checked;
     const manualEl=document.getElementById('pb_'+key+'Manual');
     const manual=manualEl?manualEl.checked:false;
     const pct=toNum(val('pb_'+key+'Pct'));
-    const amt = on ? (manual ? round(toNum(val('pb_'+key+'ManualAmt')),2) : round(t10*pct/100,2)) : 0;
+    const amt = on ? (manual ? round(toNum(val('pb_'+key+'ManualAmt')),2) : round(base*pct/100,2)) : 0;
     document.getElementById('pb_'+key+'Amt').textContent = inr(amt);
     return amt;
   };
-  const t13=statCalc('LaborCess'), t14=statCalc('IncomeTax'), t15=statCalc('Retention'), t16=statCalc('Cgst'), t17=statCalc('Sgst');
+  // T13, T15, T16, T17 → T10 पर; T14 (Income Tax) → T8 पर
+  const t13=statCalc('LaborCess',t10), t14=statCalc('IncomeTax',t8), t15=statCalc('Retention',t10), t16=statCalc('Cgst',t10), t17=statCalc('Sgst',t10);
   const t18=round(t12-(t13+t14+t15+t16+t17),2);
 
   document.getElementById('pbT1').textContent=inr(t1);
@@ -3392,6 +3406,11 @@ function pbSyncFinalIfNeeded(payment){
 /* किसी भुगतान का पूरा T1-T18 ब्रेकडाउन (कटौती/advance लाइन-नोट सहित) — मोडल व इनलाइन दोनों में प्रयुक्त */
 function payBreakdownHtml(p){
   const deductions=adjOf(p.PayID,'deduction'), advances=adjOf(p.PayID,'advance');
+  // इस बिल तक (चालू बिल सहित) — कटौती/Withheld/Advance के संचयी योग
+  const _seq=billSeqSorted(); const _idx=_seq.findIndex(x=>String(x.PayID)===String(p.PayID));
+  const _upto=_idx>=0?_seq.slice(0,_idx+1):[p];
+  const _cum=(f)=>_upto.reduce((s,x)=>s+toNum(x[f]),0);
+  const cumDeduct=_cum('DeductTotal'), cumWithheld=_cum('WithheldAmt'), cumAdvance=_cum('AdvanceTotal');
   const adjRow=(a)=>`<div class="pb-row" style="padding-left:30px"><span class="faint">${esc(a.Note||'—')}</span><span class="amt">${inr(a.Amount)}</span></div>`;
   const statLine=(tlbl,label,on,amt)=>on?`<div class="pb-row"><span class="lbl"><span class="t">${tlbl}</span>${label}</span><b class="amt neg">− ${inr(amt)}</b></div>`:'';
   const isPaid = payBoolJs(p.Paid);
@@ -3406,28 +3425,40 @@ function payBreakdownHtml(p){
       <div class="pb-row"><span class="lbl"><span class="t">T1</span>निर्धारित राशि</span><b class="amt">${inr(p.BaseAmount!=null && p.BaseAmount!==''?p.BaseAmount:p.TotalAmount)}</b></div>
       <div class="pb-row"><span class="lbl"><span class="t">T2</span>Above/Below %</span><b class="amt">${toNum(p.AbovePct)===0?'0%':(toNum(p.AbovePct)>0?'+':'')+toNum(p.AbovePct)+'% '+(toNum(p.AbovePct)<0?'(Below)':'(Above)')}</b></div>
       <div class="pb-row"><span class="lbl"><span class="t">T3</span>Above/Below राशि</span><b class="amt">${toNum(p.AboveAmt)<0?'− ':'+ '}${inr(Math.abs(toNum(p.AboveAmt)))}</b></div>
-      <div class="pb-row subtotal"><span class="lbl"><span class="t">T4</span>कुल (Above/Below सहित)</span><b class="amt">${inr(toNum(p.BaseAmount)+toNum(p.AboveAmt))}</b></div>
+      <div class="pb-row subtotal"><span class="lbl"><span class="t">T4</span>राशि (Schedule + Above/Below)</span><b class="amt">${inr(toNum(p.BaseAmount)+toNum(p.AboveAmt))}</b></div>
     </div>
-    ${deductions.length?`<div class="pb-card">
+
+    <div class="pb-card">
       <div class="pb-card-head"><span class="pb-ic">➖</span><b>कटौती (Deductions)</b></div>
       ${deductions.map(adjRow).join('')}
-      <div class="pb-row subtotal"><span class="lbl"><span class="t">T5/T6</span>कुल कटौती के बाद</span><b class="amt">− ${inr(p.DeductTotal)} → ${inr(toNum(p.BaseAmount)+toNum(p.AboveAmt)-toNum(p.DeductTotal))}</b></div>
-    </div>`:''}
-    ${advances.length?`<div class="pb-card">
+      <div class="pb-row"><span class="lbl"><span class="t">T5</span>कुल कटौती</span><b class="amt neg">${toNum(p.DeductTotal)?'− '+inr(p.DeductTotal):'—'}</b></div>
+      <div class="pb-row subtotal"><span class="lbl"><span class="t">T6</span>कटौती के बाद राशि</span><b class="amt">${inr(toNum(p.BaseAmount)+toNum(p.AboveAmt)-toNum(p.DeductTotal))}</b></div>
+      <div class="pb-row"><span class="lbl faint">अब तक कुल कटौती (इस बिल तक)</span><b class="amt faint">${inr(cumDeduct)}</b></div>
+    </div>
+
+    <div class="pb-card">
+      <div class="pb-card-head"><span class="pb-ic">⏸</span><b>Withheld — कितना भुगतान रोकना है</b></div>
+      <div class="pb-row"><span class="lbl"><span class="t">T7</span>Withheld राशि (इस बिल में)</span><b class="amt neg">${toNum(p.WithheldAmt)?'− '+inr(p.WithheldAmt):'—'}</b></div>
+      <div class="pb-row"><span class="lbl faint">अब तक कुल Withheld (इस बिल तक)</span><b class="amt faint">${inr(cumWithheld)}</b></div>
+      <div class="pb-row subtotal" style="background:var(--accent-d);color:#fff;border-radius:9px;padding:11px 14px;margin-top:6px;align-items:center;box-shadow:0 5px 14px rgba(43,58,143,.28)">
+        <span class="lbl" style="font-weight:600;color:#fff"><span class="t" style="background:rgba(255,255,255,.25);color:#fff">T8</span>A — Withheld के बाद Amount <span style="font-weight:400;font-size:11px;opacity:.85">· GST इसी Amount पर जुड़ेगा</span></span>
+        <b class="amt" style="font-size:18px;color:#fff">${inr(p.AmtA)}</b></div>
+    </div>
+
+    <div class="pb-card">
       <div class="pb-card-head"><span class="pb-ic">➕</span><b>Advance Amount</b></div>
       ${advances.map(adjRow).join('')}
-      <div class="pb-row subtotal"><span class="lbl"><span class="t">T7/T8</span>Advance जोड़ने के बाद</span><b class="amt pos">+ ${inr(p.AdvanceTotal)}</b></div>
-    </div>`:''}
-    <div class="pb-card">
-      <div class="pb-card-head"><span class="pb-ic">⏸</span><b>Withheld व आधार राशि</b></div>
-      <div class="pb-row"><span class="lbl"><span class="t">T9</span>Withheld</span><b class="amt neg">${toNum(p.WithheldAmt)?'− '+inr(p.WithheldAmt):'—'}</b></div>
-      <div class="pb-row subtotal"><span class="lbl"><span class="t">T10</span>A (GST/कटौती-पूर्व आधार)</span><b class="amt">${inr(p.AmtA)}</b></div>
+      <div class="pb-row"><span class="lbl"><span class="t">T9</span>कुल Advance (इस बिल में)</span><b class="amt pos">${toNum(p.AdvanceTotal)?'+ '+inr(p.AdvanceTotal):'—'}</b></div>
+      <div class="pb-row"><span class="lbl faint">अब तक कुल बचा हुआ Advance (इस बिल तक)</span><b class="amt faint">${inr(cumAdvance)}</b></div>
     </div>
+    <div class="pb-total" style="margin:0"><span class="lbl">T10 · इस बिल में Advance के बाद कुल Amount</span><span class="amt">${inr(toNum(p.AmtF)-toNum(p.GstAmt))}</span></div>
+
     <div class="pb-card">
       <div class="pb-card-head"><span class="pb-ic">🧾</span><b>GST</b></div>
-      ${p.GstOn?`<div class="pb-row"><span class="lbl"><span class="t">T11</span>GST (${toNum(p.GstPct)}% of A)</span><b class="amt pos">+ ${inr(p.GstAmt)}</b></div>`:`<div class="pb-row"><span class="faint">GST लागू नहीं</span></div>`}
+      ${p.GstOn?`<div class="pb-row"><span class="lbl"><span class="t">T11</span>GST (${toNum(p.GstPct)}% — T8 पर)</span><b class="amt pos">+ ${inr(p.GstAmt)}</b></div>`:`<div class="pb-row"><span class="faint">GST लागू नहीं</span></div>`}
     </div>
-    <div class="pb-total" style="margin:0"><span class="lbl">T12 · F (GST सहित कुल)</span><span class="amt">${inr(p.AmtF)}</span></div>
+    <div class="pb-total" style="margin:0"><span class="lbl">T12 · F (GST सहित Final)</span><span class="amt">${inr(p.AmtF)}</span></div>
+
     ${(p.LaborCessOn||p.IncomeTaxOn||p.RetentionOn||p.CgstOn||p.SgstOn)?`<div class="pb-card">
       <div class="pb-card-head"><span class="pb-ic">📋</span><b>सांविधिक कटौतियाँ</b></div>
       ${statLine('T13','Labour Cess',p.LaborCessOn,p.LaborCessAmt)}

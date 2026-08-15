@@ -1318,6 +1318,21 @@ function projectEngineers(){
   const raw=String((state.data.project&&state.data.project.engineers)||'').trim();
   return raw? raw.split(/[\n,;]+/).map(s=>s.trim()).filter(Boolean) : [];
 }
+/* नाप (measurements) में वास्तव में इस्तेमाल हो रहे सभी अभियंता-नाम (distinct) */
+function engineersInUse(){
+  const seen={}, out=[];
+  (D().measurements||[]).forEach(function(m){
+    const e=String((m&&m.Engineer)||'').trim();
+    if(e && !seen[e]){ seen[e]=1; out.push(e); }
+  });
+  return out;
+}
+/* project-सूची + नाप में प्रयुक्त नाम — दोनों का मेल (क्रम: पहले project-सूची, फिर छूटे नाम) */
+function engineersMerged(){
+  const list=projectEngineers().slice();
+  engineersInUse().forEach(function(e){ if(list.indexOf(e)===-1) list.push(e); });
+  return list;
+}
 function engineerOptionsHtml(cur){
   cur=String(cur||'').trim();
   const list=projectEngineers().slice();
@@ -1967,8 +1982,11 @@ function bindView(){ /* placeholder for future delegated events */ }
 /* ---- Project modal ---- */
 function openProjectModal(){
   const p=state.data.project||{};
+  const active = state.projectState && state.projectState.active;
+  // नाम header जैसा ही हल करें — p.name खाली हो तो लोड फ़ाइल का नाम (activeName) दिखाएँ
+  const dispName = p.name || state.data.activeName || (active && active.name) || '';
   const body=`<div class="form-grid">
-    <div class="field full"><label>परियोजना / सड़क का नाम</label><input id="pf_name" class="inp" value="${esc(p.name||'')}"></div>
+    <div class="field full"><label>परियोजना / सड़क का नाम</label><input id="pf_name" class="inp" value="${esc(dispName)}"></div>
     <div class="field"><label>ठेकेदार</label><input id="pf_con" class="inp" value="${esc(p.contractor||'')}"></div>
     <div class="field"><label>अनुबंध संख्या</label><input id="pf_wo" class="inp" value="${esc(p.workOrder||'')}"></div>
     <div class="field"><label>कार्य प्रारंभ दिनांक</label><input id="pf_start" class="inp" type="date" value="${esc((p.startDate||'').slice(0,10))}"></div>
@@ -1976,7 +1994,8 @@ function openProjectModal(){
     <div class="field"><label>Above/Below %</label><input id="pf_above" class="inp" type="number" step="any" value="${esc(p.abovePct||'')}" placeholder="जैसे -2 या 3">
       <div class="faint" style="margin-top:3px">ऋणात्मक (−) = Below, धनात्मक (+) = Above। हर नए/संपादित बिल में स्वतः जुड़ेगा।</div></div>
     <div class="field full"><label>अवर अभियंता (हर पंक्ति में एक नाम)</label>
-      <textarea id="pf_eng" class="inp" rows="3" placeholder="श्री क. शर्मा&#10;श्री र. वर्मा">${esc(p.engineers||'')}</textarea></div>
+      <textarea id="pf_eng" class="inp" rows="3" placeholder="श्री क. शर्मा&#10;श्री र. वर्मा">${esc(engineersMerged().join('\n'))}</textarea>
+      <div class="faint" style="margin-top:3px">नाप में पहले से प्रयुक्त सभी नाम यहाँ स्वतः जुड़े हैं — mismatch से बचने के लिए इन्हें हटाएँ नहीं।</div></div>
   </div>`;
   openModal('परियोजना विवरण', body,
     `<button class="btn btn-ghost" onclick="closeModal()">रद्द</button>

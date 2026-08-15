@@ -369,6 +369,15 @@ SBSheet_.prototype.deleteRow = function (rowIdx) {
   LocalDB.touch(this.ss.id); LocalDB.save();
   return this;
 };
+// col (1-आधारित) के मान से मिलती सभी पंक्तियाँ हटाओ (header row 1 सुरक्षित) — local mode
+SBSheet_.prototype.deleteRowsWhere = function (col, value) {
+  var rows = this._rows(), v = String(value == null ? '' : value);
+  for (var i = rows.length - 1; i >= 1; i--) {
+    if (String((rows[i] || [])[col - 1] == null ? '' : (rows[i] || [])[col - 1]) === v) rows.splice(i, 1);
+  }
+  LocalDB.touch(this.ss.id); LocalDB.save();
+  return this;
+};
 SBSheet_.prototype.clearContents = function () {
   var s = LocalDB.db().ss[this.ss.id];
   s.sheets[this.name] = [];
@@ -650,6 +659,19 @@ RSheet_.prototype.deleteRow = function (rowIdx) {
   sbCall_('deleteRow', { ss: this.ss.id, sheet: this.name, row: rowIdx });
   var rows = this._rows();
   if (rowIdx >= 1 && rowIdx <= rows.length) rows.splice(rowIdx - 1, 1);
+  return this;
+};
+// col (1-आधारित) के मान से मिलती सभी पंक्तियाँ एक ही server-call में हटाओ (header row 1 सुरक्षित)।
+// पुराने backend (जहाँ ss_delete_rows_where RPC नहीं) पर स्वतः row-by-row fallback — इसलिए deploy क्रम सुरक्षित।
+RSheet_.prototype.deleteRowsWhere = function (col, value) {
+  var v = String(value == null ? '' : value), rows = this._rows(), i;
+  var match = function (r) { return String((r || [])[col - 1] == null ? '' : (r || [])[col - 1]) === v; };
+  try {
+    sbCall_('deleteRowsWhere', { ss: this.ss.id, sheet: this.name, col: col, value: v });
+    for (i = rows.length - 1; i >= 1; i--) { if (match(rows[i])) rows.splice(i, 1); }
+  } catch (e) {
+    for (i = rows.length - 1; i >= 1; i--) { if (match(rows[i])) this.deleteRow(i + 1); }
+  }
   return this;
 };
 RSheet_.prototype.clearContents = function () {

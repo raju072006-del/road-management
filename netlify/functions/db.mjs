@@ -376,6 +376,7 @@ export default async (req) => {
       case 'appendRow':   return json({ ok: true, result: await rpc('ss_append_row', { p_ss: String(a.ss), p_sheet: String(a.sheet), p_cells: a.cells || [] }) });
       case 'setCells':    await rpc('ss_set_cells', { p_ss: String(a.ss), p_sheet: String(a.sheet), p_row: a.row | 0, p_col: a.col | 0, p_values: a.values || [] }); return json({ ok: true, result: true });
       case 'deleteRow':   await rpc('ss_delete_row', { p_ss: String(a.ss), p_sheet: String(a.sheet), p_row: a.row | 0 }); return json({ ok: true, result: true });
+      case 'deleteRowsWhere': return json({ ok: true, result: await rpc('ss_delete_rows_where', { p_ss: String(a.ss), p_sheet: String(a.sheet), p_col: a.col | 0, p_value: String(a.value == null ? '' : a.value) }) });
       case 'clearRange':  await rpc('ss_clear_range', { p_ss: String(a.ss), p_sheet: String(a.sheet), p_row: a.row | 0, p_col: a.col | 0, p_nrows: a.nrows | 0, p_ncols: a.ncols | 0 }); return json({ ok: true, result: true });
 
       // file ops → Supabase Storage + files table

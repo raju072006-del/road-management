@@ -278,6 +278,39 @@ begin
 end;
 $$;
 
+-- ── RPC: किसी column के मान से मिलती सभी पंक्तियाँ एक साथ हटाओ (bulk delete) ──
+-- row-by-row deleteRow के बजाय एक ही call — भुगतान सहेजते समय कई HTTP round-trip बचते हैं।
+-- p_col = 1-आधारित column संख्या; header (row_index=1) कभी नहीं हटती।
+create or replace function public.ss_delete_rows_where(p_ss text, p_sheet text, p_col int, p_value text)
+returns int
+language plpgsql
+as $$
+declare
+  v_sheet   bigint;
+  v_deleted int;
+begin
+  v_sheet := public._ss_sheet_id(p_ss, p_sheet);
+  if v_sheet is null then return 0; end if;
+  perform pg_advisory_xact_lock(v_sheet);
+  delete from public.sheet_rows
+   where sheet_id = v_sheet and row_index > 1
+     and coalesce(cells ->> (p_col - 1), '') = coalesce(p_value, '');
+  get diagnostics v_deleted = row_count;
+  if v_deleted > 0 then
+    -- शेष पंक्तियों का row_index फिर 1..N क्रम में करो (negate करके unique टकराव से बचो)
+    update public.sheet_rows set row_index = -row_index where sheet_id = v_sheet;
+    with ord as (
+      select id, row_number() over (order by -row_index) as rn
+      from public.sheet_rows where sheet_id = v_sheet
+    )
+    update public.sheet_rows s set row_index = ord.rn
+    from ord where s.id = ord.id;
+    perform public._ss_touch(p_ss);
+  end if;
+  return v_deleted;
+end;
+$$;
+
 -- ── RPC: range साफ़ करें (clearContent जैसा) ────────────────────
 
 create or replace function public.ss_clear_range(p_ss text, p_sheet text, p_row int, p_col int, p_nrows int, p_ncols int)

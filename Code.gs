@@ -4501,14 +4501,18 @@ function pay_splitMeasurement(payload){
 }
 
 // ── Payments ───────────────────────────────────────────────────
+// PayID column = 2. एक ही bulk-call में सभी मिलती पंक्तियाँ हटाओ (row-by-row से कई गुना तेज़)।
 function payDelDetails_(payId){
   var sh = paySS_().getSheetByName('PaymentDetails');
+  if (!sh) return;
+  if (typeof sh.deleteRowsWhere === 'function') { sh.deleteRowsWhere(2, String(payId)); return; }
   var data = sh.getDataRange().getValues();
   for (var i = data.length - 1; i >= 1; i--) { if (String(data[i][1]) === String(payId)) sh.deleteRow(i + 1); }
 }
 function payDelAdj_(payId, ss){
   var sh = (ss || paySS_()).getSheetByName('PaymentAdj');
   if (!sh) return;
+  if (typeof sh.deleteRowsWhere === 'function') { sh.deleteRowsWhere(2, String(payId)); return; }
   var data = sh.getDataRange().getValues();
   for (var i = data.length - 1; i >= 1; i--) { if (String(data[i][1]) === String(payId)) sh.deleteRow(i + 1); }
 }

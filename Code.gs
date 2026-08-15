@@ -4582,8 +4582,8 @@ function pay_savePayment(payload){
   var cgst      = statAdj('CgstOn',      'CgstPct',      'CgstManual',      'CgstManualAmt', amtA);
   var sgst      = statAdj('SgstOn',      'SgstPct',      'SgstManual',      'SgstManualAmt', amtA);
 
-  // T18: Nett Paid Amount — भुगतान के लिए कुछ राशि (धन/ऋणात्मक) होना ज़रूरी है
-  var nettPaid = amtF - (laborCess.amt + incomeTax.amt + retention.amt + cgst.amt + sgst.amt);
+  // T18: Nett Paid Amount (चेक राशि) — 1 रुपये के round में; भुगतान के लिए कुछ राशि होना ज़रूरी है
+  var nettPaid = Math.round(amtF - (laborCess.amt + incomeTax.amt + retention.amt + cgst.amt + sgst.amt));
   if (Math.abs(nettPaid) < 0.005) {
     throw new Error('भुगतान के लिए कोई Amount नहीं है');
   }

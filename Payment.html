@@ -548,7 +548,7 @@ const MOCK = (function(){
       // T13/T15/T16/T17 → amtA (T10); T14 (Income Tax) → t8 (T8)
       const lc=adj('LaborCessOn','LaborCessPct','LaborCessManual','LaborCessManualAmt',amtA), itx=adj('IncomeTaxOn','IncomeTaxPct','IncomeTaxManual','IncomeTaxManualAmt',t8),
             rt=adj('RetentionOn','RetentionPct','RetentionManual','RetentionManualAmt',amtA), cg=adj('CgstOn','CgstPct','CgstManual','CgstManualAmt',amtA), sg=adj('SgstOn','SgstPct','SgstManual','SgstManualAmt',amtA);
-      const nett=amtF-(lc.amt+itx.amt+rt.amt+cg.amt+sg.amt);
+      const nett=Math.round(amtF-(lc.amt+itx.amt+rt.amt+cg.amt+sg.amt));  // चेक राशि — 1 रुपये के round में
       if(Math.abs(nett)<0.005) throw new Error('भुगतान के लिए कोई Amount नहीं है');
       Object.assign(pay,{BaseAmount:baseAmt,AbovePct:abovePct,AboveAmt:aboveAmt,DeductTotal:deductTotal,AdvanceTotal:advanceTotal,WithheldAmt:withheldAmt,AmtA:amtA,
         GstOn:gstOn,GstPct:gstPct,GstManual:gstManual,GstManualAmt:gstManualAmt,GstAmt:gstAmt,AmtF:amtF,
@@ -3252,7 +3252,7 @@ function pbRecalc(){
   };
   // T13, T15, T16, T17 → T10 पर; T14 (Income Tax) → T8 पर
   const t13=statCalc('LaborCess',t10), t14=statCalc('IncomeTax',t8), t15=statCalc('Retention',t10), t16=statCalc('Cgst',t10), t17=statCalc('Sgst',t10);
-  const t18=round(t12-(t13+t14+t15+t16+t17),2);
+  const t18=Math.round(t12-(t13+t14+t15+t16+t17)); // चेक राशि — 1 रुपये के round में
 
   document.getElementById('pbT1').textContent=inr(t1);
   document.getElementById('pbT2').textContent=(t2===0?'0%':(t2>0?'+':'')+t2+'% '+(t2<0?'(Below)':'(Above)'));

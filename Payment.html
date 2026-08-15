@@ -1262,7 +1262,7 @@ function viewMeas(){
 
   const engs=projectEngineers();
   const engOpts='<option value="">— सभी अभियंता —</option>'+engs.map(e=>`<option ${state.measEng===e?'selected':''}>${esc(e)}</option>`).join('');
-  const bills=D().payments.slice().sort((a,b)=>String(a.BillNo||'').localeCompare(String(b.BillNo||'')));
+  const bills=D().payments.slice().sort(billNumCmp);
   const billOpts='<option value="">— सभी बिल —</option>'+bills.map(p=>`<option value="${esc(p.PayID)}" ${state.measBill===p.PayID?'selected':''}>${esc(p.BillNo||'(बिना नाम)')}</option>`).join('');
   const bOpt=(v,l)=>`<option value="${v}" ${(state.measBlock||'all')===v?'selected':''}>${l}</option>`;
   const toolbar=`<div class="toolbar">
@@ -1577,7 +1577,7 @@ function viewPay(){
   if(!D().payments.length) return head+emptyCard('₹','कोई भुगतान नहीं','"नया भुगतान बनाएँ" पर क्लिक करके नाप-लाइन चुनें और RA बिल बनाएँ।','नया भुगतान','openPayBuilder()');
 
   // फ़िल्टर विकल्प
-  const bills=D().payments.slice().sort((a,b)=>String(a.BillNo||'').localeCompare(String(b.BillNo||'')));
+  const bills=D().payments.slice().sort(billNumCmp);
   const billOpts='<option value="">— सभी बिल —</option>'+bills.map(p=>`<option value="${esc(p.PayID)}" ${state.payBill===p.PayID?'selected':''}>${esc(p.BillNo||'(बिना नाम)')}</option>`).join('');
   const itemOpts='<option value="">— सभी आइटम —</option>'+items().map(it=>`<option value="${esc(it.ItemID)}" ${state.payItem===it.ItemID?'selected':''}>${esc(it.ItemNo)} · ${esc(it.Description)}</option>`).join('');
   const engs=projectEngineers();
@@ -1677,7 +1677,7 @@ function viewPay(){
       <td></td><td class="r num" style="color:var(--green)">${inr(ta)}</td><td colspan="5"></td></tr>`;
   }
   const selP = state.payBill ? (D().payments.find(x=>String(x.PayID)===String(state.payBill))||null) : null;
-  const allBillChips = D().payments.slice().sort((a,b)=>String(a.BillNo||'').localeCompare(String(b.BillNo||''))).map(p=>
+  const allBillChips = D().payments.slice().sort(billNumCmp).map(p=>
     `<span style="display:inline-flex;align-items:center;gap:3px;padding:3px 8px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;font-size:12px">
       <b>${esc(p.BillNo||'—')}</b><span class="muted" style="font-size:11px">${dmy(p.PDate)}</span>
       <button class="icon-btn" style="width:20px;height:20px;font-size:11px;margin-left:2px" title="संपादित" onclick='openPayBuilder(${JSON.stringify(p.PayID)})'>✎</button>
@@ -1701,6 +1701,12 @@ function viewPay(){
 }
 
 /* बिल-क्रम — दिनांक → बिल-संख्या (अंक) → बनाने का समय; "किसी बिल तक" का क्रम इसी से तय */
+/* बिल-संख्या का अंकीय क्रम — "RA-9" के बाद "RA-10" (string-क्रम में 1,10,2... न हो) */
+function billNumCmp(a,b){
+  const na=toNum(String(a.BillNo||'').replace(/\D/g,'')), nb=toNum(String(b.BillNo||'').replace(/\D/g,''));
+  if(na!==nb) return na-nb;
+  return String(a.BillNo||'').localeCompare(String(b.BillNo||''));
+}
 function billSeqSorted(){
   return D().payments.slice().sort(function(a,b){
     const d=String(a.PDate||'').localeCompare(String(b.PDate||'')); if(d) return d;

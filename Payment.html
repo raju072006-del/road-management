@@ -2073,6 +2073,7 @@ function viewSettings(){
         ${row('LaborCess','T13','Labour Cess','👷')}
         ${row('IncomeTax','T14','Income Tax','🧾')}
         ${row('Retention','T15','Retention Money','🔒')}
+        ${row('OtherTax','T18','Other Tax','🧾')}
       </div>
       <div class="foot"><button class="btn btn-primary" onclick="saveSettingsForm()"><span class="ic">✓</span> सेटिंग सहेजें</button></div>
     </div>
@@ -2119,7 +2120,7 @@ function persistUnitConfigs(list){
     .catch(e=>{ loader(false); toast('त्रुटि: '+e,true); });
 }
 function saveSettingsForm(){
-  const keys=['Gst','Cgst','Sgst','LaborCess','IncomeTax','Retention'];
+  const keys=['Gst','Cgst','Sgst','LaborCess','IncomeTax','Retention','OtherTax'];
   const upd={};
   keys.forEach(k=>{ upd[k+'On']=document.getElementById('st_'+k+'On').checked; upd[k+'Pct']=val('st_'+k+'Pct'); });
   loader(true);
@@ -2916,7 +2917,7 @@ let PB = { editId:null, deductions:[], advances:[] };
 // नए बिल के लिए सांविधिक % डिफ़ॉल्ट — Common सेटिंग टैब से (सभी परियोजनाओं में एक जैसी)
 function settingsDefaults(){
   const p = state.data.defaultDeductions||{};
-  const keys=['Gst','Cgst','Sgst','LaborCess','IncomeTax','Retention'];
+  const keys=['Gst','Cgst','Sgst','LaborCess','IncomeTax','Retention','OtherTax'];
   const o={};
   keys.forEach(k=>{ o[k+'On']=payBoolJs(p[k+'On']); o[k+'Pct']=p[k+'Pct']||''; });
   return o;
@@ -3118,7 +3119,8 @@ function openPayBuilder(editId){
     <div class="pb-total" style="margin:0"><span class="lbl">T12 · F (GST सहित Final)</span><span class="amt" id="pbT12">₹0</span></div>
 
     <div class="pb-card">
-      <div class="pb-card-head"><span class="pb-ic">📋</span><b>सांविधिक कटौतियाँ (% पर आधारित — या मैनुअल राशि)</b></div>
+      <div class="pb-card-head"><span class="pb-ic">📋</span><b>सांविधिक कटौतियाँ (% पर आधारित — या मैनुअल राशि)</b>
+        <button class="btn btn-ghost btn-sm" onclick="pbRefreshSettings()" title="GST (T11) व सभी सांविधिक कटौतियों (T13–T18) का % सेटिंग में दिए गए मान से भर दें">🔄 सेटिंग से % भरें</button></div>
       ${statRow('LaborCess','T13','Labour Cess','👷',statSrc.LaborCessOn,statSrc.LaborCessPct,statSrc.LaborCessManual,statSrc.LaborCessManualAmt)}
       ${statRow('IncomeTax','T14','Income Tax','🧾',statSrc.IncomeTaxOn,statSrc.IncomeTaxPct,statSrc.IncomeTaxManual,statSrc.IncomeTaxManualAmt)}
       ${statRow('Retention','T15','Retention Money','🔒',statSrc.RetentionOn,statSrc.RetentionPct,statSrc.RetentionManual,statSrc.RetentionManualAmt)}
@@ -3161,8 +3163,10 @@ function pbRefreshSettings(){
     state.data.project = (d && d.project) || state.data.project || {};
     loader(false);
     const sd = settingsDefaults();
-    ['Gst','Cgst','Sgst','LaborCess','IncomeTax','Retention'].forEach(function(k){
+    ['Gst','Cgst','Sgst','LaborCess','IncomeTax','Retention','OtherTax'].forEach(function(k){
       const onEl=document.getElementById('pb_'+k+'On'), pctEl=document.getElementById('pb_'+k+'Pct');
+      const manEl=document.getElementById('pb_'+k+'Manual');
+      if(manEl && manEl.checked){ manEl.checked=false; pbToggleManual(k); }  // मैनुअल बंद कर % दिखाओ
       if(onEl) onEl.checked = sd[k+'On'];
       if(pctEl) pctEl.value = sd[k+'Pct'];
     });

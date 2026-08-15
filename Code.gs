@@ -4564,7 +4564,7 @@ function pay_savePayment(payload){
   var gstPct = Number(payment.GstPct) || 0;
   var gstManual    = payBool_(payment.GstManual);
   var gstManualAmt = Number(payment.GstManualAmt) || 0;
-  var gstAmt = gstOn ? (gstManual ? payR2_(gstManualAmt) : payR2_(amtA * gstPct / 100)) : 0;
+  var gstAmt = gstOn ? (gstManual ? Math.round(gstManualAmt) : Math.round(amtA * gstPct / 100)) : 0;  // 1 रुपये के round में
   var amtF   = t8 + gstAmt;
 
   // T13-T17: सांविधिक कटौतियाँ — या checkbox से मैनुअल राशि — F से घटेंगी
@@ -4574,7 +4574,7 @@ function pay_savePayment(payload){
     var pct = Number(payment[pctKey]) || 0;
     var manual    = payBool_(payment[manualKey]);
     var manualAmt = Number(payment[manualAmtKey]) || 0;
-    var amt = on ? (manual ? payR2_(manualAmt) : payR2_(base * pct / 100)) : 0;
+    var amt = on ? (manual ? Math.round(manualAmt) : Math.round(base * pct / 100)) : 0;  // 1 रुपये के round में
     return { on: on, pct: pct, manual: manual, manualAmt: manualAmt, amt: amt };
   }
   var laborCess = statAdj('LaborCessOn', 'LaborCessPct', 'LaborCessManual', 'LaborCessManualAmt', amtA);

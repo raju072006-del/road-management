@@ -541,10 +541,10 @@ const MOCK = (function(){
       const advanceTotal=(advances||[]).reduce((s,d)=>s+(+d.amount||0),0);
       const t8=amtA+advanceTotal;                // T8 = T10 + T7
       const gstOn=!!pay.GstOn, gstPct=+(pay.GstPct||0), gstManual=!!pay.GstManual, gstManualAmt=+(pay.GstManualAmt||0);
-      const gstAmt=gstOn?(gstManual?Math.round(gstManualAmt*100)/100:Math.round(amtA*gstPct/100*100)/100):0;  // GST — T10 पर
+      const gstAmt=gstOn?(gstManual?Math.round(gstManualAmt):Math.round(amtA*gstPct/100)):0;  // GST — T10 पर, 1 रुपये के round में
       const amtF=t8+gstAmt;
       const adj=(onK,pctK,manK,manAmtK,base)=>{ const on=!!pay[onK], pct=+(pay[pctK]||0), manual=!!pay[manK], manualAmt=+(pay[manAmtK]||0);
-        return {on,pct,manual,manualAmt,amt:on?(manual?Math.round(manualAmt*100)/100:Math.round(base*pct/100*100)/100):0}; };
+        return {on,pct,manual,manualAmt,amt:on?(manual?Math.round(manualAmt):Math.round(base*pct/100)):0}; };  // 1 रुपये के round में
       // T13/T15/T16/T17 → amtA (T10); T14 (Income Tax) → t8 (T8)
       const lc=adj('LaborCessOn','LaborCessPct','LaborCessManual','LaborCessManualAmt',amtA), itx=adj('IncomeTaxOn','IncomeTaxPct','IncomeTaxManual','IncomeTaxManualAmt',t8),
             rt=adj('RetentionOn','RetentionPct','RetentionManual','RetentionManualAmt',amtA), cg=adj('CgstOn','CgstPct','CgstManual','CgstManualAmt',amtA), sg=adj('SgstOn','SgstPct','SgstManual','SgstManualAmt',amtA),
@@ -1748,10 +1748,10 @@ function cumBreakdownHtml(pmts){
       ${R('T9','कुल Advance',adv?('+ '+inr(adv)):'—','pos')}
     </div>
     <div class="pb-total" style="margin:0"><span class="lbl">T10 · Advance के बाद कुल Amount (योग)</span><span class="amt">${inr(f-gst)}</span></div>
-    ${gst?`<div class="pb-card"><div class="pb-card-head"><span class="pb-ic">🧾</span><b>GST (योग)</b></div>${R('T11','GST',inr(gst),'pos')}</div>`:''}
+    ${gst?`<div class="pb-card"><div class="pb-card-head"><span class="pb-ic">🧾</span><b>GST (योग)</b></div>${R('T11','GST',inr(Math.round(gst)),'pos')}</div>`:''}
     <div class="pb-total" style="margin:0"><span class="lbl">T12 · F (GST सहित कुल)</span><span class="amt">${inr(f)}</span></div>
     ${(lc||itx||ret||cg||sg||ot)?`<div class="pb-card"><div class="pb-card-head"><span class="pb-ic">📋</span><b>सांविधिक कटौतियाँ (योग)</b></div>
-      ${lc?R('T13','Labour Cess',inr(lc),'neg'):''}${itx?R('T14','Income Tax',inr(itx),'neg'):''}${ret?R('T15','Retention',inr(ret),'neg'):''}${cg?R('T16','CGST',inr(cg),'neg'):''}${sg?R('T17','SGST',inr(sg),'neg'):''}${ot?R('T18','Other Tax',inr(ot),'neg'):''}
+      ${lc?R('T13','Labour Cess',inr(Math.round(lc)),'neg'):''}${itx?R('T14','Income Tax',inr(Math.round(itx)),'neg'):''}${ret?R('T15','Retention',inr(Math.round(ret)),'neg'):''}${cg?R('T16','CGST',inr(Math.round(cg)),'neg'):''}${sg?R('T17','SGST',inr(Math.round(sg)),'neg'):''}${ot?R('T18','Other Tax',inr(Math.round(ot)),'neg'):''}
     </div>`:''}
     <div class="pb-total" style="margin:0"><span class="lbl">T19 · कुल Nett Paid (अब तक — Updated)</span><span class="amt">${inr(Math.round(nett))}</span></div>
   </div>`;
@@ -3245,7 +3245,7 @@ function pbRecalc(){
   const gstOn = document.getElementById('pb_GstOn').checked;
   const gstManual = document.getElementById('pb_GstManual') ? document.getElementById('pb_GstManual').checked : false;
   const gstPct = toNum(val('pb_GstPct'));
-  const t11 = gstOn ? (gstManual ? round(toNum(val('pb_GstManualAmt')),2) : round(t10*gstPct/100,2)) : 0; // GST — T10 पर
+  const t11 = gstOn ? (gstManual ? Math.round(toNum(val('pb_GstManualAmt'))) : Math.round(t10*gstPct/100)) : 0; // GST — T10 पर, 1 रुपये के round में
   const t12 = round(t8+t11,2); // F = T8 + GST
 
   const statCalc=(key, base)=>{
@@ -3253,7 +3253,7 @@ function pbRecalc(){
     const manualEl=document.getElementById('pb_'+key+'Manual');
     const manual=manualEl?manualEl.checked:false;
     const pct=toNum(val('pb_'+key+'Pct'));
-    const amt = on ? (manual ? round(toNum(val('pb_'+key+'ManualAmt')),2) : round(base*pct/100,2)) : 0;
+    const amt = on ? (manual ? Math.round(toNum(val('pb_'+key+'ManualAmt'))) : Math.round(base*pct/100)) : 0; // 1 रुपये के round में
     document.getElementById('pb_'+key+'Amt').textContent = inr(amt);
     return amt;
   };
@@ -3420,7 +3420,7 @@ function payBreakdownHtml(p){
   const _cum=(f)=>_upto.reduce((s,x)=>s+toNum(x[f]),0);
   const cumDeduct=_cum('DeductTotal'), cumWithheld=_cum('WithheldAmt'), cumAdvance=_cum('AdvanceTotal');
   const adjRow=(a)=>`<div class="pb-row" style="padding-left:30px"><span class="faint">${esc(a.Note||'—')}</span><span class="amt">${inr(a.Amount)}</span></div>`;
-  const statLine=(tlbl,label,on,amt)=>on?`<div class="pb-row"><span class="lbl"><span class="t">${tlbl}</span>${label}</span><b class="amt neg">− ${inr(amt)}</b></div>`:'';
+  const statLine=(tlbl,label,on,amt)=>on?`<div class="pb-row"><span class="lbl"><span class="t">${tlbl}</span>${label}</span><b class="amt neg">− ${inr(Math.round(toNum(amt)))}</b></div>`:'';
   const isPaid = payBoolJs(p.Paid);
   const payBtn = isPaid
     ? `<div class="pb-row" style="background:var(--green-bg)"><span class="lbl" style="color:var(--green);font-weight:600">✅ भुगतान हो गया</span><b class="amt" style="color:var(--green)">${dmy(p.PaidDate)}</b></div>`
@@ -3463,7 +3463,7 @@ function payBreakdownHtml(p){
 
     <div class="pb-card">
       <div class="pb-card-head"><span class="pb-ic">🧾</span><b>GST</b></div>
-      ${p.GstOn?`<div class="pb-row"><span class="lbl"><span class="t">T11</span>GST (${toNum(p.GstPct)}% — T8 पर)</span><b class="amt pos">+ ${inr(p.GstAmt)}</b></div>`:`<div class="pb-row"><span class="faint">GST लागू नहीं</span></div>`}
+      ${p.GstOn?`<div class="pb-row"><span class="lbl"><span class="t">T11</span>GST (${toNum(p.GstPct)}% — T8 पर)</span><b class="amt pos">+ ${inr(Math.round(toNum(p.GstAmt)))}</b></div>`:`<div class="pb-row"><span class="faint">GST लागू नहीं</span></div>`}
     </div>
     <div class="pb-total" style="margin:0"><span class="lbl">T12 · F (GST सहित Final)</span><span class="amt">${inr(p.AmtF)}</span></div>
 

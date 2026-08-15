@@ -1751,7 +1751,7 @@ function cumBreakdownHtml(pmts){
     ${(lc||itx||ret||cg||sg)?`<div class="pb-card"><div class="pb-card-head"><span class="pb-ic">📋</span><b>सांविधिक कटौतियाँ (योग)</b></div>
       ${lc?R('T13','Labour Cess',inr(lc),'neg'):''}${itx?R('T14','Income Tax',inr(itx),'neg'):''}${ret?R('T15','Retention',inr(ret),'neg'):''}${cg?R('T16','CGST',inr(cg),'neg'):''}${sg?R('T17','SGST',inr(sg),'neg'):''}
     </div>`:''}
-    <div class="pb-total" style="margin:0"><span class="lbl">T18 · कुल Nett Paid (अब तक — Updated)</span><span class="amt">${inr(nett)}</span></div>
+    <div class="pb-total" style="margin:0"><span class="lbl">T18 · कुल Nett Paid (अब तक — Updated)</span><span class="amt">${inr(Math.round(nett))}</span></div>
   </div>`;
 }
 /* चुने बिल तक — संचयी विवरण (आइटम-वार कुल मात्रा + T1–T18 योग), प्रिंट-योग्य */
@@ -3467,7 +3467,7 @@ function payBreakdownHtml(p){
       ${statLine('T16','CGST',p.CgstOn,p.CgstAmt)}
       ${statLine('T17','SGST',p.SgstOn,p.SgstAmt)}
     </div>`:''}
-    <div class="pb-total" style="margin:0"><span class="lbl">T18 · Nett Paid Amount (चेक राशि)</span><span class="amt">${inr(p.NettPaid!=null && p.NettPaid!==''?p.NettPaid:p.TotalAmount)}</span></div>
+    <div class="pb-total" style="margin:0"><span class="lbl">T18 · Nett Paid Amount (चेक राशि)</span><span class="amt">${inr(Math.round(toNum(p.NettPaid!=null && p.NettPaid!==''?p.NettPaid:p.TotalAmount)))}</span></div>
     <div class="pb-card">${payBtn}</div>
   </div>`;
 }
@@ -3555,7 +3555,7 @@ function delPay(id){
 function markBillPaid(payId){
   const p=D().payments.find(x=>String(x.PayID)===String(payId)); if(!p) return;
   confirmModal('✅ Payment — चेक जारी हुआ चिह्नित करें?',
-    `बिल "${esc(p.BillNo||'')}" (चेक राशि ${inr(p.NettPaid!=null && p.NettPaid!==''?p.NettPaid:p.TotalAmount)}) के लिए आज की तारीख दर्ज होगी और यह बिल फ़्रीज़ हो जाएगा — इसके बाद इसकी मात्रा, कटौती, GST/सांविधिक % आदि में कोई बदलाव नहीं किया जा सकेगा।`,
+    `बिल "${esc(p.BillNo||'')}" (चेक राशि ${inr(Math.round(toNum(p.NettPaid!=null && p.NettPaid!==''?p.NettPaid:p.TotalAmount)))}) के लिए आज की तारीख दर्ज होगी और यह बिल फ़्रीज़ हो जाएगा — इसके बाद इसकी मात्रा, कटौती, GST/सांविधिक % आदि में कोई बदलाव नहीं किया जा सकेगा।`,
     ()=>{
       loader(true);
       api('markPaid', payId).then(()=>{ refresh(); toast('बिल भुगतान चिह्नित हुआ — अब यह फ़्रीज़ है'); })

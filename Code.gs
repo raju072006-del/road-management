@@ -4409,7 +4409,8 @@ function pay_deleteMeasurement(measId){
   payInvalidateCache_();
   return true;
 }
-// कई नाप-पंक्तियाँ (जोड़/संपादन/हटाव) एक ही बार में — builder/move/auto-arrange से एक ही round-trip में सहेजने के लिए
+// कई नाप-पंक्तियाँ (जोड़/संपादन/हटाव) एक ही बार में — सभी data-rows एक ही setValues में लिखो
+// (row-by-row appendRow/setValues से कई गुना तेज़ — बड़ी सूची पर भी एक ही server round-trip)
 function pay_saveMeasurementsBatch(payload){
   payEnsureSheets_();
   var sh = paySS_().getSheetByName('Measurements');
@@ -4417,24 +4418,37 @@ function pay_saveMeasurementsBatch(payload){
   var saves   = (payload && payload.saves)   || [];
   var touchedItems = {};
 
-  deletes.forEach(function(measId){
-    var idx = payFindRow_(sh, measId);
-    if (idx === -1) return;
-    var hdrs = payGetHdrs_(sh);
-    var itemCol = hdrs.indexOf('ItemID');
-    var itemId = itemCol !== -1 ? sh.getRange(idx, itemCol + 1).getValue() : '';
-    sh.deleteRow(idx);
-    if (itemId) touchedItems[itemId] = true;
+  var data   = sh.getDataRange().getValues();       // पहले से लोड cache — कोई HTTP नहीं
+  var header = data[0] || payGetHdrs_(sh);
+  var ncols  = header.length;
+  var itemCol = header.indexOf('ItemID');
+  var oldRows = data.slice(1);
+
+  // हटाई जाने वाली MeasID + उनके item
+  var delSet = {};
+  oldRows.forEach(function(r){
+    if (deletes.indexOf(String(r[0])) !== -1) { delSet[String(r[0])] = true; if (itemCol >= 0 && r[itemCol]) touchedItems[r[itemCol]] = true; }
   });
 
-  var ids = saves.map(function(m){
-    if (!m.MeasID) m.MeasID = Utilities.getUuid();
-    var row = payRowFor_(sh, m);
-    var idx = payFindRow_(sh, m.MeasID);
-    if (idx === -1) sh.appendRow(row); else sh.getRange(idx, 1, 1, row.length).setValues([row]);
-    if (m.ItemID) touchedItems[m.ItemID] = true;
-    return m.MeasID;
+  // saves → id असाइन + row-array बनाओ
+  var ids = saves.map(function(m){ if (!m.MeasID) m.MeasID = Utilities.getUuid(); if (m.ItemID) touchedItems[m.ItemID] = true; return m.MeasID; });
+  var saveById = {};
+  saves.forEach(function(m){ saveById[String(m.MeasID)] = payRowFor_(sh, m); });
+
+  // नई पूरी data-सूची — मूल क्रम बनाए रखते हुए (updated बदलो, deleted हटाओ), फिर नए append
+  var newRows = [];
+  oldRows.forEach(function(r){
+    var id = String(r[0]);
+    if (delSet[id]) return;
+    if (saveById[id]) { newRows.push(saveById[id]); delete saveById[id]; }
+    else newRows.push(r);
   });
+  saves.forEach(function(m){ var id = String(m.MeasID); if (saveById[id]) { newRows.push(saveById[id]); delete saveById[id]; } });
+
+  // सभी data-rows एक ही setValues में (row 2 से) — sheet ज़रूरत पड़ने पर स्वतः बढ़ जाती है
+  if (newRows.length) sh.getRange(2, 1, newRows.length, ncols).setValues(newRows);
+  // यदि पहले से कम पंक्तियाँ बचीं (net हटाव), तो बची अतिरिक्त पुरानी पंक्तियाँ हटाओ
+  for (var k = oldRows.length; k > newRows.length; k--) sh.deleteRow(newRows.length + 2);
 
   Object.keys(touchedItems).forEach(function(itemId){ paySyncSanc_(itemId); });
   payInvalidateCache_();

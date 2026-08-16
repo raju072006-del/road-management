@@ -361,6 +361,8 @@ select.inp{appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmln
 /* नाप/भुगतान की चौड़ी तालिकाएँ पूरी छपें — landscape + पर्याप्त हाशिया */
 @page{ size:A4 landscape; margin:8mm }
 @media print{
+  /* toast/सूचना संदेश PDF/प्रिंट में न आएँ */
+  #toast{ display:none !important }
   /* पूरा रंग/डिज़ाइन छपे — background व रंग (color printer → रंग; B&W → अपने-आप grey, text गहरा) */
   *, *::before, *::after{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important }
   body{background:#fff}
@@ -2625,7 +2627,7 @@ function builderRow(m){
     <td><input class="mb-in mb-grow" style="min-width:96px;max-width:320px" data-f="Description" value="${v(m.Description)}" placeholder="विवरण" ${dis}></td>
     ${(MB.dims&&MB.dims.N1===false)?'':`<td><input class="mb-in num" style="width:50px" type="number" step="any" data-f="Nos1" value="${v(n1)}" ${dis}></td>`}
     ${(MB.dims&&MB.dims.N2===false)?'':`<td><input class="mb-in num" style="width:50px" type="number" step="any" data-f="Nos2" value="${v(m.Nos2)}" ${dis}></td>`}
-    ${(MB.dims&&MB.dims.L===false)?'':`<td><input class="mb-in num mb-grow" style="min-width:62px;max-width:150px" type="number" step="any" data-f="Length" value="${v(m.Length)}" ${(m.Length!=null&&String(m.Length).trim()!=='')?'data-manual="1"':''} ${dis}></td>`}
+    ${(MB.dims&&MB.dims.L===false)?'':`<td><input class="mb-in num mb-grow" style="min-width:62px;max-width:150px" type="number" step="any" data-f="Length" value="${v(m.Length)}" ${dis}></td>`}
     ${(MB.dims&&MB.dims.B===false)?'':`<td>${dimCellHTML('Breadth', m.BreadthExpr||m.Breadth, paidLock)}</td>`}
     ${(MB.dims&&MB.dims.D===false)?'':`<td>${dimCellHTML('Depth', m.DepthExpr||m.Depth, paidLock)}</td>`}
     ${MB.mode==='sanctioned'

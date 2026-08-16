@@ -10517,25 +10517,30 @@ function _renderBills8(pid, payBills) {
   payBills = payBills || [];
 
   // Totals — Advance(T7)/Withheld(T9)/कुल भुगतान(T10)/GST सहित कुल(T12) चारों का योग
-  var sumAdvance=0, sumWithheld=0, sumNetPay=0, sumGstAll=0;
+  var sumAdvance=0, sumWithheld=0, sumNetPay=0, sumGstAll=0, sumCheque=0;
   allBills.forEach(function(b){
     var wh=parseFloat(b.Withheld_Amount||0)||0;
     sumWithheld += wh;
     sumNetPay   += (parseFloat(b.Bill_Amount||0)||0) - wh;
     sumGstAll   += parseFloat(b.Total_With_GST||0)||0;
+    sumCheque   += parseFloat(b.Total_With_GST||0)||0;   // मैनुअल बिल में सांविधिक कटौती नहीं — चेक ≈ GST सहित कुल
   });
   payBills.forEach(function(p){
     sumAdvance += parseFloat(p.AdvanceTotal||0)||0;
     sumWithheld+= parseFloat(p.WithheldAmt||0)||0;
     sumNetPay  += p.AmtA!=null && p.AmtA!=='' ? (parseFloat(p.AmtA)||0) : 0;
     sumGstAll  += p.AmtF!=null && p.AmtF!=='' ? (parseFloat(p.AmtF)||0) : (parseFloat(p.TotalAmount||0)||0);
+    sumCheque  += p.NettPaid!=null && p.NettPaid!=='' ? (parseFloat(p.NettPaid)||0) : (p.AmtF!=null && p.AmtF!=='' ? (parseFloat(p.AmtF)||0) : (parseFloat(p.TotalAmount||0)||0));  // T19
   });
+  // चेक जारी हुआ या नहीं — भुगतान-ऐप बिल में Paid फ़्लैग/PaidDate से; मैनुअल बिल में Status==='Paid'
+  function _pbPaid(p){ var v=p&&p.Paid; return v===true||v==='true'||v===1||v==='1'||v==='TRUE'||!!(p&&String(p.PaidDate||'').trim()); }
   var paidCount = allBills.filter(function(b){ return (b.Status||'')==='Paid'; }).length;
+  var payPaidCount = payBills.filter(_pbPaid).length;
 
   var grandCount = allBills.length + payBills.length;
   var grandAmt   = sumNetPay;   // T10 — कुल राशि (बिना GST)
   var grandGst   = sumGstAll;   // T12 — कुल राशि (GST सहित)
-  var grandPaid  = paidCount + payBills.length;
+  var grandPaid  = paidCount + payPaidCount;   // वास्तव में चेक-जारी बिलों की संख्या
 
   var h8 = '';
   // ── Header card ─────────────────────────────────────────────
@@ -10566,11 +10571,11 @@ function _renderBills8(pid, payBills) {
     var _TH8 = 'padding:7px 10px;font-size:11px;font-weight:600;color:var(--text3);white-space:nowrap;border-bottom:1px solid #e2e8f0;background:#f8fafc;text-align:left;';
     var _TD8 = 'padding:6px 10px;font-size:12px;border-bottom:1px solid #f5f5f5;vertical-align:middle;';
     h8 += '<div style="overflow-x:auto;">';
-    h8 += '<table style="width:100%;border-collapse:collapse;min-width:900px;">';
+    h8 += '<table style="width:100%;border-collapse:collapse;min-width:1010px;">';
     h8 += '<thead><tr>';
     [{t:'भुगतान संख्या',w:'90px'},{t:'माप पु. संख्या',w:'100px'},{t:'पेज',w:'55px'},
      {t:'बिल का दिनांक',w:'88px'},{t:'भुगतान दिनांक',w:'88px'},
-     {t:'Advance',w:'90px'},{t:'Withheld',w:'90px'},{t:'कुल भुगतान',w:'95px'},{t:'GST सहित कुल (₹)',w:'100px'},
+     {t:'Advance',w:'90px'},{t:'Withheld',w:'90px'},{t:'मदों की लागत',w:'95px'},{t:'GST सहित कुल (₹)',w:'100px'},{t:'चेक Amount',w:'100px'},
      {t:'Status',w:'75px'},{t:'View / Upload',w:'90px'},{t:'',w:'60px'}
     ].forEach(function(c){
       h8 += '<th style="'+_TH8+';width:'+c.w+'">'+c.t+'</th>';
@@ -10592,6 +10597,7 @@ function _renderBills8(pid, payBills) {
       var netAmtN = (parseFloat(b.Bill_Amount||0)||0) - whAmtN;
       var netAmt  = b.Bill_Amount ? '₹'+netAmtN.toLocaleString('en-IN') : '—';
       var gstAmt  = b.Total_With_GST ? '₹'+(parseFloat(b.Total_With_GST)||0).toLocaleString('en-IN') : '—';
+      var chqAmt  = b.Total_With_GST ? '₹'+Math.round(parseFloat(b.Total_With_GST)||0).toLocaleString('en-IN') : '—';
       var advAmt  = '—'; // मैनुअल बिल में Advance ट्रैक नहीं होता
 
       h8 += '<tr style="background:'+rowBg+'">';
@@ -10604,6 +10610,7 @@ function _renderBills8(pid, payBills) {
       h8 += '<td style="'+_TD8+';color:#b45309;">'+whAmt+'</td>';
       h8 += '<td style="'+_TD8+';font-weight:600;color:var(--navy);">'+netAmt+'</td>';
       h8 += '<td style="'+_TD8+';font-weight:700;color:#0f766e;">'+gstAmt+'</td>';
+      h8 += '<td style="'+_TD8+';font-weight:700;color:#0d9488;">'+chqAmt+'</td>';
       h8 += '<td style="'+_TD8+';text-align:center;"><span style="background:'+statBg+';color:'+statCl+';padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap;">'+statTxt+'</span></td>';
       h8 += '<td style="'+_TD8+';text-align:center;">';
       if (lnk) {
@@ -10635,6 +10642,7 @@ function _renderBills8(pid, payBills) {
       var whAmt2  = pWh  ? '₹'+pWh.toLocaleString('en-IN')  : '—';
       var netAmt2 = pNet!=null ? '₹'+pNet.toLocaleString('en-IN') : '—';
       var gstAmt2 = pGst ? '₹'+pGst.toLocaleString('en-IN') : '—';
+      var chqAmt2 = (p.NettPaid!=null && p.NettPaid!=='') ? '₹'+Math.round(parseFloat(p.NettPaid)||0).toLocaleString('en-IN') : (pGst?'₹'+Math.round(pGst).toLocaleString('en-IN'):'—');
       var plnk = p.DriveLink||'';
       h8 += '<tr style="background:'+rowBg+'">';
       h8 += '<td style="'+_TD8+';font-weight:700;color:#0f766e;">'+(p.BillNo||'—')+'</td>';
@@ -10646,6 +10654,7 @@ function _renderBills8(pid, payBills) {
       h8 += '<td style="'+_TD8+';color:#b45309;">'+whAmt2+'</td>';
       h8 += '<td style="'+_TD8+';font-weight:600;color:var(--navy);">'+netAmt2+'</td>';
       h8 += '<td style="'+_TD8+';font-weight:700;color:#0f766e;">'+gstAmt2+'</td>';
+      h8 += '<td style="'+_TD8+';font-weight:700;color:#0d9488;">'+chqAmt2+'</td>';
       h8 += '<td style="'+_TD8+';text-align:center;"><span style="font-size:10px;padding:3px 8px;background:#ede9fe;color:#6d28d9;border:1px solid #ddd6fe;border-radius:4px;font-weight:600;white-space:nowrap;">भुगतान एप</span></td>';
       h8 += '<td style="'+_TD8+';text-align:center;">';
       if (plnk) {
@@ -10668,6 +10677,7 @@ function _renderBills8(pid, payBills) {
     h8 += '<td style="padding:8px 10px;font-size:12px;font-weight:700;color:#b45309;">₹'+sumWithheld.toLocaleString('en-IN')+'</td>';
     h8 += '<td style="padding:8px 10px;font-size:13px;font-weight:800;color:#0f766e;">₹'+sumNetPay.toLocaleString('en-IN')+'</td>';
     h8 += '<td style="padding:8px 10px;font-size:13px;font-weight:800;color:var(--navy);">₹'+sumGstAll.toLocaleString('en-IN')+'</td>';
+    h8 += '<td style="padding:8px 10px;font-size:13px;font-weight:800;color:#0d9488;">₹'+Math.round(sumCheque).toLocaleString('en-IN')+'</td>';
     h8 += '<td colspan="3" style="padding:8px 10px;font-size:11px;color:var(--text3);">'+grandCount+' भुगतान | '+grandPaid+' Paid</td>';
     h8 += '</tr>';
     h8 += '</tbody></table></div>';

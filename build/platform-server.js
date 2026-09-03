@@ -800,7 +800,9 @@ RFolder_.prototype.createFile = function (blob) {
   return new RFile_(r);
 };
 RFolder_.prototype.getFilesByType = function () {
-  var list = rsList_(true).filter(function (s) { return s.id !== 'main'; });
+  // 45s cache इस्तेमाल करो (create/rename/delete पर वैसे भी invalidate होता है) —
+  // हर project-state गणना पर बेवजह listSS न चले, इससे परियोजना लोड तेज़ होता है
+  var list = rsList_(false).filter(function (s) { return s.id !== 'main'; });
   var i = 0;
   return { hasNext: function () { return i < list.length; }, next: function () { return new RSSFile_(list[i++]); } };
 };

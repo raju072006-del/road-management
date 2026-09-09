@@ -861,12 +861,13 @@ function refresh(){
     }
     let ig=[]; try{ ig=JSON.parse((state.data.project&&state.data.project.ignoredOverlaps)||'[]'); }catch(e){}
     state.ignoredOverlaps = Array.isArray(ig)?ig:[];
+    // Bill Copy से खुला — यदि लक्ष्य परियोजना अभी लोड नहीं है तो गलत/खाली परियोजना को render किए बिना
+    // सीधे सही परियोजना लोड करो (दोहरी लोडिंग/रेंडर टलती है → तेज़)
+    var _pp = (!_preloadDone && window._PRELOAD_PROJECT && window._PRELOAD_PROJECT.name) ? String(window._PRELOAD_PROJECT.name) : '';
+    var _an = String(state.data.activeName || (state.projectState && state.projectState.active && state.projectState.active.name) || '');
+    if (_pp && _pp !== _an) { _preloadDone = true; _autoLoadByName(_pp); return; }   // loader on रहेगा; सही परियोजना render करेगी
     renderProjChip(); render(); loader(false);
-    // Auto-load project if opened from Bill Copy tab in main app
-    if (!_preloadDone && window._PRELOAD_PROJECT && window._PRELOAD_PROJECT.name) {
-      _preloadDone = true;
-      _autoLoadByName(window._PRELOAD_PROJECT.name);
-    }
+    if (_pp) { _preloadDone = true; _autoLoadByName(_pp); }
   }).catch(function(e){ loader(false); toast('डेटा लोड नहीं हुआ: '+e, true); });
 }
 
@@ -881,6 +882,20 @@ function _autoLoadByName(name) {
     if (projects[i].name === name) { existing = projects[i]; break; }
   }
   if (existing) {
+    var _activeId = (state.projectState && state.projectState.active && state.projectState.active.id) || '';
+    var _alreadyLoaded = String(_activeId) === String(existing.id);
+    // पहले से यही परियोजना लोड है → दोबारा पूरा refresh न करो (बस render + details)
+    if (_alreadyLoaded) {
+      renderProjChip(); render(); loader(false);
+      if (preload.contractor || preload.startDate || preload.endDate) {
+        var cur0 = state.data.project || {}, upd0 = Object.assign({}, cur0), chg0 = false;
+        if (preload.contractor && !cur0.contractor) { upd0.contractor = preload.contractor; chg0 = true; }
+        if (preload.startDate  && !cur0.startDate)  { upd0.startDate  = preload.startDate;  chg0 = true; }
+        if (preload.endDate    && !cur0.endDate)     { upd0.endDate    = preload.endDate;    chg0 = true; }
+        if (chg0) api('saveProject', upd0).then(function(){ refresh(); }).catch(function(){});
+      }
+      return;
+    }
     // Project already exists — load it, then apply main-app details if any
     doLoadProj(existing.id);
     if (preload.contractor || preload.startDate || preload.endDate) {

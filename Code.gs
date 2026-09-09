@@ -50,19 +50,10 @@ function getPaymentPageHtml() {
   // GAS-injected build timestamp forces cache revalidation
   var buildTs = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'dd-MM-yyyy HH:mm');
   html = html.replace('</head>', '<script>window._PAY_BUILD="' + buildTs + '";<\/script></head>');
-  try {
-    var ss = SBApp.getActiveSpreadsheet();
-    var rows = sheetToObjects_(ss, '3_Projects');
-    var projects = (rows || []).filter(function(r){ return r.Project_ID; }).map(function(r){
-      return {
-        id:     r.Project_ID,
-        name:   r.Project_Name || r['Project_Name\n(कार्य का नाम)'] || '',
-        status: r.Status || ''
-      };
-    });
-    var tag = '<script>window._DASH_PROJECTS=' + JSON.stringify(projects) + ';<\/script>';
-    html = html.replace('</head>', tag + '</head>');
-  } catch(e) {}
+  // ध्यान दें: यहाँ पहले '3_Projects' पढ़कर window._DASH_PROJECTS inject किया जाता था — इससे भुगतान-ऐप
+  // हर बार खुलते समय पूरा 'main' डेटा सिंक्रोनस लोड करता था (खुलने में बहुत देरी/हैंग)। अब यह हटा दिया —
+  // सूची तभी चाहिए जब user "मुख्य परियोजना से भुगतान बनाएं" खोले, तब भुगतान-ऐप स्वयं
+  // getDashboardProjects से मँगा लेता है। इससे भुगतान प्रबंधन तुरंत खुलता है।
   return html;
 }
 

@@ -60,6 +60,15 @@ console.log('[1/2] Road Management.html —', (out.length / 1024 / 1024).toFixed
 const dep = path.join(PROJ, 'deploy');
 fs.mkdirSync(dep, { recursive: true });
 fs.copyFileSync(outFile, path.join(dep, 'index.html'));
+
+// भुगतान-ऐप को असली URL (/payment.html) से भी सर्व करें — dashboard इसे srcdoc के बजाय इसी URL से
+// iframe में लोड करता है (Edge/Chromium के srcdoc-iframe regression से बचाव)। सीधे खोलने पर dashboard पर भेज दो।
+const payGuard = SO.replace('>', ' data-guard>') +
+  'try{if(window.parent===window)location.replace("./");}catch(e){location.replace("./");}' +
+  SC;
+const payServed = payLocal.replace(/<head>/i, '<head>\n' + payGuard);
+fs.writeFileSync(path.join(dep, 'payment.html'), payServed, 'utf8');
+
 fs.cpSync(path.join(PROJ, 'Road Estimater'), path.join(dep, 'Road Estimater'), { recursive: true });
 
 // सुरक्षा: deploy वाले Estimator में login-guard inject करें —

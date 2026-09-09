@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>सड़क परियोजना प्रबंधन प्रणाली</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%9B%A3%EF%B8%8F%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Tiro+Devanagari+Hindi:ital@0;1&family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Source+Serif+4:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -4856,19 +4857,34 @@ function _loadPaymentIframe(projName, details) {
   fr.style.display = 'block';
   if (title) title.textContent = '💳 परियोजना भुगतान प्रबंधन' + (projName ? ' — ' + projName : '');
 
+  var preload = null;
+  if (projName) {
+    preload = {name: projName};
+    if (details) {
+      preload.contractor     = details.contractor   || '';
+      preload.startDate      = details.startDate    || '';
+      preload.endDate        = details.endDate      || '';
+      preload.contractCost   = details.contractCost || '';
+      preload.contractGstPct = details.contractGstPct || '';
+    }
+  }
+
+  // Hosted (http/https) → भुगतान-ऐप को असली URL /payment.html से लोड करो (srcdoc नहीं)।
+  // Edge/Chromium के नए संस्करण srcdoc-iframe को अलग process में डालकर तोड़ देते हैं; असली same-origin
+  // URL से यह dashboard की तरह सामान्य रूप से चलता है।
+  if (/^https?:/i.test(location.protocol)) {
+    var hash = preload ? ('#pl=' + encodeURIComponent(JSON.stringify(preload))) : '';
+    fr.removeAttribute('srcdoc');
+    fr.src = 'payment.html?v=' + encodeURIComponent(window._BUILD_TS || '1') + hash;
+    return;
+  }
+
+  // Local file mode → srcdoc (getPaymentPageHtml)
   var loadingMsg = projName ? '⏳ "'+projName+'" का भुगतान प्रबंधन लोड हो रहा है...' : '⏳ परियोजना भुगतान लोड हो रहा है...';
   fr.srcdoc = '<p style="padding:50px;text-align:center;font-family:sans-serif;color:#555;font-size:16px;">'+loadingMsg+'</p>';
   google.script.run
     .withSuccessHandler(function(h){
-      if (projName) {
-        var preload = {name: projName};
-        if (details) {
-          preload.contractor     = details.contractor   || '';
-          preload.startDate      = details.startDate    || '';
-          preload.endDate        = details.endDate      || '';
-          preload.contractCost   = details.contractCost || '';
-          preload.contractGstPct = details.contractGstPct || '';
-        }
+      if (preload) {
         var tag = '<script>window._PRELOAD_PROJECT='+JSON.stringify(preload)+';<\/script>';
         h = h.replace('</head>', tag + '</head>');
       }

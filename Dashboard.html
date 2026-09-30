@@ -16098,7 +16098,8 @@ function _secReasonProject(s, pmap){
   if(String(s.Assigned_To||'').trim()) return 'दूसरे विभाग को दिया';
   if(String(s.Project_ID||'').trim()) return 'पहले से प्रोजेक्ट में ('+String(s.Project_ID).trim()+')';
   var ids=String(s.Plan_IDs||'').split(',').map(function(x){return x.trim();}).filter(Boolean);
-  var inPlan=ids.some(function(pid){var pi=pmap[pid];return pi&&pi.status!=='Dropped';});
+  // पैच मरम्मत योजना टुकड़ा reserve नहीं करती — ऐसा टुकड़ा प्रोजेक्ट (पैच कार्य) में जोड़ा जा सकता है
+  var inPlan=ids.some(function(pid){var pi=pmap[pid];return pi&&pi.status!=='Dropped'&&pi.workType!=='पैच मरम्मत';});
   if(inPlan) return 'योजना में है';
   return '';
 }

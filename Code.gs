@@ -2586,7 +2586,7 @@ function _applyProjectSections_(ss, projectId, sectionIds) {
     if (String(vals[r][asC]||'').trim()) { skipped.push({id:sid, reason:'दूसरे विभाग को दिया'}); continue; }
     if (String(vals[r][pjC]||'').trim()) { skipped.push({id:sid, reason:'पहले से प्रोजेक्ट में'}); continue; }
     var ids = String(vals[r][piC]||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
-    var inPlan = ids.some(function(pid){ var pi=planMap[pid]; return pi && pi.status!=='Dropped'; });
+    var inPlan = ids.some(function(pid){ var pi=planMap[pid]; return pi && pi.status!=='Dropped' && pi.workType!=='पैच मरम्मत'; });   // पैच योजना reserve नहीं करती
     if (inPlan) { skipped.push({id:sid, reason:'योजना में है'}); continue; }
     vals[r][pjC]=projectId; added.push(sid); changed=true;
   }
@@ -2641,7 +2641,7 @@ function _reconcileProjectSections_(ss, projectId, roadId, sectionIds){
       if(String(vals[r][asC]||'').trim()){ skipped.push({id:sid,reason:'दूसरे विभाग को दिया'}); continue; }
       if(curProj){ skipped.push({id:sid,reason:'दूसरे प्रोजेक्ट में'}); continue; }
       var ids=String(vals[r][piC]||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
-      if(ids.some(function(pid){var pi=planMap[pid];return pi&&pi.status!=='Dropped';})){ skipped.push({id:sid,reason:'योजना में है'}); continue; }
+      if(ids.some(function(pid){var pi=planMap[pid];return pi&&pi.status!=='Dropped'&&pi.workType!=='पैच मरम्मत';})){ skipped.push({id:sid,reason:'योजना में है'}); continue; }   // पैच योजना reserve नहीं करती
       vals[r][pjC]=projectId; added.push(sid); changed=true;
     } else if(curProj===String(projectId)){
       vals[r][pjC]=''; removed.push(sid); changed=true;               // हटाया गया → मुक्त

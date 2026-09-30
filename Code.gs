@@ -2607,15 +2607,18 @@ function _clearPlanFromSections_(ss, planId){
   SBApp.flush();
 }
 function _clearProjectFromSections_(ss, projectId, roadId){
-  const sheet=ss.getSheetByName('2_Road_Sections'); if(!sheet) return;
+  const sheet=ss.getSheetByName('2_Road_Sections'); if(!sheet) return [];
   const vals=sheet.getDataRange().getValues(); const hdr=vals[0].map(h=>String(h).trim());
-  const pjC=hdr.indexOf('Project_ID'), rdC=hdr.indexOf('Road_ID'); if(pjC<0) return;
+  const pjC=hdr.indexOf('Project_ID'), rdC=hdr.indexOf('Road_ID'), sidC=hdr.indexOf('Section_ID'); if(pjC<0) return [];
+  const cleared=[]; let changed=false;
   for(let r=1;r<vals.length;r++){
     if(String(vals[r][pjC]||'').trim()!==String(projectId)) continue;
     if(roadId && String(vals[r][rdC]||'').trim()!==String(roadId)) continue;
-    sheet.getRange(r+1,pjC+1).setValue('');
+    vals[r][pjC]=''; if(sidC>=0) cleared.push(String(vals[r][sidC]).trim()); changed=true;
   }
+  if(changed){ const colArr=[]; for(let r=1;r<vals.length;r++){ colArr.push([vals[r][pjC]]); } sheet.getRange(2,pjC+1,colArr.length,1).setValues(colArr); }
   SBApp.flush();
+  return cleared;
 }
 // इस सड़क के टुकड़ों को प्रोजेक्ट में मिलाओ — चुने जोड़ो, हटाए गए (जो इसी प्रोजेक्ट में थे) मुक्त करो
 function _reconcileProjectSections_(ss, projectId, roadId, sectionIds){
@@ -3286,11 +3289,12 @@ function deleteProjectRoad(prId) {
     const projectId = String(vals[r][projC]||'').trim();
     const roadId    = rdC>=0 ? String(vals[r][rdC]||'').trim() : '';
     sheet.deleteRow(r + 1);
-    try { _clearProjectFromSections_(ss, projectId, roadId); } catch(e){}  // टुकड़ों की प्रोजेक्ट-सदस्यता मुक्त
+    var cleared=[];
+    try { cleared = _clearProjectFromSections_(ss, projectId, roadId) || []; } catch(e){}  // टुकड़ों की प्रोजेक्ट-सदस्यता मुक्त
     SBApp.flush();
     updateProjType_(ss, projectId);
     CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
-    return { success: true, projectId: projectId };
+    return { success: true, projectId: projectId, clearedSections: cleared };
   }
   return { success: false, msg: 'PR_ID नहीं मिला' };
 }

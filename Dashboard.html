@@ -14809,6 +14809,7 @@ function removeProjRoadFromForm(prId, roadName) {
       _opEnd();
       if (res.success) {
         D.projRoads = D.projRoads.filter(function(p){ return p.PR_ID !== prId; });
+        (res.clearedSections||[]).forEach(function(sid){ var s=(D.sections||[]).find(function(x){return x.Section_ID===sid;}); if(s) s.Project_ID=''; });
         var _prj = D.projects.find(function(p){ return p.Project_ID===pid; });
         if (_prj) _prj.Project_Type = calcProjType(pid);
         renderProj(); renderRoads();
@@ -14828,6 +14829,7 @@ function removeProjRoadFromDetail(prId, roadName) {
       _opEnd();
       if (res.success) {
         D.projRoads = D.projRoads.filter(function(p){ return p.PR_ID !== prId; });
+        (res.clearedSections||[]).forEach(function(sid){ var s=(D.sections||[]).find(function(x){return x.Section_ID===sid;}); if(s) s.Project_ID=''; });
         var _prj = D.projects.find(function(p){ return p.Project_ID === pid; });
         if (_prj) _prj.Project_Type = calcProjType(pid);
         renderProj(); renderRoads();
@@ -15251,6 +15253,7 @@ function deleteProjRoad(prId, roadName) {
       _opEnd();
       if (res.success) {
         D.projRoads = D.projRoads.filter(function(p){ return p.PR_ID!==prId; });
+        (res.clearedSections||[]).forEach(function(sid){ var s=(D.sections||[]).find(function(x){return x.Section_ID===sid;}); if(s) s.Project_ID=''; });
         var _dp = D.projects.find(function(p){ return p.Project_ID===pid; });
         if (_dp) _dp.Project_Type = calcProjType(pid);
         renderProj(); renderRoads();
@@ -16093,7 +16096,7 @@ function aprjProjChange(sel) {
 // #6 — प्रोजेक्ट overlay: सड़क के टुकड़े checkbox के रूप में (योजना/प्रोजेक्ट exclusive)
 function _secReasonProject(s, pmap){
   if(String(s.Assigned_To||'').trim()) return 'दूसरे विभाग को दिया';
-  if(String(s.Project_ID||'').trim()) return 'पहले से प्रोजेक्ट में';
+  if(String(s.Project_ID||'').trim()) return 'पहले से प्रोजेक्ट में ('+String(s.Project_ID).trim()+')';
   var ids=String(s.Plan_IDs||'').split(',').map(function(x){return x.trim();}).filter(Boolean);
   var inPlan=ids.some(function(pid){var pi=pmap[pid];return pi&&pi.status!=='Dropped';});
   if(inPlan) return 'योजना में है';

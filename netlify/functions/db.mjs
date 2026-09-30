@@ -366,6 +366,34 @@ export default async (req) => {
     switch (op) {
       // workbook/sheet ops → schema के ss_* RPC functions
       case 'loadAll':     return json({ ok: true, result: (await rpc('ss_get_all', { p_ss: String(a.ss) })) || {} });
+      // सभी payment-स्प्रेडशीट (main छोड़कर) का "Payments" शीट कुल — एक ही server-side गणना
+      // (पहले हर परियोजना को अलग loadAll करना पड़ता था → परियोजनाएँ पेज धीमा/Wait)
+      case 'payTotals': {
+        const sprs = await sb('/rest/v1/spreadsheets?select=id,name&id=neq.main') || [];
+        const totals = {};
+        sprs.forEach(s => { totals[s.name] = 0; });
+        if (!sprs.length) return json({ ok: true, result: totals });
+        const nameById = {}; sprs.forEach(s => { nameById[s.id] = s.name; });
+        const ssIds = sprs.map(s => encodeURIComponent(s.id)).join(',');
+        const shts = await sb('/rest/v1/sheets?select=id,spreadsheet_id&name=eq.Payments&spreadsheet_id=in.(' + ssIds + ')') || [];
+        if (!shts.length) return json({ ok: true, result: totals });
+        const ssBySheet = {}; shts.forEach(sh => { ssBySheet[sh.id] = sh.spreadsheet_id; });
+        const shIds = shts.map(sh => encodeURIComponent(sh.id)).join(',');
+        const rows = await sb('/rest/v1/sheet_rows?select=sheet_id,row_index,cells&sheet_id=in.(' + shIds + ')&order=row_index') || [];
+        const hdr = {};  // sheet_id → {total, amtf}
+        rows.forEach(r => { if (r.row_index === 1) { const c = r.cells || []; hdr[r.sheet_id] = { total: c.indexOf('TotalAmount'), amtf: c.indexOf('AmtF') }; } });
+        rows.forEach(r => {
+          if (r.row_index <= 1) return;
+          const h = hdr[r.sheet_id]; if (!h) return;
+          const c = r.cells || [];
+          let v = 0;
+          if (h.total >= 0 && c[h.total] !== '' && c[h.total] != null) v = Number(c[h.total]) || 0;
+          else if (h.amtf >= 0) v = Number(c[h.amtf]) || 0;
+          const nm = nameById[ssBySheet[r.sheet_id]];
+          if (nm != null) totals[nm] = (totals[nm] || 0) + v;
+        });
+        return json({ ok: true, result: totals });
+      }
       case 'listSS':      return json({ ok: true, result: (await rpc('ss_list_spreadsheets', {})) || [] });
       case 'createSS':    await rpc('ss_create_spreadsheet', { p_id: String(a.id), p_name: String(a.name) }); return json({ ok: true, result: a.id });
       case 'renameSS':    await rpc('ss_rename_spreadsheet', { p_id: String(a.id), p_name: String(a.name) }); return json({ ok: true, result: true });
@@ -394,6 +422,24 @@ export default async (req) => {
         });
         await rpc('ss_register_file', { p_id: id, p_path: p, p_name: name, p_folder: String(a.folder || ''), p_mime: mime, p_size: bytes.length });
         return json({ ok: true, result: { id, name, mime, folder: String(a.folder || ''), created: new Date().toISOString(), url: publicUrl(p) } });
+      }
+      // बड़ी फ़ाइलें (function की ~6MB body-limit से बचने हेतु) — signed URL देकर ब्राउज़र सीधे Storage पर PUT करे
+      case 'signUpload': {
+        const id = crypto.randomUUID();
+        const name = String(a.name || 'file');
+        const safe = name.replace(/[\/\\#?%]/g, '_');
+        const p = 'f/' + id + '/' + safe;
+        const r = await sb('/storage/v1/object/upload/sign/' + BUCKET + '/' + encPath(p), { method: 'POST' });
+        const rawUrl = (r && r.url) || '';
+        const tk = String(rawUrl).match(/token=([^&]+)/);
+        const token = tk ? decodeURIComponent(tk[1]) : ((r && r.token) || '');
+        const uploadUrl = baseUrl() + '/storage/v1/object/upload/sign/' + BUCKET + '/' + encPath(p) + '?token=' + encodeURIComponent(token);
+        return json({ ok: true, result: { id, path: p, name, uploadUrl } });
+      }
+      // signed-URL अपलोड के बाद files-टेबल में पंजीकरण
+      case 'registerFile': {
+        await rpc('ss_register_file', { p_id: String(a.id), p_path: String(a.path), p_name: String(a.name || 'file'), p_folder: String(a.folder || ''), p_mime: String(a.mime || 'application/octet-stream'), p_size: a.size | 0 });
+        return json({ ok: true, result: { id: String(a.id), name: String(a.name || ''), mime: String(a.mime || ''), folder: String(a.folder || ''), created: new Date().toISOString(), url: publicUrl(String(a.path)) } });
       }
       case 'fileRecord': {
         const r = await rpc('ss_file_by_id', { p_id: String(a.id) });

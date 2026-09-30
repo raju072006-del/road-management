@@ -1188,41 +1188,63 @@ function getWorkTypesList_() {
   if (!sheet) return DEFAULT_WORK_TYPES.slice();
   let types = sheet.getDataRange().getValues().slice(1).map(r => String(r[0]).trim()).filter(Boolean);
   if (!types.length) return DEFAULT_WORK_TYPES.slice();
-  // पुरानी Sheet में अगर नए default प्रकार (जैसे नव निर्माण/अन्य) मौजूद नहीं हैं तो उन्हें जोड़ दें
-  const lower = types.map(t => t.toLowerCase());
-  const missing = DEFAULT_WORK_TYPES.filter(t => lower.indexOf(t.toLowerCase()) < 0);
-  if (missing.length) {
-    missing.forEach(t => sheet.appendRow([t]));
-    types = types.concat(missing);
-  }
+  // नोट: पहले यहाँ "छूटे हुए default प्रकार" वापस जोड़े जाते थे — अब नहीं, ताकि Admin द्वारा
+  // बदला/हटाया गया प्रकार दोबारा न आए (सूची पूरी तरह sheet से नियंत्रित)।
   return types;
 }
 
-// ── Work Types: Rename (केवल कस्टम — डिफ़ॉल्ट नहीं) ──────────
-function renameWorkType(oldName, newName) {
+// किसी कार्य प्रकार का उपयोग कितनी योजनाओं में है (7_Annual_Plan) — 0 = कहीं नहीं
+function getWorkTypeUsage(name) {
+  name = String(name||'').trim();
+  const ss = SBApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName('7_Annual_Plan');
+  if (!sh || sh.getLastRow() < 2) return { count: 0 };
+  const vals = sh.getDataRange().getValues();
+  const wtC = vals[0].map(h=>String(h).trim()).indexOf('Work_Type');
+  if (wtC < 0) return { count: 0 };
+  let c = 0;
+  for (let r=1; r<vals.length; r++) if (String(vals[r][wtC]).trim() === name) c++;
+  return { count: c };
+}
+function _renameWorkTypeInPlans_(ss, oldName, newName) {
+  const sh = ss.getSheetByName('7_Annual_Plan');
+  if (!sh || sh.getLastRow() < 2) return 0;
+  const vals = sh.getDataRange().getValues();
+  const wtC = vals[0].map(h=>String(h).trim()).indexOf('Work_Type');
+  if (wtC < 0) return 0;
+  let n = 0;
+  for (let r=1; r<vals.length; r++){ if (String(vals[r][wtC]).trim() === oldName){ sh.getRange(r+1, wtC+1).setValue(newName); n++; } }
+  return n;
+}
+
+// ── Work Types: Rename — applyEverywhere सत्य हो तो सभी योजनाओं में भी बदलो ──
+function renameWorkType(oldName, newName, applyEverywhere) {
   var _g = _adminOnlyGuard_(); if (_g) return _g;
   oldName = String(oldName||'').trim(); newName = String(newName||'').trim();
   if (!newName) return { success: false, msg: 'नाम खाली नहीं हो सकता' };
-  if (DEFAULT_WORK_TYPES.indexOf(oldName) >= 0) return { success: false, msg: 'डिफ़ॉल्ट कार्य प्रकार बदला नहीं जा सकता' };
   const ss = SBApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('8_Work_Types');
   if (!sheet) return { success: false, msg: '8_Work_Types Sheet नहीं मिली' };
   const vals = sheet.getDataRange().getValues();
+  var found = false;
   for (let r = 1; r < vals.length; r++) {
-    if (String(vals[r][0]).trim() === oldName) {
-      sheet.getRange(r+1, 1).setValue(newName);
-      CacheService.getScriptCache().remove(CACHE_KEY_S);
-      return { success: true };
-    }
+    if (String(vals[r][0]).trim() === oldName) { sheet.getRange(r+1, 1).setValue(newName); found = true; break; }
   }
-  return { success: false, msg: 'नहीं मिला' };
+  if (!found) sheet.appendRow([newName]);   // सूची में न हो (जैसे पुराना default) तो नया नाम जोड़ दो
+  var planUpdated = 0;
+  if (applyEverywhere) planUpdated = _renameWorkTypeInPlans_(ss, oldName, newName);
+  SBApp.flush();
+  CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
+  return { success: true, planUpdated: planUpdated };
 }
 
-// ── Work Types: Delete (केवल कस्टम — डिफ़ॉल्ट नहीं) ──────────
+// ── Work Types: Delete — किसी योजना में प्रयुक्त हो तो रोको (पहले वहाँ से हटाएँ) ──
 function deleteWorkType(name) {
   var _g = _adminOnlyGuard_(); if (_g) return _g;
   name = String(name||'').trim();
-  if (DEFAULT_WORK_TYPES.indexOf(name) >= 0) return { success: false, msg: 'डिफ़ॉल्ट कार्य प्रकार हटाया नहीं जा सकता' };
+  const use = getWorkTypeUsage(name);
+  if (use.count > 0) return { success: false, inUse: true, count: use.count,
+    msg: 'यह कार्य प्रकार '+use.count+' योजना(ओं) में प्रयुक्त है — पहले उन योजनाओं से हटाएँ/बदलें, तभी यह हटेगा।' };
   const ss = SBApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('8_Work_Types');
   if (!sheet) return { success: false, msg: '8_Work_Types Sheet नहीं मिली' };
@@ -1230,7 +1252,8 @@ function deleteWorkType(name) {
   for (let r = 1; r < vals.length; r++) {
     if (String(vals[r][0]).trim() === name) {
       sheet.deleteRow(r+1);
-      CacheService.getScriptCache().remove(CACHE_KEY_S);
+      SBApp.flush();
+      CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
       return { success: true };
     }
   }
@@ -1257,6 +1280,7 @@ function _rawSecondary_() {
     plan:      sheetToObjects_(ss, '7_Annual_Plan'),
     workTypes: getWorkTypesList_(),
     roadTypes: getRoadTypesList_(),
+    surfaces:  getSurfacesList_(),
     docCats:   getDocCategoriesList_(),
     convs:     sheetToObjects_(ss, '11_Conversations'),
     bills:     sheetToObjects_(ss, '8_Bills'),
@@ -1277,20 +1301,23 @@ function _rawSecondary_() {
 function _scopeSecondary_(raw) {
   var ss = SBApp.getActiveSpreadsheet();
   var own = _ownedSets_(ss);
+  var me = _owner_();
   var byRoad = function (x) { return x.Road_ID ? !!own.roads[x.Road_ID] : false; };
   var byProj = function (x) { return x.Project_ID ? !!own.projs[x.Project_ID] : false; };
+  // योजना: सड़क वाली पंक्ति → सड़क के owner से; roadless (नव निर्माण/अन्य) → पंक्ति के Owner से
+  var byPlan = function (x) { return x.Road_ID ? !!own.roads[x.Road_ID] : (String(x.Owner || SUPER_ADMIN_) === me); };
   return {
     sections:  (raw.sections  || []).filter(byRoad),
     projRoads: (raw.projRoads || []).filter(byProj),
     docs:      (raw.docs      || []).filter(byProj),
     finance:   (raw.finance   || []).filter(byProj),
-    plan:      (raw.plan      || []).filter(byRoad),
+    plan:      (raw.plan      || []).filter(byPlan),
     convs:     (raw.convs     || []).filter(byProj),
     bills:     (raw.bills     || []).filter(byProj),
     mbItems:   (raw.mbItems   || []).filter(byProj),
     mbEntries: (raw.mbEntries || []).filter(byProj),
     // साझा reference/config — सभी users के लिए एक ही
-    workTypes: raw.workTypes, roadTypes: raw.roadTypes, docCats: raw.docCats,
+    workTypes: raw.workTypes, roadTypes: raw.roadTypes, surfaces: raw.surfaces, docCats: raw.docCats,
     masters:   raw.masters, ofc: raw.ofc
   };
 }
@@ -1675,20 +1702,163 @@ function bulkAddSections(rows) {
 }
 
 // ── Batch Save: edited + new sections एक call में ────────────
+// तेज़: हर पंक्ति एक ही setValues में (per-field setValue नहीं), नई पंक्तियाँ एक block में append.
+// Assigned_To/Plan_IDs/Project_ID जैसी अन्य फ़ील्ड मौजूदा मान से ज्यों-की-त्यों रहती हैं (data-safe)।
+const _SEC_FMAP = {
+  chainageFrom:'Chainage_From', chainageTo:'Chainage_To', kmNumber:'KM_Number', lengthKm:'Length_KM',
+  widthM:'Width_M', topSurface:'Top_Surface', lastWorkMonth:'Last_Work_Month', lastWorkYear:'Last_Work_Year',
+  bituminousMm:'Bituminous_MM', granularMm:'Granular_MM', structureChainage:'Structure_Chainage',
+  structureDetail:'Structure_Detail', remark:'Remark', vidhansabha:'Vidhansabha', loksabha:'Loksabha'
+};
 function saveSectionsBatch(payload) {
-  const errors = [];
-  const addedIds = [];
-  (payload.updates || []).forEach(function(data) {
-    const r = updateSection(data);
-    if (!r.success) errors.push(r.msg);
+  const ss = SBApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('2_Road_Sections');
+  if (!sheet) return { success:false, addedIds:[], errors:['2_Road_Sections नहीं मिली'] };
+  ensureStructureChainageCol_(ss);
+  ensureSectionVsLsCols_(ss);
+  const updates = payload.updates || [];
+  const newRows = payload.newRows || [];
+  const data = sheet.getDataRange().getValues();
+  const hdr  = data[0].map(h=>String(h).trim());
+  const ncols= hdr.length;
+  const sidC = hdr.indexOf('Section_ID');
+  const col  = function(name){ return hdr.indexOf(name); };
+  const errors = [], addedIds = [];
+  // Section_ID → row index (0-based in data)
+  const rowById = {};
+  for (let r=1; r<data.length; r++) rowById[String(data[r][sidC]).trim()] = r;
+
+  // Updates — मेमोरी में लगाओ, फिर पूरी body एक ही setValues में लिखो
+  // (पहले हर पंक्ति पर अलग setValues = हर पंक्ति = एक HTTP → कई लाइनें सेव करने में देरी/Waiting)
+  let touched = false;
+  updates.forEach(function(d){
+    const r = rowById[String(d.sectionId).trim()];
+    if (r === undefined) { errors.push('Section नहीं मिला: '+d.sectionId); return; }
+    while (data[r].length < ncols) data[r].push('');
+    Object.keys(_SEC_FMAP).forEach(function(k){ if (d[k] !== undefined) { const c=col(_SEC_FMAP[k]); if (c>=0) data[r][c]=d[k]; } });
+    touched = true;
   });
-  (payload.newRows || []).forEach(function(data) {
-    const r = addSection(data);
-    if (r.success) addedIds.push(r.sectionId);
-    else errors.push(r.msg);
-  });
+  if (touched && data.length > 1) {
+    const body = [];
+    for (let r=1; r<data.length; r++){ const rowArr = data[r].slice(0, ncols); while (rowArr.length < ncols) rowArr.push(''); body.push(rowArr); }
+    sheet.getRange(2, 1, body.length, ncols).setValues([...body]);   // सभी अपडेट एक ही call में
+  }
+
+  // New rows — सब एक block में append
+  if (newRows.length) {
+    let maxN = 0;
+    for (let r=1; r<data.length; r++){ const n=parseInt(String(data[r][sidC]).replace(/\D/g,''))||0; if (n>maxN) maxN=n; }
+    const outRows = newRows.map(function(d){
+      maxN++; const sid = 'SEC'+String(maxN).padStart(3,'0'); addedIds.push(sid);
+      const rowArr = new Array(ncols).fill('');
+      const setc = function(name,val){ const c=col(name); if (c>=0) rowArr[c]=val; };
+      setc('Section_ID', sid); setc('Road_ID', d.roadId||'');
+      Object.keys(_SEC_FMAP).forEach(function(k){ if (d[k] !== undefined) setc(_SEC_FMAP[k], d[k]); });
+      return rowArr;
+    });
+    sheet.getRange(sheet.getLastRow()+1, 1, outRows.length, ncols).setValues(outRows);
+  }
+
+  SBApp.flush();
   CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
   return { success: errors.length === 0, addedIds: addedIds, errors: errors };
+}
+
+// ══════════════════════════════════════════════════════════════
+//  Section — विभाग/अभियंता आवंटन (Dump टुकड़ा) + योजना/प्रोजेक्ट सदस्यता
+//  सभी columns additive (डिफ़ॉल्ट खाली) — पुराना डेटा अछूता
+// ══════════════════════════════════════════════════════════════
+function ensureSectionExtraCols_(ss) {
+  const sheet = ss.getSheetByName('2_Road_Sections');
+  if (!sheet) return null;
+  const hdr = sheet.getRange(1,1,1,sheet.getLastColumn()).getValues()[0].map(h=>String(h).trim());
+  ['Assigned_To','Assign_Remark','Plan_IDs','Project_ID'].forEach(function(name){
+    if (hdr.indexOf(name) >= 0) return;
+    const c = sheet.getLastColumn() + 1;
+    sheet.getRange(1,c).setValue(name).setBackground('#1a3a5c').setFontColor('#fff').setFontWeight('bold');
+    hdr.push(name);
+  });
+  SBApp.flush();
+  return sheet;
+}
+
+function _secSetFields_(ss, sectionId, fields) {
+  const sheet = ensureSectionExtraCols_(ss);
+  if (!sheet) return false;
+  const vals = sheet.getDataRange().getValues();
+  const hdr  = vals[0].map(h=>String(h).trim());
+  const sidC = hdr.indexOf('Section_ID');
+  for (let r=1;r<vals.length;r++){
+    if (String(vals[r][sidC]).trim() !== String(sectionId)) continue;
+    Object.keys(fields).forEach(function(k){ const c=hdr.indexOf(k); if(c>=0) sheet.getRange(r+1,c+1).setValue(fields[k]); });
+    return true;
+  }
+  return false;
+}
+
+// #3 — टुकड़ा किसी और विभाग/अभियंता को देना (Dump) / वापस लेना
+function assignSectionDept(sectionId, assignedTo, remark) {
+  const ss = SBApp.getActiveSpreadsheet();
+  const ok = _secSetFields_(ss, sectionId, { Assigned_To: String(assignedTo||'').trim(), Assign_Remark: String(remark||'').trim() });
+  SBApp.flush(); CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
+  return ok ? { success:true } : { success:false, msg:'Section नहीं मिला' };
+}
+function unassignSectionDept(sectionId) {
+  const ss = SBApp.getActiveSpreadsheet();
+  const ok = _secSetFields_(ss, sectionId, { Assigned_To:'', Assign_Remark:'' });
+  SBApp.flush(); CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
+  return ok ? { success:true } : { success:false, msg:'Section नहीं मिला' };
+}
+// कई टुकड़े एक साथ दें — एक ही sheet-पास में (तेज़)
+function assignSectionsDept(payload) {
+  const ss = SBApp.getActiveSpreadsheet();
+  const ids = ((payload && payload.sectionIds) || []).map(function(x){return String(x).trim();}).filter(Boolean);
+  const to  = String((payload && payload.assignedTo)||'').trim();
+  const rem = String((payload && payload.remark)||'').trim();
+  if (!ids.length) return { success:false, msg:'कोई टुकड़ा नहीं चुना' };
+  const sheet = ensureSectionExtraCols_(ss);
+  if (!sheet) return { success:false, msg:'2_Road_Sections नहीं मिली' };
+  const vals = sheet.getDataRange().getValues();
+  const hdr  = vals[0].map(h=>String(h).trim());
+  const sidC = hdr.indexOf('Section_ID'), atC = hdr.indexOf('Assigned_To'), arC = hdr.indexOf('Assign_Remark');
+  var done = 0;
+  for (let r=1; r<vals.length; r++){
+    if (ids.indexOf(String(vals[r][sidC]).trim()) < 0) continue;
+    if (atC>=0) sheet.getRange(r+1, atC+1).setValue(to);
+    if (arC>=0) sheet.getRange(r+1, arC+1).setValue(rem);
+    done++;
+  }
+  SBApp.flush(); CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
+  return { success:true, count: done };
+}
+
+function _planInfoMap_(ss) {
+  const map = {};
+  const sh = ss.getSheetByName('7_Annual_Plan');
+  if (!sh || sh.getLastRow()<2) return map;
+  const vals = sh.getDataRange().getValues();
+  const hdr = vals[0].map(h=>String(h).trim());
+  const idC=hdr.indexOf('Plan_ID'), yC=hdr.indexOf('Year'), wC=hdr.indexOf('Work_Type'), stC=hdr.indexOf('Status');
+  for(let r=1;r<vals.length;r++){
+    const id=String(vals[r][idC]||'').trim(); if(!id) continue;
+    map[id]={ year:String(vals[r][yC]||'').trim(), workType:String(vals[r][wC]||'').trim(), status:String(vals[r][stC]||'').trim() };
+  }
+  return map;
+}
+function _csvAdd_(csv, id){ var a=String(csv||'').split(',').map(function(s){return s.trim();}).filter(Boolean); if(a.indexOf(id)<0)a.push(id); return a.join(','); }
+function _csvDel_(csv, id){ return String(csv||'').split(',').map(function(s){return s.trim();}).filter(function(x){return x&&x!==id;}).join(','); }
+
+// किसी section को (year, workType) की योजना में जोड़ना योग्य है? खाली = योग्य, वरना कारण
+function _secPlanReason_(secObj, planMap, year, workType) {
+  if (String(secObj.Project_ID||'').trim())  return 'प्रोजेक्ट में है';
+  if (String(secObj.Assigned_To||'').trim()) return 'दूसरे विभाग को दिया';
+  if (String(workType||'').trim() === 'पैच मरम्मत') return '';  // पैच — छूट
+  var ids = String(secObj.Plan_IDs||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
+  for (var i=0;i<ids.length;i++){
+    var pi = planMap[ids[i]]; if(!pi || pi.status==='Dropped') continue;
+    if (pi.year === String(year||'').trim() && pi.workType !== 'पैच मरम्मत') return 'इस वर्ष पहले से योजना में';
+  }
+  return '';
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1765,6 +1935,95 @@ function deleteRoadType(typeName) {
     }
   }
   return { success: false, msg: '"' + typeName + '" नहीं मिला' };
+}
+
+// ══════════════════════════════════════════════════════════════
+//  10_Surfaces — Chainage Detail के "Surface" dropdown की सूची (सेटिंग से प्रबंधित)
+// ══════════════════════════════════════════════════════════════
+const DEFAULT_SURFACES = ['BC', 'WBM', 'Gravel', 'CC', 'Earthen', 'Interlocking'];
+
+function getSurfacesList_() {
+  const ss = SBApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('10_Surfaces');
+  if (!sheet) return DEFAULT_SURFACES.slice();
+  const types = sheet.getDataRange().getValues().slice(1).map(r => String(r[0]).trim()).filter(Boolean);
+  return types.length ? types : DEFAULT_SURFACES.slice();
+}
+
+function ensureSurfacesSheet_(ss) {
+  let sheet = ss.getSheetByName('10_Surfaces');
+  if (!sheet) {
+    sheet = ss.insertSheet('10_Surfaces');
+    sheet.getRange(1,1).setValue('Surface').setBackground('#1a3a5c').setFontColor('#fff').setFontWeight('bold');
+    sheet.setFrozenRows(1);
+    DEFAULT_SURFACES.forEach(t => sheet.appendRow([t]));
+    SBApp.flush();
+  }
+  return sheet;
+}
+
+function addSurface(name) {
+  var _g = _adminOnlyGuard_(); if (_g) return _g;
+  name = String(name||'').trim();
+  if (!name) return { success: false, msg: 'नाम खाली नहीं हो सकता' };
+  const ss = SBApp.getActiveSpreadsheet();
+  const sheet = ensureSurfacesSheet_(ss);
+  const existing = sheet.getDataRange().getValues().slice(1).map(r => String(r[0]).trim().toLowerCase());
+  if (existing.includes(name.toLowerCase())) return { success: false, msg: '"' + name + '" पहले से मौजूद है' };
+  sheet.appendRow([name]);
+  SBApp.flush();
+  CacheService.getScriptCache().remove(CACHE_KEY_S);
+  return { success: true };
+}
+
+function updateSurface(oldName, newName) {
+  var _g = _adminOnlyGuard_(); if (_g) return _g;
+  oldName = String(oldName||'').trim(); newName = String(newName||'').trim();
+  if (!newName) return { success: false, msg: 'नाम खाली नहीं हो सकता' };
+  const ss = SBApp.getActiveSpreadsheet();
+  const sheet = ensureSurfacesSheet_(ss);
+  const vals = sheet.getDataRange().getValues();
+  for (let r = 1; r < vals.length; r++) {
+    if (String(vals[r][0]).trim() === oldName) {
+      sheet.getRange(r+1, 1).setValue(newName);
+      SBApp.flush();
+      CacheService.getScriptCache().remove(CACHE_KEY_S);
+      return { success: true };
+    }
+  }
+  return { success: false, msg: '"' + oldName + '" नहीं मिला' };
+}
+
+function deleteSurface(name) {
+  var _g = _adminOnlyGuard_(); if (_g) return _g;
+  name = String(name||'').trim();
+  const ss = SBApp.getActiveSpreadsheet();
+  const sheet = ensureSurfacesSheet_(ss);
+  const vals = sheet.getDataRange().getValues();
+  for (let r = 1; r < vals.length; r++) {
+    if (String(vals[r][0]).trim() === name) {
+      sheet.deleteRow(r+1);
+      SBApp.flush();
+      CacheService.getScriptCache().remove(CACHE_KEY_S);
+      return { success: true };
+    }
+  }
+  return { success: false, msg: '"' + name + '" नहीं मिला' };
+}
+
+// Surface सूची का क्रम सहेजें (ऊपर-नीचे) — यही क्रम हर dropdown में दिखेगा
+function saveSurfaceOrder(names) {
+  var _g = _adminOnlyGuard_(); if (_g) return _g;
+  names = (names || []).map(function(n){ return String(n).trim(); }).filter(Boolean);
+  if (!names.length) return { success: false, msg: 'खाली सूची' };
+  const ss = SBApp.getActiveSpreadsheet();
+  const sheet = ensureSurfacesSheet_(ss);
+  const last = sheet.getLastRow();
+  if (last > 1) sheet.getRange(2, 1, last - 1, 1).clearContent();
+  sheet.getRange(2, 1, names.length, 1).setValues(names.map(function(n){ return [n]; }));
+  SBApp.flush();
+  CacheService.getScriptCache().remove(CACHE_KEY_S);
+  return { success: true };
 }
 
 // ── नया Work Type जोड़ें ─────────────────────────────────────
@@ -2035,7 +2294,8 @@ function _ensurePlanCols_(sheet) {
   const hdr = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h).trim());
   const needed = ['Plan_ID','Road_ID','Road_Name','Year','Work_Type','Proposed_Work',
                   'Section_KM','Estimated_Cost','Priority','Status',
-                  'Photo_Link','Inspection_Note_Link','Forwarding_Letter_Link'];
+                  'Photo_Link','Inspection_Note_Link','Forwarding_Letter_Link',
+                  'Estimate_Status','Estimate_PDF_Link','Forwarding_Note'];
   needed.forEach(function(col) {
     if (hdr.indexOf(col) < 0) {
       const nc = sheet.getLastColumn() + 1;
@@ -2219,6 +2479,25 @@ function addToAnnualPlan(data) {
   _ensurePlanCols_(sheet);
   const hdr = _getPlanHdr_(sheet);
 
+  // एक ही योजना (सड़क + वर्ष + कार्य प्रकार) में वही सड़क दोबारा न जुड़े — जब तक नए/अलग किमी (Section) न चुने जाएँ
+  if (data.roadId) {
+    const pv = sheet.getDataRange().getValues();
+    const rC = hdr.indexOf('Road_ID'), yC = hdr.indexOf('Year'), wC = hdr.indexOf('Work_Type'), sC = hdr.indexOf('Status');
+    let dupExists = false;
+    for (let r = 1; r < pv.length; r++) {
+      if (String(pv[r][rC]).trim() === String(data.roadId).trim() &&
+          String(pv[r][yC]).trim() === String(data.year||'').trim() &&
+          String(pv[r][wC]).trim() === String(data.workType||'').trim() &&
+          String(pv[r][sC]).trim() !== 'Dropped') { dupExists = true; break; }
+    }
+    if (dupExists) {
+      const eligN = _planEligibleCount_(ss, data.year||'', data.workType||'', data.sectionIds||[]);
+      if (eligN <= 0) {
+        return { success: false, msg: 'यह सड़क इस योजना ('+(data.year||'')+' · '+(data.workType||'')+') में पहले से जुड़ी है। दोबारा जोड़ने के लिए ऊपर से अलग किमी (Section) चुनें — वही किमी दोबारा नहीं जुड़ेगा (Overlap मान्य नहीं)।' };
+      }
+    }
+  }
+
   const lastRow = sheet.getLastRow();
   const planId = 'AP' + String(lastRow).padStart(3, '0');
 
@@ -2236,8 +2515,122 @@ function addToAnnualPlan(data) {
   set('Status',       data.status       || 'Proposed');
 
   sheet.appendRow(row);
-  CacheService.getScriptCache().remove(CACHE_KEY_S);
-  return { success: true, planId: planId };
+  _stampOwnerLastRow_(sheet);   // इस योजना-पंक्ति का owner (roadless नव निर्माण/अन्य के scope हेतु ज़रूरी)
+  // #5 — चुने हुए टुकड़ों को इस योजना का सदस्य बनाओ (year-स्तर नियम; पैच मरम्मत को छूट)
+  var _ps = _applyPlanSections_(ss, planId, data.year||'', data.workType||'', data.sectionIds||[]);
+  CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
+  return { success: true, planId: planId, sectionsAdded: _ps.added, sectionsSkipped: _ps.skipped };
+}
+
+// चुने टुकड़ों में से कितने इस (year, workType) योजना के योग्य हैं (पहले से इस वर्ष योजना में/प्रोजेक्ट/assigned नहीं)
+function _planEligibleCount_(ss, year, workType, sectionIds) {
+  sectionIds = (sectionIds||[]).filter(Boolean);
+  if (!sectionIds.length) return 0;
+  const sheet = ss.getSheetByName('2_Road_Sections'); if (!sheet) return 0;
+  const vals = sheet.getDataRange().getValues();
+  const hdr  = vals[0].map(h=>String(h).trim());
+  const sidC = hdr.indexOf('Section_ID');
+  const planMap = _planInfoMap_(ss);
+  let n = 0;
+  for (let r=1; r<vals.length; r++){
+    const sid = String(vals[r][sidC]).trim();
+    if (sectionIds.indexOf(sid) < 0) continue;
+    const secObj = {}; hdr.forEach(function(h,i){ secObj[h]=vals[r][i]; });
+    if (!_secPlanReason_(secObj, planMap, year, workType)) n++;
+  }
+  return n;
+}
+function _applyPlanSections_(ss, planId, year, workType, sectionIds) {
+  sectionIds = (sectionIds||[]).filter(Boolean);
+  if (!sectionIds.length) return { added:[], skipped:[] };
+  const sheet = ensureSectionExtraCols_(ss);
+  const vals = sheet.getDataRange().getValues();
+  const hdr  = vals[0].map(h=>String(h).trim());
+  const sidC = hdr.indexOf('Section_ID');
+  const piC  = hdr.indexOf('Plan_IDs');
+  const planMap = _planInfoMap_(ss);
+  const added=[], skipped=[];
+  for (let r=1;r<vals.length;r++){
+    const sid = String(vals[r][sidC]).trim();
+    if (sectionIds.indexOf(sid) < 0) continue;
+    const secObj = {}; hdr.forEach(function(h,i){ secObj[h]=vals[r][i]; });
+    const reason = _secPlanReason_(secObj, planMap, year, workType);
+    if (reason) { skipped.push({id:sid, reason:reason}); continue; }
+    sheet.getRange(r+1, piC+1).setValue(_csvAdd_(secObj.Plan_IDs, planId));
+    added.push(sid);
+  }
+  SBApp.flush();
+  return { added:added, skipped:skipped };
+}
+function _applyProjectSections_(ss, projectId, sectionIds) {
+  sectionIds = (sectionIds||[]).filter(Boolean);
+  if (!sectionIds.length) return { added:[], skipped:[] };
+  const sheet = ensureSectionExtraCols_(ss);
+  const vals = sheet.getDataRange().getValues();
+  const hdr  = vals[0].map(h=>String(h).trim());
+  const sidC=hdr.indexOf('Section_ID'), pjC=hdr.indexOf('Project_ID'), piC=hdr.indexOf('Plan_IDs'), asC=hdr.indexOf('Assigned_To');
+  const planMap = _planInfoMap_(ss);
+  const added=[], skipped=[];
+  for (let r=1;r<vals.length;r++){
+    const sid = String(vals[r][sidC]).trim();
+    if (sectionIds.indexOf(sid) < 0) continue;
+    if (String(vals[r][asC]||'').trim()) { skipped.push({id:sid, reason:'दूसरे विभाग को दिया'}); continue; }
+    if (String(vals[r][pjC]||'').trim()) { skipped.push({id:sid, reason:'पहले से प्रोजेक्ट में'}); continue; }
+    var ids = String(vals[r][piC]||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
+    var inPlan = ids.some(function(pid){ var pi=planMap[pid]; return pi && pi.status!=='Dropped'; });
+    if (inPlan) { skipped.push({id:sid, reason:'योजना में है'}); continue; }
+    sheet.getRange(r+1, pjC+1).setValue(projectId);
+    added.push(sid);
+  }
+  SBApp.flush();
+  return { added:added, skipped:skipped };
+}
+function _clearPlanFromSections_(ss, planId){
+  const sheet=ss.getSheetByName('2_Road_Sections'); if(!sheet) return;
+  const vals=sheet.getDataRange().getValues(); const hdr=vals[0].map(h=>String(h).trim());
+  const piC=hdr.indexOf('Plan_IDs'); if(piC<0) return;
+  for(let r=1;r<vals.length;r++){ var cur=String(vals[r][piC]||''); if(cur.split(',').map(function(s){return s.trim();}).indexOf(String(planId))>=0){ sheet.getRange(r+1,piC+1).setValue(_csvDel_(cur,planId)); } }
+  SBApp.flush();
+}
+function _clearProjectFromSections_(ss, projectId, roadId){
+  const sheet=ss.getSheetByName('2_Road_Sections'); if(!sheet) return;
+  const vals=sheet.getDataRange().getValues(); const hdr=vals[0].map(h=>String(h).trim());
+  const pjC=hdr.indexOf('Project_ID'), rdC=hdr.indexOf('Road_ID'); if(pjC<0) return;
+  for(let r=1;r<vals.length;r++){
+    if(String(vals[r][pjC]||'').trim()!==String(projectId)) continue;
+    if(roadId && String(vals[r][rdC]||'').trim()!==String(roadId)) continue;
+    sheet.getRange(r+1,pjC+1).setValue('');
+  }
+  SBApp.flush();
+}
+// इस सड़क के टुकड़ों को प्रोजेक्ट में मिलाओ — चुने जोड़ो, हटाए गए (जो इसी प्रोजेक्ट में थे) मुक्त करो
+function _reconcileProjectSections_(ss, projectId, roadId, sectionIds){
+  sectionIds = (sectionIds||[]).filter(Boolean);
+  const sheet = ensureSectionExtraCols_(ss);
+  const vals = sheet.getDataRange().getValues();
+  const hdr  = vals[0].map(h=>String(h).trim());
+  const sidC=hdr.indexOf('Section_ID'), rdC=hdr.indexOf('Road_ID'), pjC=hdr.indexOf('Project_ID'),
+        piC=hdr.indexOf('Plan_IDs'), asC=hdr.indexOf('Assigned_To');
+  const planMap=_planInfoMap_(ss);
+  const added=[], removed=[], skipped=[];
+  for(let r=1;r<vals.length;r++){
+    if(String(vals[r][rdC]||'').trim()!==String(roadId)) continue;   // केवल इसी सड़क के टुकड़े
+    const sid=String(vals[r][sidC]).trim();
+    const want=sectionIds.indexOf(sid)>=0;
+    const curProj=String(vals[r][pjC]||'').trim();
+    if(want){
+      if(curProj===String(projectId)) continue;                       // पहले से इसी प्रोजेक्ट में → रहने दो
+      if(String(vals[r][asC]||'').trim()){ skipped.push({id:sid,reason:'दूसरे विभाग को दिया'}); continue; }
+      if(curProj){ skipped.push({id:sid,reason:'दूसरे प्रोजेक्ट में'}); continue; }
+      var ids=String(vals[r][piC]||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
+      if(ids.some(function(pid){var pi=planMap[pid];return pi&&pi.status!=='Dropped';})){ skipped.push({id:sid,reason:'योजना में है'}); continue; }
+      sheet.getRange(r+1,pjC+1).setValue(projectId); added.push(sid);
+    } else if(curProj===String(projectId)){
+      sheet.getRange(r+1,pjC+1).setValue(''); removed.push(sid);       // हटाया गया → मुक्त
+    }
+  }
+  SBApp.flush();
+  return {added:added, removed:removed, skipped:skipped};
 }
 
 // ── Annual Plan: single field update ─────────────────────────
@@ -2260,6 +2653,35 @@ function updatePlanField(data) {
 }
 
 // ── Annual Plan: update multiple fields from edit modal ───────
+// किसी योजना-entry के टुकड़ों को चयन अनुसार मिलाओ (checked जोड़ो, unchecked हटाओ) — इसी सड़क के लिए
+function _reconcilePlanSections_(ss, planId, roadId, year, workType, sectionIds){
+  sectionIds=(sectionIds||[]).map(function(x){return String(x).trim();}).filter(Boolean);
+  const sheet=ensureSectionExtraCols_(ss);
+  const vals=sheet.getDataRange().getValues();
+  const hdr=vals[0].map(h=>String(h).trim());
+  const sidC=hdr.indexOf('Section_ID'), rdC=hdr.indexOf('Road_ID'), piC=hdr.indexOf('Plan_IDs');
+  const planMap=_planInfoMap_(ss);
+  const added=[], skipped=[], removed=[];
+  for(let r=1;r<vals.length;r++){
+    if(String(vals[r][rdC]||'').trim()!==String(roadId).trim()) continue;
+    const sid=String(vals[r][sidC]).trim();
+    var cur=String(vals[r][piC]||'');
+    var has = cur.split(',').map(function(s){return s.trim();}).indexOf(String(planId))>=0;
+    var want = sectionIds.indexOf(sid)>=0;
+    if(want && !has){
+      var secObj={}; hdr.forEach(function(h,i){secObj[h]=vals[r][i];});
+      var reason=_secPlanReason_(secObj, planMap, year, workType);
+      if(reason){ skipped.push({id:sid,reason:reason}); continue; }
+      sheet.getRange(r+1,piC+1).setValue(_csvAdd_(cur, planId));
+      added.push(sid);
+    } else if(!want && has){
+      sheet.getRange(r+1,piC+1).setValue(_csvDel_(cur, planId));
+      removed.push(sid);
+    }
+  }
+  SBApp.flush();
+  return {added:added,skipped:skipped,removed:removed};
+}
 function updatePlanEntry(data) {
   try {
     const ss = SBApp.getActiveSpreadsheet();
@@ -2270,14 +2692,27 @@ function updatePlanEntry(data) {
     const row = _findPlanRow_(sheet, data.planId);
     if (row < 0) return { success: false, error: 'Plan_ID नहीं मिला: ' + data.planId };
     if (_planRowExpired_(sheet, hdr, row)) return { success: false, error: 'यह कार्ययोजना वर्ष बीत चुका है — अब बदलाव संभव नहीं' };
+    const get = (col) => { const i = hdr.indexOf(col); return i>=0 ? String(sheet.getRange(row, i+1).getValue()).trim() : ''; };
+    const roadId = get('Road_ID'), year = get('Year');
+    if (data.workType !== undefined && data.workType !== '') { const i=hdr.indexOf('Work_Type'); if(i>=0) sheet.getRange(row, i+1).setValue(data.workType); }
+    const wtNow = (data.workType !== undefined && data.workType !== '') ? data.workType : get('Work_Type');
     const set = (col, val) => { const i = hdr.indexOf(col); if (i >= 0) sheet.getRange(row, i+1).setValue(val||''); };
     set('Proposed_Work', data.proposedWork || '');
     set('Section_KM',    data.sectionKm    || '');
     set('Estimated_Cost',data.estimatedCost|| '');
     set('Priority',      data.priority     || '');
     set('Status',        data.status       || 'Proposed');
-    CacheService.getScriptCache().remove(CACHE_KEY_S);
-    return { success: true };
+    // टुकड़ों का चयन मिलाओ (checkbox से)
+    var secRes = null;
+    if (data.sectionIds !== undefined && roadId) {
+      secRes = _reconcilePlanSections_(ss, data.planId, roadId, year, wtNow, data.sectionIds);
+    }
+    SBApp.flush();
+    CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
+    return { success: true,
+      sectionsAdded:   (secRes && secRes.added)   || [],
+      sectionsRemoved: (secRes && secRes.removed) || [],
+      sectionsSkipped: (secRes && secRes.skipped) || [] };
   } catch(e) { return { success: false, error: e.message }; }
 }
 
@@ -2291,8 +2726,218 @@ function deletePlanEntry(data) {
     if (row < 0) return { success: false, error: 'Plan_ID नहीं मिला: ' + data.planId };
     if (_planRowExpired_(sheet, _getPlanHdr_(sheet), row)) return { success: false, error: 'यह कार्ययोजना वर्ष बीत चुका है — अब हटाया नहीं जा सकता' };
     sheet.deleteRow(row);
-    CacheService.getScriptCache().remove(CACHE_KEY_S);
+    try { _clearPlanFromSections_(ss, data.planId); } catch(e){}  // टुकड़ों की सदस्यता मुक्त करो
+    CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
     return { success: true };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+// कार्ययोजना की फाइल-श्रेणियाँ (col = शीट कॉलम, folder = Drive फोल्डर, prefix = फाइल नाम)
+var _PLAN_FILE_TYPES_ = {
+  photo:      { col: 'Photo_Link',             folder: 'फोटो',         prefix: 'Photo' },
+  inspection: { col: 'Inspection_Note_Link',   folder: 'निरीक्षण नोट', prefix: 'InspNote' },
+  estimate:   { col: 'Estimate_PDF_Link',      folder: 'Estimate PDF', prefix: 'Estimate' },
+  forwarding: { col: 'Forwarding_Letter_Link', folder: 'अग्रेषण पत्र', prefix: 'FwdLetter' }
+};
+// RMS/AnnualPlan/<year>/<workType>/<सड़क - Plan_ID>/<category folder> — बनाकर लौटाओ
+function _planCatFolder_(yr, wt, rname, pid, folderName) {
+  const rmsFolder  = getRMSFolder_();
+  const apFolder   = getOrCreateFolder_(rmsFolder, 'AnnualPlan');
+  const yrFolder   = getOrCreateFolder_(apFolder,  yr || 'Unknown_Year');
+  const wtFolder   = getOrCreateFolder_(yrFolder,  wt || 'Unknown_Type');
+  const workFolder = getOrCreateFolder_(wtFolder,  (rname || 'Road') + ' - ' + pid);
+  const tf = getOrCreateFolder_(workFolder, folderName);
+  tf.setSharing(SBDrive.Access.ANYONE_WITH_LINK, SBDrive.Permission.VIEW);
+  return tf;
+}
+
+// ── कार्ययोजना: आगणन की स्थिति (Pending/Submitted) मार्क करें ──
+function setPlanEstimateStatus(data) {
+  try {
+    const ss = SBApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('7_Annual_Plan');
+    if (!sheet) return { success: false, error: '7_Annual_Plan sheet नहीं मिली' };
+    _ensurePlanCols_(sheet);
+    const hdr = _getPlanHdr_(sheet);
+    const row = _findPlanRow_(sheet, data.planId);
+    if (row < 0) return { success: false, error: 'Plan_ID नहीं मिला: ' + data.planId };
+    if (_planRowExpired_(sheet, hdr, row)) return { success: false, error: 'यह कार्ययोजना वर्ष बीत चुका है' };
+    const st = (data.status === 'Submitted') ? 'Submitted' : 'Pending';
+    const i = hdr.indexOf('Estimate_Status'); if (i >= 0) sheet.getRange(row, i+1).setValue(st);
+    SBApp.flush();
+    CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
+    return { success: true, status: st };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+// ── कार्ययोजना: अग्रेषण नोट (पत्र संख्या आदि — केवल टेक्स्ट) सहेजें ──
+function setPlanForwardingNote(data) {
+  try {
+    const ss = SBApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('7_Annual_Plan');
+    if (!sheet) return { success: false, error: '7_Annual_Plan sheet नहीं मिली' };
+    _ensurePlanCols_(sheet);
+    const hdr = _getPlanHdr_(sheet);
+    const row = _findPlanRow_(sheet, data.planId);
+    if (row < 0) return { success: false, error: 'Plan_ID नहीं मिला: ' + data.planId };
+    if (_planRowExpired_(sheet, hdr, row)) return { success: false, error: 'यह कार्ययोजना वर्ष बीत चुका है' };
+    const i = hdr.indexOf('Forwarding_Note'); if (i >= 0) sheet.getRange(row, i+1).setValue(String(data.note||'').trim());
+    SBApp.flush();
+    CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
+    return { success: true };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+// ── कार्ययोजना: किसी श्रेणी की अपलोड फाइल हटाएँ (नया version डालने से पहले — storage load घटे) ──
+function deletePlanFile(data) {
+  try {
+    const ss = SBApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('7_Annual_Plan');
+    if (!sheet) return { success: false, error: '7_Annual_Plan sheet नहीं मिली' };
+    _ensurePlanCols_(sheet);
+    const hdr = _getPlanHdr_(sheet);
+    const row = _findPlanRow_(sheet, data.planId);
+    if (row < 0) return { success: false, error: 'Plan_ID नहीं मिला: ' + data.planId };
+    const tm = _PLAN_FILE_TYPES_[data.uploadType];
+    if (!tm) return { success: false, error: 'Invalid uploadType: ' + data.uploadType };
+    const get = (col) => { const i = hdr.indexOf(col); return i>=0 ? String(sheet.getRange(row, i+1).getValue()).trim() : ''; };
+    // फोल्डर की सभी फाइलें trash कर दो (storage/load कम हो)
+    try {
+      const tf = _planCatFolder_(get('Year'), get('Work_Type'), get('Road_Name'), data.planId, tm.folder);
+      const it = tf.getFiles();
+      while (it.hasNext()) { try { it.next().setTrashed(true); } catch(e){} }
+    } catch(e) {}
+    const colIdx = hdr.indexOf(tm.col);
+    if (colIdx >= 0) sheet.getRange(row, colIdx + 1).setValue('');
+    SBApp.flush();
+    CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
+    return { success: true };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+// ── कार्ययोजना: किसी कार्य की किसी श्रेणी के फ़ोल्डर की फाइलों की सूची (in-app viewer हेतु) ──
+function listPlanFolderFiles(data) {
+  try {
+    const ss = SBApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('7_Annual_Plan');
+    if (!sheet) return { success: false, error: '7_Annual_Plan sheet नहीं मिली' };
+    _ensurePlanCols_(sheet);
+    const hdr = _getPlanHdr_(sheet);
+    const row = _findPlanRow_(sheet, data.planId);
+    if (row < 0) return { success: false, error: 'Plan_ID नहीं मिला: ' + data.planId };
+    const tm = _PLAN_FILE_TYPES_[data.uploadType];
+    if (!tm) return { success: false, error: 'Invalid uploadType: ' + data.uploadType };
+    const get = (col) => { const i = hdr.indexOf(col); return i>=0 ? sheet.getRange(row, i+1).getValue() : ''; };
+    const tf = _planCatFolder_(get('Year'), get('Work_Type'), get('Road_Name'), data.planId, tm.folder);
+    const out = [];
+    const it = tf.getFiles();
+    while (it.hasNext()) { const f = it.next(); out.push({ id: f.getId(), name: f.getName(), url: f.getUrl(), created: String((f.rec && f.rec.created) || '') }); }
+    return { success: true, files: out };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+// ── कार्ययोजना: यह फाइल (नाम मिलान से) किन-किन कार्यों में लिंक है — उसी श्रेणी में खोजो ──
+function getPlanFileUsage(data) {
+  try {
+    const ss = SBApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('7_Annual_Plan');
+    if (!sheet) return { success: false, error: '7_Annual_Plan sheet नहीं मिली' };
+    _ensurePlanCols_(sheet);
+    const hdr = _getPlanHdr_(sheet);
+    const tm = _PLAN_FILE_TYPES_[data.uploadType];
+    if (!tm) return { success: false, error: 'Invalid uploadType: ' + data.uploadType };
+    const name = String(data.name || '');
+    const vals = sheet.getDataRange().getValues();
+    const yC=hdr.indexOf('Year'), wC=hdr.indexOf('Work_Type'), rnC=hdr.indexOf('Road_Name'),
+          pidC=hdr.indexOf('Plan_ID'), colC=hdr.indexOf(tm.col);
+    const locations = [];
+    for (let r=1; r<vals.length; r++) {
+      const pid = String(vals[r][pidC]||'').trim(); if (!pid) continue;
+      if (colC>=0 && !String(vals[r][colC]||'').trim()) continue;   // इस श्रेणी में कोई फाइल नहीं → छोड़ो
+      try {
+        const tf = _planCatFolder_(vals[r][yC], vals[r][wC], vals[r][rnC], pid, tm.folder);
+        const it = tf.getFiles();
+        while (it.hasNext()) {
+          const f = it.next();
+          if (f.getName() === name) {
+            locations.push({ fileId: f.getId(), planId: pid, roadName: String(vals[r][rnC]||''),
+                             workType: String(vals[r][wC]||''), year: String(vals[r][yC]||'') });
+            break;
+          }
+        }
+      } catch(e) {}
+    }
+    return { success: true, name: name, locations: locations };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+// ── कार्ययोजना: चुनी हुई फाइल-ids हटाओ; प्रभावित फ़ोल्डर खाली हो तो उसका link cell साफ़ करो ──
+function deletePlanFilesByIds(data) {
+  try {
+    const ss = SBApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('7_Annual_Plan');
+    if (!sheet) return { success: false, error: '7_Annual_Plan sheet नहीं मिली' };
+    _ensurePlanCols_(sheet);
+    const hdr = _getPlanHdr_(sheet);
+    const ids = (data.fileIds || []).filter(Boolean);
+    ids.forEach(function(id){ try { SBDrive.getFileById(id).setTrashed(true); } catch(e){} });
+    (data.affected || []).forEach(function(a){
+      try {
+        const tm = _PLAN_FILE_TYPES_[a.uploadType]; if (!tm) return;
+        const row = _findPlanRow_(sheet, a.planId); if (row < 0) return;
+        const get = (col) => { const i = hdr.indexOf(col); return i>=0 ? sheet.getRange(row, i+1).getValue() : ''; };
+        const tf = _planCatFolder_(get('Year'), get('Work_Type'), get('Road_Name'), a.planId, tm.folder);
+        if (!tf.getFiles().hasNext()) { const ci = hdr.indexOf(tm.col); if (ci >= 0) sheet.getRange(row, ci+1).setValue(''); }
+      } catch(e) {}
+    });
+    SBApp.flush();
+    CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
+    return { success: true, deleted: ids.length };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+// ── बड़ी फ़ाइल अपलोड (signed URL) — ब्राउज़र सीधे Storage पर PUT करे (function की 6MB सीमा से बचाव) ──
+// चरण-1: फ़ोल्डर तय कर signed upload URL लौटाओ
+function preparePlanUpload(data) {
+  try {
+    if (typeof SB_CLOUD === 'undefined' || !SB_CLOUD) return { success: false, error: 'बड़ी फ़ाइल केवल ऑनलाइन मोड में अपलोड हो सकती है' };
+    const ss = SBApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('7_Annual_Plan');
+    if (!sheet) return { success: false, error: '7_Annual_Plan sheet नहीं मिली' };
+    _ensurePlanCols_(sheet);
+    const hdr = _getPlanHdr_(sheet);
+    const row = _findPlanRow_(sheet, data.planId);
+    if (row < 0) return { success: false, error: 'Plan_ID नहीं मिला: ' + data.planId };
+    if (_planRowExpired_(sheet, hdr, row)) return { success: false, error: 'यह कार्ययोजना वर्ष बीत चुका है' };
+    const tm = _PLAN_FILE_TYPES_[data.uploadType];
+    if (!tm) return { success: false, error: 'Invalid uploadType' };
+    const get = (col) => { const i = hdr.indexOf(col); return i>=0 ? sheet.getRange(row, i+1).getValue() : ''; };
+    const tf = _planCatFolder_(get('Year'), get('Work_Type'), get('Road_Name'), data.planId, tm.folder);
+    const storedName = tm.prefix + '_' + (data.fileName || 'file');
+    const r = sbCall_('signUpload', { name: storedName });
+    return { success: true, uploadUrl: r.uploadUrl, id: r.id, path: r.path, folder: tf.path, storedName: storedName };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+// चरण-2: अपलोड के बाद पंजीकरण + शीट में folder-link सेट
+function finalizePlanUpload(data) {
+  try {
+    if (typeof SB_CLOUD === 'undefined' || !SB_CLOUD) return { success: false, error: 'ऑनलाइन मोड में ही उपलब्ध' };
+    const ss = SBApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('7_Annual_Plan');
+    if (!sheet) return { success: false, error: '7_Annual_Plan sheet नहीं मिली' };
+    _ensurePlanCols_(sheet);
+    const hdr = _getPlanHdr_(sheet);
+    const row = _findPlanRow_(sheet, data.planId);
+    if (row < 0) return { success: false, error: 'Plan_ID नहीं मिला: ' + data.planId };
+    const tm = _PLAN_FILE_TYPES_[data.uploadType];
+    if (!tm) return { success: false, error: 'Invalid uploadType' };
+    const storedName = tm.prefix + '_' + (data.fileName || 'file');
+    sbCall_('registerFile', { id: data.id, path: data.path, name: storedName, folder: data.folder, mime: data.mimeType || '', size: data.size | 0 });
+    const folderLink = 'local://folder/' + encodeURIComponent(String(data.folder || ''));
+    const ci = hdr.indexOf(tm.col); if (ci >= 0) sheet.getRange(row, ci+1).setValue(folderLink);
+    SBApp.flush();
+    CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
+    return { success: true, link: folderLink };
   } catch(e) { return { success: false, error: e.message }; }
 }
 
@@ -2308,26 +2953,12 @@ function uploadPlanFile(data) {
     if (row < 0) return { success: false, error: 'Plan_ID नहीं मिला: ' + data.planId };
     if (_planRowExpired_(sheet, hdr, row)) return { success: false, error: 'यह कार्ययोजना वर्ष बीत चुका है — अब बदलाव संभव नहीं' };
 
-    const typeMap = {
-      photo:      { col: 'Photo_Link',             folder: 'फोटो',         prefix: 'Photo' },
-      inspection: { col: 'Inspection_Note_Link',   folder: 'निरीक्षण नोट', prefix: 'InspNote' },
-      forwarding: { col: 'Forwarding_Letter_Link', folder: 'अग्रेषण पत्र', prefix: 'FwdLetter' }
-    };
-    const tm = typeMap[data.uploadType];
+    const tm = _PLAN_FILE_TYPES_[data.uploadType];
     if (!tm) return { success: false, error: 'Invalid uploadType: ' + data.uploadType };
 
-    // Save to Drive under RMS/AnnualPlan/<year>/<workType>/<सड़क - Plan_ID>/<फोटो|निरीक्षण नोट|अग्रेषण पत्र>/
+    // Save to Drive under RMS/AnnualPlan/<year>/<workType>/<सड़क - Plan_ID>/<फोटो|निरीक्षण नोट|Estimate PDF|अग्रेषण पत्र>/
     // — हर category का अलग folder, जिसमें कई फाइलें जमा होती रहती हैं (View उसी folder को खोलता है)
-    const rmsFolder = getRMSFolder_();
-    const apFolder   = getOrCreateFolder_(rmsFolder, 'AnnualPlan');
-    const planTypeFolder_ = (yr, wt, rname, pid) => {
-      const yrFolder   = getOrCreateFolder_(apFolder,  yr   || 'Unknown_Year');
-      const wtFolder   = getOrCreateFolder_(yrFolder,  wt   || 'Unknown_Type');
-      const workFolder = getOrCreateFolder_(wtFolder,  (rname || 'Road') + ' - ' + pid);
-      const tf = getOrCreateFolder_(workFolder, tm.folder);
-      tf.setSharing(SBDrive.Access.ANYONE_WITH_LINK, SBDrive.Permission.VIEW);
-      return tf;
-    };
+    const planTypeFolder_ = (yr, wt, rname, pid) => _planCatFolder_(yr, wt, rname, pid, tm.folder);
 
     const typeFolder = planTypeFolder_(data.year, data.workType, data.roadName, data.planId);
 
@@ -2449,10 +3080,13 @@ function addRoadToProject(data) {
     }
   }
 
+  // #6 — चुने हुए टुकड़ों को इस प्रोजेक्ट का सदस्य बनाओ (योजना/प्रोजेक्ट परस्पर exclusive)
+  var _prs = _applyProjectSections_(ss, data.projectId || '', data.sectionIds || []);
+
   SBApp.flush();
   updateProjType_(ss, data.projectId);
   CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
-  return { success: true, prId: prId, workType: workType };
+  return { success: true, prId: prId, workType: workType, sectionsAdded: _prs.added, sectionsSkipped: _prs.skipped };
 }
 
 // ── Project Road Update ──────────────────────────────────────
@@ -2476,9 +3110,19 @@ function updateProjectRoad(data) {
     Object.entries(fieldMap).forEach(([k, v]) => {
       const c = hdr.indexOf(k); if (c >= 0) sheet.getRange(r+1, c+1).setValue(v);
     });
+    // टुकड़ा-चयन मिलाओ (checkbox से जोड़/हटाव)
+    var secRes = null;
+    if (data.sectionIds !== undefined) {
+      var pjIdx=hdr.indexOf('Project_ID'), rdIdx=hdr.indexOf('Road_ID');
+      var projectId=String(vals[r][pjIdx]||'').trim(), roadId=String(vals[r][rdIdx]||'').trim();
+      secRes = _reconcileProjectSections_(ss, projectId, roadId, data.sectionIds);
+    }
     SBApp.flush();
     CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
-    return { success: true };
+    return { success: true,
+      sectionsAdded:   (secRes && secRes.added)   || [],
+      sectionsRemoved: (secRes && secRes.removed) || [],
+      sectionsSkipped: (secRes && secRes.skipped) || [] };
   }
   return { success: false, msg: 'PR_ID नहीं मिला: ' + data.prId };
 }
@@ -2610,10 +3254,13 @@ function deleteProjectRoad(prId) {
   const hdr   = vals[0].map(h => String(h).trim());
   const pridC = hdr.indexOf('PR_ID');
   const projC = hdr.indexOf('Project_ID');
+  const rdC   = hdr.indexOf('Road_ID');
   for (let r = 1; r < vals.length; r++) {
     if (String(vals[r][pridC]).trim() !== prId) continue;
     const projectId = String(vals[r][projC]||'').trim();
+    const roadId    = rdC>=0 ? String(vals[r][rdC]||'').trim() : '';
     sheet.deleteRow(r + 1);
+    try { _clearProjectFromSections_(ss, projectId, roadId); } catch(e){}  // टुकड़ों की प्रोजेक्ट-सदस्यता मुक्त
     SBApp.flush();
     updateProjType_(ss, projectId);
     CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
@@ -3878,8 +4525,8 @@ function ofcUnlinkRoadOfficer(roadId, officerId) {
 const PAY_FOLDER_ID = 'payments';  // Supabase मोड — आभासी folder (सिर्फ़ metadata)
 
 const PAY_HEADERS = {
-  Items:          ['ItemID','ItemNo','Description','DetailDesc','Unit','Rate','SanctionedQty'],
-  Measurements:   ['MeasID','ItemID','Kind','SancRef','Engineer','Ord','Description','ChFrom','ChTo','Side','MBNo','MBPage','MDate','Nos','Nos1','Nos2','Length','Breadth','BreadthExpr','Depth','DepthExpr','Quantity','RecordMB','RecordDate'],
+  Items:          ['ItemID','ItemNo','Description','DetailDesc','Unit','Rate','SanctionedQty','ApprovedQty'],
+  Measurements:   ['MeasID','ItemID','Kind','SancRef','Engineer','Ord','Description','ChFrom','ChTo','Side','MBNo','MBPage','MDate','Nos','Nos1','Nos2','Length','Breadth','BreadthExpr','Depth','DepthExpr','Quantity','RecordMB','RecordDate','Remark'],
   Payments:       ['PayID','BillNo','BillType','PDate','MBNo','MBPages','Remarks',
                     'ActualEndDate','SyncRoadWork',
                     'BaseAmount','AbovePct','AboveAmt',
@@ -3968,11 +4615,22 @@ function pay_createProject(name){
   var folder = payFolder_();
   var nm = (name && String(name).trim()) ||
     ('परियोजना ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm'));
+  // डुप्लिकेट रोकें — उसी नाम की भुगतान-परियोजना पहले से हो तो नई न बनाओ, उसी को लोड करो
+  // (इसी से "मुख्य परियोजना से भुगतान बनाएं" दोबारा दबाने पर दूसरी खाली परियोजना नहीं बनती)
+  var existing = payListProjs_(folder).filter(function(p){ return String(p.name).trim() === nm; });
+  if (existing.length) {
+    paySetSetting_('ACTIVE_SS_ID', existing[0].id);
+    var stX = pay_getProjectState();
+    stX.justCreated = false;
+    return stX;
+  }
   var ss = SBApp.create(nm);
   SBDrive.getFileById(ss.getId()).moveTo(folder);
   paySetSetting_('ACTIVE_SS_ID', ss.getId());
   payEnsureSheets_();
-  return pay_getProjectState();
+  var stN = pay_getProjectState();
+  stN.justCreated = true;
+  return stN;
 }
 function pay_loadProject(id){ paySetSetting_('ACTIVE_SS_ID', String(id || '')); return pay_getProjectState(); }
 function pay_closeProject(){ paySetSetting_('ACTIVE_SS_ID', ''); return pay_getProjectState(); }
@@ -4085,6 +4743,13 @@ function pay_getAllProjectsPaymentTotals(){
   var cached = cache.get(CACHE_KEY_PAYTOTALS);
   if (cached) { try { return JSON.parse(cached); } catch(e) {} }
   var totals = {};
+  // Cloud: एक ही server-side गणना (हर परियोजना को अलग से loadAll न करें → परियोजनाएँ पेज तेज़, Wait नहीं)
+  if (typeof SB_CLOUD !== 'undefined' && SB_CLOUD && typeof sbCall_ === 'function') {
+    try { totals = sbCall_('payTotals', {}) || {}; } catch(e) { totals = {}; }
+    try { cache.put(CACHE_KEY_PAYTOTALS, JSON.stringify(totals), 600); } catch(e) {}
+    return totals;
+  }
+  // Local (file) mode — पुराना loop
   var folder = payFolderOrNull_();
   if (!folder) return totals;
   var it = folder.getFilesByType(MimeType.GOOGLE_SHEETS);
@@ -4385,6 +5050,42 @@ function pay_saveMeasurement(m){
   paySyncSanc_(m.ItemID);
   payInvalidateCache_();
   return m.MeasID;
+}
+// "स्वीकृत मात्रा लिखें" — हर आइटम की वर्तमान कार्य-मात्रा (client से भेजी) को ApprovedQty कॉलम में
+// कॉपी करो (स्नैपशॉट; लिंक नहीं)। पूरी कॉलम एक ही setValues में — तेज़।
+function pay_setApprovedQty(payload){
+  payEnsureSheets_();
+  var sh = paySS_().getSheetByName('Items');
+  var vals = sh.getDataRange().getValues();
+  if (vals.length < 2) return { success:true };
+  var hdr = vals[0].map(String);
+  var idC = hdr.indexOf('ItemID');
+  var aqC = hdr.indexOf('ApprovedQty');
+  if (aqC === -1) { aqC = hdr.length; sh.getRange(1, aqC+1).setValue('ApprovedQty').setFontWeight('bold'); }
+  var m = {};
+  (payload.list || []).forEach(function(x){ m[String(x.ItemID)] = x.qty; });
+  var col = [];
+  for (var r=1; r<vals.length; r++){
+    var id = String(vals[r][idC]);
+    var cur = (vals[r].length > aqC && vals[r][aqC] !== undefined) ? vals[r][aqC] : '';
+    col.push([ m.hasOwnProperty(id) ? m[id] : cur ]);
+  }
+  sh.getRange(2, aqC+1, col.length, 1).setValues(col);
+  payInvalidateCache_();
+  return { success:true };
+}
+// किसी नाप-लाइन पर Remark (श्रेणी) सेट/बदलें — केवल Remark सेल छूती है (पूरी पंक्ति नहीं)
+function pay_setMeasRemark(payload){
+  payEnsureSheets_();
+  var sh = paySS_().getSheetByName('Measurements');
+  var idx = payFindRow_(sh, payload.measId);
+  if (idx === -1) return { success:false, msg:'नाप नहीं मिली' };
+  var hdrs = payGetHdrs_(sh);
+  var col = hdrs.indexOf('Remark');
+  if (col === -1) { sh.getRange(1, hdrs.length+1).setValue('Remark').setFontWeight('bold'); col = hdrs.length; }
+  sh.getRange(idx, col+1).setValue(String(payload.remark||'').trim());
+  payInvalidateCache_();
+  return { success:true };
 }
 function pay_deleteMeasurement(measId){
   var sh = paySS_().getSheetByName('Measurements');

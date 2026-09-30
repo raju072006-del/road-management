@@ -560,8 +560,10 @@ const MOCK = (function(){
     saveUnitConfigs:(list)=>{ db.unitConfigs=(Array.isArray(list)?list:[]).filter(u=>u&&u.name); save(); return db.unitConfigs; },
     syncToMain:()=>({success:true, mock:true}),
     saveItem:(it)=>{ if(!it.ItemID)it.ItemID=uid(); upsert(db.items,'ItemID',it); save(); return it.ItemID;},
+    setApprovedQty:(p)=>{ (p.list||[]).forEach(x=>{ const it=(db.items||[]).find(i=>String(i.ItemID)===String(x.ItemID)); if(it)it.ApprovedQty=x.qty; }); save(); return {success:true}; },
     deleteItem:(id)=>{db.items=db.items.filter(x=>x.ItemID!==id); save(); return true;},
     saveMeasurement:(m)=>{ if(!m.MeasID)m.MeasID=uid(); upsert(db.measurements,'MeasID',m); save(); return m.MeasID;},
+    setMeasRemark:(p)=>{ const m=(db.measurements||[]).find(x=>String(x.MeasID)===String(p.measId)); if(m)m.Remark=String(p.remark||'').trim(); save(); return {success:true}; },
     deleteMeasurement:(id)=>{db.measurements=db.measurements.filter(x=>x.MeasID!==id); save(); return true;},
     saveMeasurementsBatch:(p)=>{
       const deletes=(p&&p.deletes)||[], saves=(p&&p.saves)||[];
@@ -976,8 +978,10 @@ function _autoLoadByName(name) {
       engineers:  ''
     };
     api('createProject', name)
-      .then(function(){ return api('saveProject', projObj); })
-      .then(function(){ refresh(); toast('"'+name+'" भुगतान परियोजना बनी और लोड हुई'); })
+      .then(function(st){
+        if (st && st.justCreated === false) { refresh(); toast('"'+name+'" भुगतान परियोजना खोली गई'); return; }
+        return api('saveProject', projObj).then(function(){ refresh(); toast('"'+name+'" भुगतान परियोजना बनी और लोड हुई'); });
+      })
       .catch(function(e){ loader(false); toast('त्रुटि: '+(e.message||e), true); });
   }
 }
@@ -1150,8 +1154,10 @@ function doImportDashProj(idx){
   closeModal();
   loader(true);
   api('createProject', name)
-    .then(function(){ return api('saveProject', {name:name, engineers:''}); })
-    .then(function(){ refresh(); toast('भुगतान परियोजना बनी: '+name); })
+    .then(function(st){
+      if (st && st.justCreated === false) { refresh(); toast('मौजूदा भुगतान परियोजना खोली गई: '+name); return; }
+      return api('saveProject', {name:name, engineers:''}).then(function(){ refresh(); toast('भुगतान परियोजना बनी: '+name); });
+    })
     .catch(function(e){ loader(false); toast('त्रुटि: '+(e.message||e), true); });
 }
 
@@ -1296,6 +1302,7 @@ function viewItems(){
   const head=`<div class="section-head"><h2>स्वीकृत आइटम (BOQ)</h2><span class="sub">${its.length} आइटम</span>
     <div class="spacer"></div>
     <button class="btn btn-ghost" onclick="openImportModal()"><span class="ic">⭱</span> Excel से आयात</button>
+    <button class="btn btn-ghost" title="सभी आइटम की 'कार्य की मात्रा' को 'स्वीकृत मात्रा' कॉलम में कॉपी करें" onclick="writeApprovedQty()"><span class="ic">📋</span> स्वीकृत मात्रा लिखें</button>
     <button class="btn btn-primary" onclick="openItemModal()"><span class="ic">＋</span> नया आइटम</button></div>`;
   if(!its.length) return head+emptyCard('▤','कोई आइटम नहीं','स्वीकृत प्राक्कलन के अनुसार कार्य आइटम जोड़ें — या Excel से आयात करें।','नया आइटम जोड़ें','openItemModal()');
   let rows=its.map(function(it){
@@ -1307,6 +1314,7 @@ function viewItems(){
       <td style="max-width:360px"><b>${esc(it.Description)}</b>${detail?`<div class="faint" style="margin-top:2px">${esc(snip(detail,150))}</div>`:''}</td>
       <td class="c muted">${esc(it.Unit||'—')}</td>
       <td class="r num">${inr(itemRate(it))}</td>
+      <td class="r num" style="color:var(--navy3)">${(it.ApprovedQty!=null&&String(it.ApprovedQty).trim()!=='')?qf(toNum(it.ApprovedQty)):'—'}</td>
       <td class="r num">${qf(sq)}</td>
       <td class="r num" style="color:var(--accent)">${qf(mq)}</td>
       <td class="r num" style="color:var(--green)">${qf(pq)}</td>
@@ -1320,7 +1328,7 @@ function viewItems(){
   }).join('');
   return head+`<div class="card tbl-wrap"><table>
     <thead><tr><th>क्र.</th><th>विवरण</th><th class="c">इकाई</th><th class="r">दर</th>
-    <th class="r">स्वीकृत मात्रा</th><th class="r">नापी मात्रा</th><th class="r">भुगतान मात्रा</th><th class="r">शेष मात्रा</th>
+    <th class="r">स्वीकृत मात्रा</th><th class="r">कार्य की मात्रा</th><th class="r">नापी मात्रा</th><th class="r">भुगतान मात्रा</th><th class="r">शेष मात्रा</th>
     <th class="r" title="स्वीकृत के सापेक्ष कराया गया कार्य %">कार्य %</th><th></th></tr></thead>
     <tbody>${rows}</tbody></table></div>`;
 }
@@ -1340,21 +1348,26 @@ function viewMeas(){
   const bills=D().payments.slice().sort(billNumCmp);
   const billOpts='<option value="">— सभी बिल —</option>'+bills.map(p=>`<option value="${esc(p.PayID)}" ${state.measBill===p.PayID?'selected':''}>${esc(p.BillNo||'(बिना नाम)')}</option>`).join('');
   const bOpt=(v,l)=>`<option value="${v}" ${(state.measBlock||'all')===v?'selected':''}>${l}</option>`;
+  const rmks=remarksInUse();
+  const rmkOpts='<option value="">— सभी Remark —</option>'+rmks.map(r=>`<option value="${esc(r)}" ${state.measRemark===r?'selected':''}>${esc(r)}</option>`).join('');
   const toolbar=`<div class="toolbar">
     <div class="field" style="min-width:230px"><label>आइटम अनुसार छाँटें</label>
       <select class="inp" onchange="state.measFilter=this.value; render()">${opts}</select></div>
     <div class="field" style="min-width:210px"><label>अनुभाग (block)</label>
       <select class="inp" onchange="state.measBlock=this.value; render()">${bOpt('all','सभी')}${bOpt('sanc','① निर्धारित नाप')}${bOpt('paid','② भुगतान हो चुका')}${bOpt('rem','③ Record हो गया, भुगतान शेष')}</select></div>
+    <div class="field" style="min-width:200px"><label>🏷 Remark श्रेणी</label>
+      <select class="inp" onchange="state.measRemark=this.value; render()">${rmkOpts}</select></div>
     ${engs.length?`<div class="field" style="min-width:190px"><label>अवर अभियंता</label>
       <select class="inp" onchange="state.measEng=this.value; render()">${engOpts}</select></div>`:''}
     ${bills.length?`<div class="field" style="min-width:170px"><label>भुगतान / बिल संख्या</label>
       <select class="inp" onchange="state.measBill=this.value; render()">${billOpts}</select></div>`:''}
-    ${(state.measEng||state.measBill||(state.measBlock&&state.measBlock!=='all'))?`<button class="btn btn-ghost btn-sm" style="align-self:flex-end" onclick="state.measEng='';state.measBill='';state.measBlock='all';render()">फ़िल्टर हटाएँ</button>`:''}</div>`;
+    ${(state.measEng||state.measBill||state.measRemark||(state.measBlock&&state.measBlock!=='all'))?`<button class="btn btn-ghost btn-sm" style="align-self:flex-end" onclick="state.measEng='';state.measBill='';state.measRemark='';state.measBlock='all';render()">फ़िल्टर हटाएँ</button>`:''}</div>`;
+  const rmkBanner = state.measRemark ? `<div class="card" style="padding:10px 14px;margin-bottom:14px;border-left:4px solid var(--accent)">🏷 Remark श्रेणी <b>"${esc(state.measRemark)}"</b> के अनुसार छाँटा गया — नीचे केवल उन्हीं नाप-लाइनों की मात्रा (Record/भुगतान/शेष) दिख रही है।</div>` : '';
 
   const list = state.measFilter==='all' ? its : its.filter(it=>String(it.ItemID)===String(state.measFilter));
   let blocks = list.map(itemMeasCard).join('');
-  if(!blocks.trim()) blocks = emptyCard('📏','कोई परिणाम नहीं','चुने गए फ़िल्टर (आइटम/अभियंता/बिल) पर कोई नाप नहीं — फ़िल्टर बदलें।','फ़िल्टर हटाएँ','state.measEng=\'\';state.measBill=\'\';state.measFilter=\'all\';render()');
-  return head+toolbar+blocks;
+  if(!blocks.trim()) blocks = emptyCard('📏','कोई परिणाम नहीं','चुने गए फ़िल्टर (आइटम/अभियंता/बिल/Remark) पर कोई नाप नहीं — फ़िल्टर बदलें।','फ़िल्टर हटाएँ','state.measEng=\'\';state.measBill=\'\';state.measRemark=\'\';state.measFilter=\'all\';render()');
+  return head+toolbar+rmkBanner+blocks;
 }
 
 /* ---- नाप-लाइन के साझा सेल (विवरण · चैनेज · पक्ष · नग1 · नग2 · लं · चौ · ऊँ) ---- */
@@ -1375,6 +1388,22 @@ function leadCells(m){
 function mbTd(m){ return `<td class="faint">${esc(m.MBNo||'')||'—'}${m.MBPage?(' / पृ.'+esc(m.MBPage)):''}</td>`; }
 function recTd(m){ const mb=esc(m.RecordMB||''), dt=m.RecordDate?dmy(m.RecordDate):'';
   return `<td class="faint">${mb||'—'}${dt?(' / '+dt):''}</td>`; }
+/* नाप-लाइनों में प्रयुक्त सभी Remark श्रेणियाँ (distinct) — ऊपर फ़िल्टर व datalist के लिए */
+function remarksInUse(){
+  const seen={}, out=[];
+  (D().measurements||[]).forEach(function(m){
+    const r=String((m&&m.Remark)||'').trim();
+    if(r && !seen[r]){ seen[r]=1; out.push(r); }
+  });
+  out.sort(function(a,b){ return a.localeCompare(b); });
+  return out;
+}
+/* किसी नाप-लाइन का Remark सेल (श्रेणी badge + 🏷 सेट/बदलें बटन) */
+function remarkTd(m){
+  const r=String((m&&m.Remark)||'').trim();
+  const badge = r ? `<span class="badge b-grey" style="font-size:10px;white-space:normal">🏷 ${esc(r)}</span>` : '<span class="faint">—</span>';
+  return `<td style="min-width:90px">${badge} <button class="icon-btn" title="Remark श्रेणी लगाएँ/बदलें" onclick='openMeasRemark(${JSON.stringify(m.MeasID)})'>🏷</button></td>`;
+}
 const LEAD_TH = `<th>विवरण</th><th>चैनेज (से–तक)</th><th class="c">पक्ष</th><th class="c">नग 1</th><th class="c">नग 2</th><th class="c">लंबाई</th><th class="c">चौड़ाई</th><th class="c">ऊँचाई</th>`;
 const UNIT_OPTIONS_FALLBACK = ['घन मीटर','वर्ग मीटर','मीटर','संख्या'];
 /* सेटिंग में परिभाषित इकाइयाँ — हर इकाई के साथ कौन-कौन सेल (नग1/नग2/लं/चौ/ऊँ) सक्रिय होंगे, यह भी सेव होता है */
@@ -1508,15 +1537,20 @@ function mbHighlightRow(measId){
 
 function itemMeasCard(it){
   const unit=esc(it.Unit||''), iid=JSON.stringify(it.ItemID);
-  const fEng=state.measEng, fBill=state.measBill, fBlk=state.measBlock||'all', filtered=!!(fEng||fBill);
+  const fEng=state.measEng, fBill=state.measBill, fRemark=state.measRemark||'', fBlk=state.measBlock||'all', filtered=!!(fEng||fBill||fRemark);
   let sanc=sancMeasOfItem(it.ItemID), actual=actualMeasOfItem(it.ItemID);
   if(fEng){ sanc=sanc.filter(s=>String(s.Engineer||'').trim()===fEng); actual=actual.filter(a=>measEngineer(a)===fEng); }
+  // 🏷 Remark श्रेणी फ़िल्टर — केवल उसी श्रेणी की नाप-लाइनें (Remark actual नाप पर होता है)
+  if(fRemark){ actual=actual.filter(a=>String(a.Remark||'').trim()===fRemark); }
   // बिल फ़िल्टर — इस आइटम में उस बिल का कोई भुगतान है?
   const detInBill=(m)=>detailsOf('MeasID',m.MeasID).filter(d=>!fBill || String(d.PayID)===String(fBill));
   if(filtered){
     const anyBill = !fBill || actual.some(m=>detInBill(m).length);
+    if(fRemark && !actual.length) return '';                              // इस Remark की कोई लाइन नहीं
     if((fEng && !sanc.length && !actual.length) || !anyBill) return '';   // इस आइटम में फ़िल्टर अनुसार कुछ नहीं
   }
+  // Remark चुनने पर block ① (निर्धारित नाप) छिपाओ — Remark केवल actual नाप पर होता है
+  const showBlk1 = (fBlk==='all'||fBlk==='sanc') && !fRemark;
   // फ़िल्टर अनुसार टोटल
   let fPaidQ=0, fPaidA=0;
   actual.forEach(m=>detInBill(m).forEach(d=>{ fPaidQ+=toNum(d.Qty); fPaidA+=toNum(d.Amount); }));
@@ -1572,6 +1606,7 @@ function itemMeasCard(it){
         <td class="muted">${p.PDate?dmy(p.PDate):'—'}</td>
         <td class="faint">${esc(m.MBNo||'')||'—'}${m.MBPage?(' / पृ.'+esc(m.MBPage)):''}${m.MDate?(' · '+dmy(m.MDate)):''}</td>
         <td class="faint" style="white-space:nowrap">${esc(measEngineer(m))||'—'}</td>
+        ${remarkTd(m)}
         <td><div class="row-actions">
           <button class="icon-btn" title="इस नाप को हिस्सों में बाँटें (बिल यथावत रहेगा)" onclick='openSplitModal(${JSON.stringify(m.MeasID)})'>✂</button>
           <button class="icon-btn" title="इस नाप को नाप-builder में खोलें/संपादित करें" onclick='editMeasInBuilder(${JSON.stringify(m.MeasID)})'>✎</button>
@@ -1580,8 +1615,8 @@ function itemMeasCard(it){
     });
   });
   const block2=blockTable('② भुगतान हो चुका', `भुगतान मात्रा योग: ${nf2(pQ)} ${unit} · राशि ${inr(fPaidA)}`,
-    `<th>संबंधित निर्धारित</th><th class="r">भु. मात्रा</th><th class="c">इकाई</th><th>बिल संख्या</th><th>MB / पृष्ठ</th><th>दिनांक</th><th>Record MB / तारीख</th><th>अभियंता</th><th></th>`,
-    paidRows, 17, measSearchBar(paidTbId, paidCount), paidTbId);
+    `<th>संबंधित निर्धारित</th><th class="r">भु. मात्रा</th><th class="c">इकाई</th><th>बिल संख्या</th><th>MB / पृष्ठ</th><th>दिनांक</th><th>Record MB / तारीख</th><th>अभियंता</th><th>🏷 Remark</th><th></th>`,
+    paidRows, 18, measSearchBar(paidTbId, paidCount), paidTbId);
 
   // ---- भाग 3: बचा हुआ (वास्तविक नाप का शेष) — ऋणात्मक मात्रा (कटौती/समायोजन) वाली नाप भी यहाँ दिखेगी, जब तक उसका भुगतान/समायोजन न हो जाए ----
   let remRows='', remCount=0;
@@ -1598,6 +1633,7 @@ function itemMeasCard(it){
         <td class="r num" style="color:var(--red-2)"><b>${nf2(rem)}</b></td><td class="c muted">${unit}</td>
         <td class="c">${st}</td>${mbTd(m)}<td class="muted">${dmy(m.MDate)}</td>
         <td class="faint" style="white-space:nowrap">${esc(measEngineer(m))||'—'}</td>
+        ${remarkTd(m)}
         <td><div class="row-actions">
           <button class="icon-btn" title="भुगतान इतिहास" onclick='measHistory(${JSON.stringify(m.MeasID)})'>☷</button>
           <button class="icon-btn" title="इस नाप को नाप-builder में खोलें/संपादित करें" onclick='editMeasInBuilder(${JSON.stringify(m.MeasID)})'>✎</button>
@@ -1606,8 +1642,8 @@ function itemMeasCard(it){
     }
   });
   const block3=blockTable('③ Record हो गया, लेकिन भुगतान शेष है', `शेष भुगतान-योग्य मात्रा: ${nf2(rQ)} ${unit}`,
-    `<th>संबंधित निर्धारित</th><th class="r">शेष मात्रा</th><th class="c">इकाई</th><th class="c">स्थिति</th><th>Record MB/Page</th><th>दिनांक</th><th>अभियंता</th><th></th>`,
-    remRows, 16, measSearchBar(remTbId, remCount), remTbId);
+    `<th>संबंधित निर्धारित</th><th class="r">शेष मात्रा</th><th class="c">इकाई</th><th class="c">स्थिति</th><th>Record MB/Page</th><th>दिनांक</th><th>अभियंता</th><th>🏷 Remark</th><th></th>`,
+    remRows, 17, measSearchBar(remTbId, remCount), remTbId);
 
   const ignored = state.ignoredOverlaps||[];
   const pairs = overlapList(sanc,'sanc').map(p=>({sig:p.sig,text:'निर्धारित — '+p.text}))
@@ -1623,7 +1659,13 @@ function itemMeasCard(it){
   const wd=workDev(mQ,sQ);
   const fBillNo = fBill ? ((D().payments.find(p=>String(p.PayID)===String(fBill))||{}).BillNo||'') : '';
   const fNote = filtered ? `<span class="badge b-grey" style="${bSt}">🔎 ${esc([fEng, fBillNo?('बिल '+fBillNo):''].filter(Boolean).join(' · '))||'फ़िल्टर'} — आइटम टोटल</span>` : '';
-  const badges=`<div style="display:flex;gap:10px;flex-wrap:wrap;margin:0 0 14px">
+  const badges = fRemark
+    ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin:0 0 14px">
+        <span class="badge b-grey" style="${bSt}">🏷 ${esc(fRemark)}</span>
+        <span class="badge b-blue" style="${bSt}">इस श्रेणी में Record (नापा): ${nf2(mQ)}${u}</span>
+        <span class="badge b-green" style="${bSt}">भुगतान हो चुका: ${nf2(pQ)}${u}</span>
+        <span class="badge b-amber" style="${bSt}">भुगतान हेतु शेष: ${nf2(rQ)}${u}</span></div>`
+    : `<div style="display:flex;gap:10px;flex-wrap:wrap;margin:0 0 14px">
     ${fNote}
     <span class="badge b-blue" style="${bSt}">कुल निर्धारित: ${nf2(sQ)}${u}</span>
     <span class="badge b-green" style="${bSt}">कुल भुगतान हो चुका: ${nf2(pQ)}${u}</span>
@@ -1636,7 +1678,136 @@ function itemMeasCard(it){
       <span class="item-no">${esc(it.ItemNo)}</span>
       <h2 style="font-size:16px">${esc(it.Description)}</h2>
       <span class="sub">इकाई ${unit} · दर ${inr(itemRate(it))}</span></div>
-    ${badges}${warnBanner}${(fBlk==='all'||fBlk==='sanc')?block1:''}${(fBlk==='all'||fBlk==='paid')?block2:''}${(fBlk==='all'||fBlk==='rem')?block3:''}</div>`;
+    ${badges}${warnBanner}${showBlk1?block1:''}${(fBlk==='all'||fBlk==='paid')?block2:''}${(fBlk==='all'||fBlk==='rem')?block3:''}</div>`;
+}
+
+/* 🏷 नाप-लाइन पर Remark श्रेणी सेट/बदलें (मौजूदा श्रेणियों में से चुनें या नई लिखें) */
+function openMeasRemark(measId){
+  const m=(D().measurements||[]).find(x=>String(x.MeasID)===String(measId));
+  if(!m){ toast('नाप नहीं मिली',true); return; }
+  const cats=remarksInUse();
+  const dl=cats.map(c=>`<option value="${esc(c)}">`).join('');
+  const chips=cats.length?('<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+cats.map(c=>`<button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('mrk_in').value=this.getAttribute('data-v')" data-v="${esc(c)}">${esc(c)}</button>`).join('')+'</div>'):'';
+  openModal('🏷 Remark श्रेणी',
+    `<div class="field"><label>Remark (श्रेणी)</label>
+       <input id="mrk_in" class="inp" list="mrk_dl" value="${esc(m.Remark||'')}" placeholder="जैसे: अतिरिक्त कार्य / विभागीय / मद-X" autocomplete="off">
+       <datalist id="mrk_dl">${dl}</datalist>
+       <div class="faint" style="margin-top:6px">यही श्रेणी ऊपर "Remark श्रेणी" फ़िल्टर में दिखेगी — इससे इन्हीं लाइनों की मात्रा (Record/भुगतान/शेष) एक साथ देखी जा सकेगी। खाली छोड़ने पर Remark हट जाएगा।</div>
+       ${chips}</div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">रद्द</button>
+     <button class="btn btn-primary" onclick="saveMeasRemark('${String(measId).replace(/'/g,"\\'")}')">सहेजें</button>`);
+}
+function saveMeasRemark(measId){
+  const v0=(val('mrk_in')||'').trim();
+  loader(true);
+  api('setMeasRemark',{measId:measId, remark:v0})
+    .then(function(){
+      const m=(D().measurements||[]).find(x=>String(x.MeasID)===String(measId));
+      if(m) m.Remark=v0;
+      closeModal(); loader(false); toast('Remark सहेजा गया'); render();
+    })
+    .catch(function(e){ loader(false); toast('त्रुटि: '+(e.message||e), true); });
+}
+
+/* 🏷 Remark श्रेणी-वार राशि सारांश — हर श्रेणी की नापी गई मात्रा का कुल Amount, भुगतान हो चुका व शेष */
+function remarkAmountSummary(focus){
+  const cats=remarksInUse();
+  if(!cats.length) return '';
+  const agg={}; cats.forEach(c=>agg[c]={rec:0, paid:0});
+  (D().measurements||[]).forEach(function(m){
+    if(isSanc(m)) return;                                  // केवल actual/site नाप (Remark इन्हीं पर)
+    const r=String(m.Remark||'').trim();
+    if(!r || !agg[r]) return;
+    const it=itemById(m.ItemID)||{};
+    agg[r].rec  += measQty(m)*itemRate(it);                // नापी गई मात्रा × दर = कुल Amount
+    agg[r].paid += paySum(detailsOf('MeasID',m.MeasID), d=>d.Amount);   // इस नाप का भुगतान हो चुका
+  });
+  let tRec=0,tPaid=0;
+  const rows=cats.map(function(c){
+    const rec=round(agg[c].rec,2), paid=round(agg[c].paid,2), bal=round(rec-paid,2);
+    tRec+=rec; tPaid+=paid;
+    const ce=String(c).replace(/'/g,"\\'");
+    return `<tr style="cursor:pointer" title="आइटम-वार विवरण देखें" onclick="state.payRemark='${ce}';render()">
+      <td><span class="badge b-grey" style="white-space:normal">🏷 ${esc(c)}</span> <span class="faint" style="font-size:11px">▸ आइटम-वार</span></td>
+      <td class="r num"><b>${inr(rec)}</b></td>
+      <td class="r num" style="color:var(--green)">${inr(paid)}</td>
+      <td class="r num" style="color:${bal>0.5?'var(--red-2)':'var(--muted)'}"><b>${inr(bal)}</b></td></tr>`;
+  }).join('');
+  const tBal=round(tRec-tPaid,2);
+  const totRow=`<tr style="font-weight:700;background:#f1f5fa">
+    <td style="text-align:right">कुल →</td>
+    <td class="r num">${inr(tRec)}</td>
+    <td class="r num" style="color:var(--green)">${inr(tPaid)}</td>
+    <td class="r num" style="color:var(--red-2)">${inr(tBal)}</td></tr>`;
+  const back=focus?`<div style="margin-bottom:10px"><button class="btn btn-ghost btn-sm" onclick="state.payRemark='';render()">← वापस (सभी बिल)</button></div>`:'';
+  return back+`<div class="card tbl-wrap" style="margin-bottom:12px;border-left:4px solid var(--accent)">
+    <div class="section-head" style="margin:8px 10px 6px"><h2 style="font-size:14px">🏷 Remark श्रेणी-वार राशि</h2>
+      <span class="sub">हर श्रेणी की नापी गई मात्रा का कुल Amount · भुगतान हो चुका · शेष भुगतान — किसी पंक्ति पर क्लिक कर आइटम-वार देखें</span></div>
+    <table class="sep"><thead><tr>
+      <th>Remark श्रेणी</th><th class="r">कुल Amount (नापा)</th><th class="r">भुगतान हो चुका</th><th class="r">शेष भुगतान</th>
+    </tr></thead><tbody>${rows}${totRow}</tbody></table></div>`;
+}
+
+/* 🏷 किसी एक Remark श्रेणी का आइटम-वार विवरण — दो सेक्शन: भुगतान हो चुका · भुगतान शेष */
+function remarkFocusHtml(remark){
+  const byItem={}, order=[];
+  (D().measurements||[]).forEach(function(m){
+    if(isSanc(m)) return;
+    if(String(m.Remark||'').trim()!==remark) return;
+    const k=String(m.ItemID);
+    if(!byItem[k]){ byItem[k]={recQ:0, paidQ:0, recA:0, paidA:0}; order.push(k); }
+    const it=itemById(m.ItemID)||{}; const rate=itemRate(it);
+    byItem[k].recQ  += measQty(m);
+    byItem[k].recA  += measQty(m)*rate;
+    byItem[k].paidQ += paySum(detailsOf('MeasID',m.MeasID), d=>d.Qty);
+    byItem[k].paidA += paySum(detailsOf('MeasID',m.MeasID), d=>d.Amount);
+  });
+  if(!order.length) return `<div class="card" style="padding:24px;text-align:center;color:var(--muted)">🏷 इस Remark श्रेणी की कोई नाप-लाइन नहीं मिली — "नाप" टैब से किसी लाइन पर यह Remark लगाएँ।</div>`;
+  order.sort((a,b)=>{ const ia=itemById(a)||{}, ib=itemById(b)||{}; return toNum(ia.ItemNo)-toNum(ib.ItemNo) || String(ia.ItemNo).localeCompare(String(ib.ItemNo)); });
+
+  // हर आइटम को हिसाब से बाँटो — भुगतान हो चुका (paidA>0) व भुगतान शेष (balA>0)
+  const paidItems=[], pendItems=[];
+  order.forEach(function(k){
+    const g=byItem[k];
+    const paidQ=round(g.paidQ,3), paidA=round(g.paidA,2);
+    const balQ=round(g.recQ-g.paidQ,3), balA=round(g.recA-g.paidA,2);
+    if(paidA>0.5 || paidQ>0.0005) paidItems.push({k:k, q:paidQ, a:paidA});
+    if(balA>0.5 || balQ>0.0005)   pendItems.push({k:k, q:balQ, a:balA});
+  });
+
+  const sectionTable=(title, sub, list, qLabel, aLabel, qColor, aColor)=>{
+    let TA=0;
+    const rows=list.map(function(x){
+      const it=itemById(x.k)||{};
+      TA+=x.a;
+      return `<tr>
+        <td><span class="item-no">${esc(it.ItemNo||'')}</span></td>
+        <td style="max-width:320px"><b>${esc(it.Description||'')}</b></td>
+        <td class="c muted">${esc(it.Unit||'—')}</td>
+        <td class="r num" style="color:${qColor}"><b>${nf2(x.q)}</b></td>
+        <td class="r num" style="color:${aColor}"><b>${inr(x.a)}</b></td></tr>`;
+    }).join('') || `<tr><td colspan="5" class="muted" style="text-align:center;padding:14px">इस श्रेणी में ${title} कोई आइटम नहीं</td></tr>`;
+    const totRow=list.length?`<tr style="font-weight:700;background:#f1f5fa"><td colspan="4" style="text-align:right">${aLabel} योग →</td><td class="r num" style="color:${aColor}">${inr(round(TA,2))}</td></tr>`:'';
+    return `<div class="card tbl-wrap" style="margin-bottom:14px">
+      <div class="section-head" style="margin:8px 10px 6px"><h2 style="font-size:14px">${title}</h2><span class="sub">${sub}</span></div>
+      <table class="sep"><thead><tr>
+        <th>आइटम</th><th>विवरण</th><th class="c">इकाई</th><th class="r">${qLabel}</th><th class="r">${aLabel}</th>
+      </tr></thead><tbody>${rows}${totRow}</tbody></table></div>`;
+  };
+
+  const paidTotalA = round(paidItems.reduce((s,x)=>s+x.a,0),2);
+  const pendTotalA = round(pendItems.reduce((s,x)=>s+x.a,0),2);
+  const grandA = round(paidTotalA + pendTotalA, 2);   // इस श्रेणी की कुल राशि = भुगतान हो चुका + शेष
+
+  const hdr=`<div class="section-head" style="margin:2px 2px 10px"><h2 style="font-size:15px">🏷 ${esc(remark)} — आइटम-वार भुगतान</h2>
+    <span class="sub">इस Remark श्रेणी की आइटम-वार स्थिति</span></div>`;
+  const summary=`<div class="card" style="padding:12px 14px;margin-bottom:14px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;background:var(--surface-2);border-left:4px solid var(--accent)">
+    <span class="badge b-blue" style="font-size:14px;padding:8px 14px">कुल राशि (इस श्रेणी): <b>${inr(grandA)}</b></span>
+    <span class="badge b-green" style="font-size:14px;padding:8px 14px">भुगतान हो चुका: ${inr(paidTotalA)}</span>
+    <span class="badge b-amber" style="font-size:14px;padding:8px 14px">शेष भुगतान: ${inr(pendTotalA)}</span></div>`;
+  const s1=sectionTable('✅ भुगतान हो चुका', 'इस श्रेणी के वे आइटम जिनका भुगतान (पूर्ण/आंशिक) हो चुका है', paidItems, 'भु. मात्रा', 'भुगतान राशि', 'var(--green)', 'var(--green)');
+  const s2=sectionTable('⏳ भुगतान शेष', 'इस श्रेणी के वे आइटम जिनका भुगतान अभी शेष है', pendItems, 'शेष मात्रा', 'शेष राशि', 'var(--red-2)', 'var(--red-2)');
+  return hdr+summary+s1+s2;
 }
 
 /* ===================================================================
@@ -1663,19 +1834,28 @@ function viewPay(){
   const billBtns = selP2 ? `
     <button class="btn btn-ghost btn-sm danger" title="चयनित बिल हटाएँ" onclick='delPay(${JSON.stringify(selP2.PayID)})' style="flex-shrink:0;padding:6px 10px">🗑 हटाएँ</button>
     ${dupCount?`<button class="btn btn-ghost btn-sm" title="समान नाम के ${dupCount+1} बिल को एक में मर्ज करें" onclick='mergeIntoBill(${JSON.stringify(selP2.PayID)})' style="flex-shrink:0;padding:6px 10px;color:var(--accent)">🔀 मर्ज (${dupCount} डुप्लीकेट)</button>`:''}` : '';
+  const hasRmk = !!state.payRemark;   // श्रेणी चुनी हो → बाक़ी (काम न करने वाले) फ़िल्टर छिपाओ
   const toolbar=`<div class="toolbar">
-    <div class="field" style="min-width:150px"><label>भुगतान / बिल संख्या</label>
+    <div class="field" style="min-width:150px${hasRmk?';display:none':''}"><label>भुगतान / बिल संख्या</label>
       <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">
         <select class="inp" style="flex:1;min-width:120px" onchange="state.payBill=this.value; state.payUpto=''; render()">${billOpts}</select>${billBtns}
       </div></div>
-    <div class="field" style="min-width:170px"><label>बिल संख्या तक — संचयी</label>
+    <div class="field" style="min-width:170px${hasRmk?';display:none':''}"><label>बिल संख्या तक — संचयी</label>
       <select class="inp" onchange="state.payUpto=this.value; state.payBill=''; render()">${uptoOpts}</select></div>
-    <div class="field" style="min-width:210px"><label>आइटम का नाम</label><select class="inp" onchange="state.payItem=this.value; render()">${itemOpts}</select></div>
-    ${engs.length?`<div class="field" style="min-width:180px"><label>अवर अभियंता</label><select class="inp" onchange="state.payEng=this.value; render()">${engOpts}</select></div>`:''}
-    <div class="field" style="min-width:170px"><label>दृश्य</label><select class="inp" onchange="state.payView=this.value; render()">
+    <div class="field" style="min-width:210px${hasRmk?';display:none':''}"><label>आइटम का नाम</label><select class="inp" onchange="state.payItem=this.value; render()">${itemOpts}</select></div>
+    ${engs.length?`<div class="field" style="min-width:180px${hasRmk?';display:none':''}"><label>अवर अभियंता</label><select class="inp" onchange="state.payEng=this.value; render()">${engOpts}</select></div>`:''}
+    ${remarksInUse().length?`<div class="field" style="min-width:200px"><label>🏷 Remark श्रेणी</label>
+      <select class="inp" onchange="state.payRemark=this.value; render()">
+        <option value="">— सभी (सामान्य दृश्य) —</option>
+        ${remarksInUse().map(r=>`<option value="${esc(r)}" ${state.payRemark===r?'selected':''}>🏷 ${esc(r)}</option>`).join('')}
+      </select></div>`:''}
+    <div class="field" style="min-width:170px${hasRmk?';display:none':''}"><label>दृश्य</label><select class="inp" onchange="state.payView=this.value; render()">
       <option value="item" ${(state.payView||'item')==='item'?'selected':''}>आइटम-वार (कुल मात्रा)</option>
       <option value="line" ${state.payView==='line'?'selected':''}>लाइन-वार (विस्तृत)</option></select></div>
-    ${(state.payBill||state.payItem||state.payEng||state.payUpto)?`<button class="btn btn-ghost btn-sm" style="align-self:flex-end" onclick="state.payBill='';state.payItem='';state.payEng='';state.payUpto='';render()">फ़िल्टर हटाएँ</button>`:''}</div>`;
+    ${(state.payBill||state.payItem||state.payEng||state.payUpto||state.payRemark)?`<button class="btn btn-ghost btn-sm" style="align-self:flex-end" onclick="state.payBill='';state.payItem='';state.payEng='';state.payUpto='';state.payRemark='';render()">फ़िल्टर हटाएँ</button>`:''}</div>`;
+
+  // 🏷 Remark श्रेणी चुनी हो — सब हटाकर केवल उसी श्रेणी का आइटम-वार (भुगतान हो चुका + भुगतान शेष)
+  if(state.payRemark){ return head+toolbar+remarkFocusHtml(state.payRemark); }
 
   // बिल संख्या तक — संचयी (Updated) रिपोर्ट
   if(state.payUpto){ return head+toolbar+cumulativeUptoHtml(state.payUpto); }
@@ -2228,9 +2408,23 @@ function saveItemModal(id){
   const desc=val('if_desc'); if(!desc){toast('विवरण आवश्यक है',true);return;}
   const prev = id? itemById(id) : null;
   const it={ ItemID:id||'', ItemNo:val('if_no'), Description:desc, DetailDesc:val('if_detail'), Unit:val('if_unit'),
-    Rate:numVal('if_rate'), SanctionedQty:(prev&&prev.SanctionedQty!=null?prev.SanctionedQty:0) };
+    Rate:numVal('if_rate'), SanctionedQty:(prev&&prev.SanctionedQty!=null?prev.SanctionedQty:0),
+    ApprovedQty:(prev&&prev.ApprovedQty!=null?prev.ApprovedQty:'') };
   loader(true); api('saveItem',it).then(()=>{ closeModal(); refresh(); toast('आइटम सहेजा गया'); })
     .catch(e=>{loader(false);toast('त्रुटि: '+e,true);});
+}
+/* 📋 स्वीकृत मात्रा लिखें — हर आइटम की वर्तमान "कार्य की मात्रा" को "स्वीकृत मात्रा" कॉलम में कॉपी (स्नैपशॉट, लिंक नहीं) */
+function writeApprovedQty(){
+  const its=items();
+  if(!its.length){ toast('कोई आइटम नहीं',true); return; }
+  confirmModal('स्वीकृत मात्रा लिखें?','सभी आइटम की वर्तमान "कार्य की मात्रा" को "स्वीकृत मात्रा" कॉलम में कॉपी कर दिया जाएगा। यह लिंक नहीं — केवल स्नैपशॉट है (मौजूदा स्वीकृत मात्रा बदल जाएगी)।',function(){
+    const list=its.map(it=>({ItemID:it.ItemID, qty:round(itemSancQty(it),3)}));
+    loader(true);
+    api('setApprovedQty',{list:list}).then(function(){
+      list.forEach(function(x){ const it=itemById(x.ItemID); if(it) it.ApprovedQty=x.qty; });
+      loader(false); toast('स्वीकृत मात्रा लिख दी गई'); render();
+    }).catch(function(e){ loader(false); toast('त्रुटि: '+(e.message||e),true); });
+  });
 }
 function delItem(id){
   const it=itemById(id);

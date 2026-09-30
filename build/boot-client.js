@@ -86,7 +86,9 @@
   }
   function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
   function folderBlobUrl(path) {
-    var list = (SW.localFolderList && SW.localFolderList(path)) || [];
+    /* link में path URL-encoded होता है (getUrl → encodeURIComponent); backend raw path से match करता है */
+    var rawPath = path; try { rawPath = decodeURIComponent(path); } catch (e) {}
+    var list = (SW.localFolderList && SW.localFolderList(rawPath)) || [];
     var rows = list.map(function (f) {
       /* cloud mode में सीधा https url मिलता है; local mode में data-id से blob बनता है */
       var href = f.url ? (' href="' + esc(f.url) + '" target="_blank" rel="noopener"') : ' href="#" data-id="' + f.id + '"';

@@ -877,6 +877,18 @@ textarea.config-input {
 select.sec-inp { appearance: auto; }
 tr.sec-row-edit td { background: #eef1fd; }
 tr.sec-row-new  td { background: #effcf6; }
+/* Chainage Detail को compact रखो ताकि पूरा view 100% zoom पर एक बार में दिखे (16 कॉलम) */
+#rt-sections { padding: 0; }
+#rt-sections .tbl { font-size: 12px; }
+#rt-sections .tbl th { padding: 5px 5px; font-size: 9.5px; letter-spacing: 0; }
+/* view (सामान्य) पंक्तियाँ compact — बीच का space कम */
+#rt-sections .tbl tbody tr:not(.sec-row-edit):not(.sec-row-new) td { padding: 3px 6px; font-size: 12px; }
+/* edit (feeding) पंक्तियाँ — इनपुट फ़ॉन्ट थोड़ा बड़ा, आसानी से दिखे */
+#rt-sections .tbl td { padding: 3px 5px; }
+#rt-sections .sec-inp { padding: 3px 5px; min-width: 36px; font-size: 12px; }
+#rt-sections .act-btn { width: 24px; height: 24px; }
+#sec-filter-bar .sec-remark-dd summary { list-style: none; }
+#sec-filter-bar .sec-remark-dd summary::-webkit-details-marker { display: none; }
 .sec-save-bar {
   display: none; gap: 8px; align-items: center;
   padding: 7px 12px; margin-bottom: 10px;
@@ -1607,35 +1619,51 @@ tr.sec-row-new  td { background: #effcf6; }
     <div style="display:flex;gap:8px;">
       <button class="btn-primary" onclick="openAddRoadModal()">➕ नई सड़क</button>
       <button class="btn-secondary" onclick="openImportModal()">📥 Bulk Import</button>
+      <button class="btn-secondary" onclick="printRoadList()" title="वर्तमान फ़िल्टर की सूची A4 पेज पर प्रिंट करें">🖨️ प्रिंट</button>
     </div>
   </div>
 
   <div class="filter-bar">
     <label>खोजें:</label>
     <input class="f-input" id="r-search" placeholder="सड़क का नाम या ID..." oninput="applyRoadFilter()">
-    <label>वर्ष:</label>
-    <select class="f-select" id="r-year" onchange="applyRoadFilter()">
-      <option value="">— सभी —</option>
-      <option>2025</option><option>2024</option><option>2023</option><option>2022</option><option>2021</option><option>2020</option>
-    </select>
-    <label>माह:</label>
-    <select class="f-select" id="r-month" onchange="applyRoadFilter()">
-      <option value="">— सभी —</option>
-      <option value="01">जनवरी</option><option value="02">फरवरी</option>
-      <option value="03">मार्च</option><option value="04">अप्रैल</option>
-      <option value="05">मई</option><option value="06">जून</option>
-      <option value="07">जुलाई</option><option value="08">अगस्त</option>
-      <option value="09">सितंबर</option><option value="10">अक्टूबर</option>
-      <option value="11">नवंबर</option><option value="12">दिसंबर</option>
-    </select>
+    <span style="display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:8px;padding:4px 8px;background:#f8fafc;">
+      <span style="font-size:11px;font-weight:700;color:var(--navy);white-space:nowrap;">🗓 आखिरी कार्य</span>
+      <select class="f-select" id="r-year" onchange="applyRoadFilter()" title="वर्ष">
+        <option value="">वर्ष</option>
+        <option>2025</option><option>2024</option><option>2023</option><option>2022</option><option>2021</option><option>2020</option>
+      </select>
+      <select class="f-select" id="r-month" onchange="applyRoadFilter()" title="माह">
+        <option value="">माह</option>
+        <option value="01">जनवरी</option><option value="02">फरवरी</option>
+        <option value="03">मार्च</option><option value="04">अप्रैल</option>
+        <option value="05">मई</option><option value="06">जून</option>
+        <option value="07">जुलाई</option><option value="08">अगस्त</option>
+        <option value="09">सितंबर</option><option value="10">अक्टूबर</option>
+        <option value="11">नवंबर</option><option value="12">दिसंबर</option>
+      </select>
+      <select class="f-select" id="r-datemode" onchange="applyRoadFilter()" title="चुने माह/वर्ष के अनुसार">
+        <option value="">इसी माह/वर्ष का</option>
+        <option value="after">इसके बाद का (नया)</option>
+        <option value="before">इसके पहले का (पुराना)</option>
+      </select>
+    </span>
     <label>श्रेणी:</label>
     <select class="f-select" id="r-type" onchange="applyRoadFilter()">
       <option value="">— सभी —</option>
+    </select>
+    <label>योजना/प्रोजेक्ट:</label>
+    <select class="f-select" id="r-assoc" onchange="applyRoadFilter()">
+      <option value="">— सभी —</option>
+      <option value="plan">किसी भी योजना में</option>
+      <option value="project">किसी भी प्रोजेक्ट में</option>
+      <option value="none">किसी में नहीं</option>
     </select>
     <label>DLP अवधि:</label>
     <select class="f-select" id="r-dlp" onchange="applyRoadFilter()">
       <option value="">— सभी —</option>
       <option value="active">DLP अवधि में (अनुरक्षण तिथि शेष)</option>
+      <option value="partial">आंशिक DLP मार्ग (कुछ टुकड़े DLP में)</option>
+      <option value="free">DLP मुक्त मार्ग</option>
     </select>
     <button class="btn-secondary" onclick="clearRoadFilter()">✕ Clear</button>
   </div>
@@ -3116,13 +3144,28 @@ tr.sec-row-new  td { background: #effcf6; }
       <select class="f-select" id="ap-year" onchange="applyPlanFilter()">
         <option value="">— सभी —</option>
       </select>
+      <label>योजना (कार्य प्रकार):</label>
+      <select class="f-select" id="ap-wt" onchange="applyPlanFilter()">
+        <option value="">— सभी योजनाएँ —</option>
+      </select>
+      <label>श्रेणी:</label>
+      <select class="f-select" id="ap-type" onchange="applyPlanFilter()">
+        <option value="">— सभी —</option>
+      </select>
       <label>Status:</label>
       <select class="f-select" id="ap-st" onchange="applyPlanFilter()">
         <option value="">— सभी —</option>
         <option>Proposed</option><option>Sanctioned</option><option>Dropped</option>
       </select>
+      <label>आगणन की स्थिति:</label>
+      <select class="f-select" id="ap-est" onchange="applyPlanFilter()">
+        <option value="">— सभी —</option>
+        <option value="Pending">Pending</option>
+        <option value="Submitted">Submitted</option>
+      </select>
       <button class="btn-secondary" onclick="showPage('settings',null,null);setTimeout(function(){document.getElementById('wt-section').scrollIntoView({behavior:'smooth'});},150);">⚙️ प्रकार प्रबंधन</button>
-      <button class="btn-primary" onclick="openAddPlanFromView('',document.getElementById('ap-year').value||getCurrentFY())" style="margin-left:auto;">➕ कार्य जोड़ें</button>
+      <button class="btn-secondary" onclick="printAnnualPlan()" title="वर्तमान फ़िल्टर की कार्ययोजना A4 पेज पर प्रिंट करें" style="margin-left:auto;">🖨️ प्रिंट</button>
+      <button class="btn-primary" onclick="openAddPlanFromView('',document.getElementById('ap-year').value||getCurrentFY())">➕ कार्य जोड़ें</button>
     </div>
     <div id="plan-list">
       <div style="text-align:center;color:var(--text3);padding:40px;">⏳ डेटा लोड हो रहा है...</div>
@@ -3242,6 +3285,22 @@ tr.sec-row-new  td { background: #effcf6; }
     <div id="rt-mgmt-status" style="margin-top:10px;"></div>
   </div>
 
+  <!-- ══ SURFACE MANAGEMENT ══ -->
+  <div class="config-section" id="surf-mgmt-section">
+    <div class="config-title">🛤️ Surface प्रकार प्रबंधन</div>
+    <div style="margin-bottom:14px;font-size:13px;color:var(--text2);">
+      "सड़क सूची → Chainage Detail" में Surface कॉलम के dropdown की सूची यहाँ manage करें — जोड़ें, नाम बदलें, या हटाएं। ये <strong>10_Surfaces</strong> (डेटाबेस) में save होंगी।
+    </div>
+    <div id="surf-mgmt-list" style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:16px;">
+      <div style="padding:12px;color:var(--text3);text-align:center;">⏳ लोड हो रहा है...</div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <input class="config-input" id="new-surf-input" placeholder="नया Surface जैसे: PC / Bituminous / Concrete" style="flex:1;min-width:220px;">
+      <button class="btn-primary" onclick="addNewSurface()">➕ जोड़ें</button>
+    </div>
+    <div id="surf-mgmt-status" style="margin-top:10px;"></div>
+  </div>
+
   <!-- ══ WORK TYPES MANAGEMENT ══ -->
   <div class="config-section" id="wt-section">
     <div class="config-title">📋 कार्य का प्रकार प्रबंधन</div>
@@ -3315,8 +3374,11 @@ tr.sec-row-new  td { background: #effcf6; }
       <div class="tab-content" id="rt-sections">
         <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center;">
           <button class="btn-sm" id="sec-add-btn" style="background:var(--green-gov);color:#fff;border-color:var(--green-gov);">➕ नई Chainage जोड़ें</button>
+          <button class="btn-sm" id="sec-editall-btn" onclick="secStartEdit('')" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">✏️ सभी लाइन Edit करें</button>
           <button class="btn-sm" id="sec-import-btn" style="background:var(--navy);color:#fff;border-color:var(--navy);">📋 Excel से Import</button>
+          <button class="btn-sm" id="sec-print-btn" onclick="printChainageDetail()" style="background:#f8fafc;color:var(--navy);border-color:var(--border);">🖨️ प्रिंट / PDF</button>
         </div>
+        <div id="sec-filter-bar" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center;"></div>
         <div class="sec-save-bar" id="sec-save-bar">
           <span style="font-size:12px;color:#92400e;flex:1;" id="sec-save-status">⚠ Changes pending...</span>
           <button class="btn-primary" id="sec-save-btn" onclick="saveAllSections()" style="padding:4px 14px;font-size:12px;">💾 Save All</button>
@@ -3329,10 +3391,10 @@ tr.sec-row-new  td { background: #effcf6; }
               <th style="min-width:65px;">KM No.</th><th style="min-width:72px;">लंबाई (KM)</th>
               <th style="min-width:62px;">चौड़ाई (M)</th><th style="min-width:72px;">Surface</th>
               <th style="min-width:42px;">माह</th><th style="min-width:60px;">वर्ष</th>
-              <th style="min-width:80px;">Bituminous (MM)</th><th style="min-width:75px;">Granular (MM)</th>
-              <th style="min-width:90px;">Struct. Chainage</th><th style="min-width:100px;">Structure</th>
-              <th style="min-width:90px;">विधानसभा</th><th style="min-width:90px;">लोकसभा</th>
-              <th style="min-width:80px;">Remark</th><th style="min-width:60px;">Actions</th>
+              <th style="min-width:66px;">Bituminous (MM)</th><th style="min-width:62px;">Granular (MM)</th>
+              <th style="min-width:74px;">Struct. Chainage</th><th style="min-width:82px;">Structure</th>
+              <th style="min-width:74px;">विधानसभा</th><th style="min-width:74px;">लोकसभा</th>
+              <th style="min-width:70px;">Remark</th><th style="min-width:58px;">Actions</th>
             </tr></thead>
             <tbody id="sec-tbody">—</tbody>
           </table>
@@ -3930,11 +3992,15 @@ tr.sec-row-new  td { background: #effcf6; }
             <option value="">— सड़क चुनें —</option>
           </select>
         </div>
+        <div style="grid-column:1/-1;" id="par-secbox-wrap">
+          <label class="form-label">इस परियोजना में कौन-कौन से टुकड़े (Sections)?</label>
+          <div id="par-secbox" style="max-height:180px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:6px 8px;font-size:13px;background:#fff;color:var(--text3);">— पहले सड़क चुनें —</div>
+        </div>
         <div style="grid-column:1/-1;">
           <label class="form-label">कार्य विवरण <span class="req">*</span></label>
           <input class="config-input" id="par-work" placeholder="इस सड़क पर क्या काम होगा" style="width:100%;">
         </div>
-        <div><label class="form-label">KM Numbers Covered</label>
+        <div id="par-km-wrap"><label class="form-label">KM Numbers Covered</label>
           <select class="config-input" id="par-km">
             <option value="">— पहले सड़क चुनें —</option>
           </select>
@@ -3952,7 +4018,7 @@ tr.sec-row-new  td { background: #effcf6; }
 
 <!-- ══ PROJECT ROADS LIST MODAL ══ -->
 <div class="modal-overlay" id="proj-roads-list-modal">
-  <div class="modal" style="max-width:700px;">
+  <div class="modal" style="max-width:960px;width:96%;">
     <div class="modal-header" style="background:linear-gradient(135deg,var(--navy2),var(--navy));">
       <div>
         <div class="modal-title" id="prl-title">🗺️ परियोजना में सड़कें</div>
@@ -3979,7 +4045,7 @@ tr.sec-row-new  td { background: #effcf6; }
 
 <!-- ══ PROJECT ROAD EDIT MODAL ══ -->
 <div class="modal-overlay" id="proj-road-edit-modal">
-  <div class="modal" style="max-width:560px;">
+  <div class="modal" style="max-width:660px;">
     <div class="modal-header" style="background:linear-gradient(135deg,var(--navy2),var(--navy));">
       <div>
         <div class="modal-title">✏️ सड़क विवरण संपादित करें</div>
@@ -3995,9 +4061,13 @@ tr.sec-row-new  td { background: #effcf6; }
           <label class="form-label">कार्य विवरण <span class="req">*</span></label>
           <input class="config-input" id="pre-work" style="width:100%;">
         </div>
-        <div>
+        <div style="grid-column:1/-1;">
           <label class="form-label">KM Numbers Covered</label>
           <input class="config-input" id="pre-km" style="width:100%;">
+        </div>
+        <div style="grid-column:1/-1;" id="pre-secbox-wrap">
+          <label class="form-label">इस परियोजना में कौन-कौन से टुकड़े (Sections)? — चेकबॉक्स से जोड़ें/हटाएँ</label>
+          <div id="pre-secbox" style="max-height:180px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:6px 8px;font-size:13px;background:#fff;color:var(--text3);">—</div>
         </div>
         <div>
           <label class="form-label">Sanctioned Amount (₹)</label>
@@ -4236,6 +4306,35 @@ tr.sec-row-new  td { background: #effcf6; }
   </div>
 </div>
 
+<!-- ══ ASSIGN SECTION TO OTHER DEPT (Dump टुकड़ा) MODAL ══ -->
+<div class="modal-overlay" id="assign-sec-modal">
+  <div class="modal" style="max-width:460px;">
+    <div class="modal-header" style="background:linear-gradient(135deg,#b45309,#d97706);">
+      <div>
+        <div class="modal-title">🏛️ टुकड़ा दूसरे विभाग/अभियंता को दें</div>
+        <div class="modal-sub" id="asg-sub">—</div>
+      </div>
+      <div class="modal-close" onclick="closeModal('assign-sec-modal')">✕</div>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="asg-sid">
+      <div><label class="form-label">कौन-कौन से टुकड़े देने हैं? <span class="req">*</span> <span style="font-weight:400;color:var(--text3);font-size:11px;">(एक साथ कई चुन सकते हैं)</span></label>
+        <div id="asg-secbox" style="max-height:180px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:6px 8px;font-size:13px;background:#fff;"></div>
+      </div>
+      <div style="margin-top:12px;"><label class="form-label">किस विभाग/अभियंता के पास? <span class="req">*</span></label>
+        <input class="config-input" id="asg-to" placeholder="जैसे: लो.नि.वि. प्रांतीय खंड / अन्य अभियंता" style="width:100%;"></div>
+      <div style="margin-top:12px;"><label class="form-label">Remark (कारण / आदेश संदर्भ)</label>
+        <input class="config-input" id="asg-rem" placeholder="जैसे: शासनादेश दिनांक ... से स्थानांतरित" style="width:100%;"></div>
+      <div style="margin-top:8px;font-size:11px;color:var(--text3);">चुने टुकड़े सड़क सूची के Chainage से हट जाएँगे और "Dump सड़कें" में दिखेंगे। लंबाई में ये "कुल" में गिने जाएँगे पर "अपने पास" में नहीं।</div>
+      <div id="asg-result" style="margin-top:10px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('assign-sec-modal')">रद्द करें</button>
+      <button class="btn-primary" id="asg-submit" onclick="submitAssignSec()" style="background:#d97706;">💾 दें</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ SECTION EXCEL IMPORT MODAL ══ -->
 <div class="modal-overlay" id="sec-import-modal">
   <div class="modal" style="max-width:820px;">
@@ -4353,9 +4452,15 @@ tr.sec-row-new  td { background: #effcf6; }
     </div>
     <div class="modal-body">
       <input type="hidden" id="epm-plan-id">
+      <input type="hidden" id="epm-road-id">
+      <input type="hidden" id="epm-section">
       <div class="form-grid">
+        <div class="full"><label class="form-label">योजना (कार्य प्रकार) — बदलने पर यह सड़क दूसरी योजना में चली जाएगी</label>
+          <select class="config-input" id="epm-wtype" style="width:100%;" onchange="renderEpmSections()"></select></div>
         <div class="full"><label class="form-label">प्रस्तावित कार्य विवरण</label><input class="config-input" id="epm-work" style="width:100%;"></div>
-        <div><label class="form-label">Section / KM</label><input class="config-input" id="epm-section" style="width:100%;"></div>
+        <div class="full"><label class="form-label">कौन-कौन से टुकड़े? (Section / KM) — जोड़ने/घटाने के लिए checkbox</label>
+          <div id="epm-secbox" style="max-height:160px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:6px 8px;font-size:13px;background:#fff;"></div>
+          <div style="font-size:10.5px;color:var(--text3);margin-top:4px;">टिक हटाने पर वह टुकड़ा इस योजना से निकल जाएगा; नया टिक करने पर जुड़ जाएगा (नियम-जाँच सहित)।</div></div>
         <div><label class="form-label">अनुमानित लागत (₹)</label><input class="config-input" type="number" id="epm-cost" placeholder="जैसे: 2500000" style="width:100%;"></div>
         <div><label class="form-label">वरीयता क्रम <span style="font-size:10px;color:var(--text3);">(1 = सर्वोच्च)</span></label><input class="config-input" type="number" id="epm-priority" min="1" placeholder="1" style="width:100%;"></div>
         <div><label class="form-label">Status</label>
@@ -4392,7 +4497,7 @@ tr.sec-row-new  td { background: #effcf6; }
         </div>
         <div>
           <label class="form-label">कार्य का प्रकार <span class="req">*</span></label>
-          <select class="config-input" id="apm-wtype" style="width:100%;" onchange="toggleApmRoadField()"></select>
+          <select class="config-input" id="apm-wtype" style="width:100%;" onchange="toggleApmRoadField();renderApmSections();"></select>
         </div>
         <div class="full" id="apm-road-fixed-row">
           <label class="form-label">सड़क (Road)</label>
@@ -4400,7 +4505,7 @@ tr.sec-row-new  td { background: #effcf6; }
         </div>
         <div class="full" id="apm-road-select-row" style="display:none;">
           <label class="form-label">सड़क चुनें <span class="req">*</span></label>
-          <select class="config-input" id="apm-road-selector" style="width:100%;" onchange="var r=D.roads.find(function(x){return x.Road_ID===this.value;});document.getElementById('apm-road-id').value=this.value;document.getElementById('apm-road-name').value=r?r.Road_Name:this.value;"></select>
+          <select class="config-input" id="apm-road-selector" style="width:100%;" onchange="var r=D.roads.find(function(x){return x.Road_ID===this.value;});document.getElementById('apm-road-id').value=this.value;document.getElementById('apm-road-name').value=r?r.Road_Name:this.value;renderApmSections();"></select>
         </div>
         <div class="full" id="apm-worktitle-row" style="display:none;">
           <label class="form-label">कार्य का नाम <span class="req">*</span></label>
@@ -4411,8 +4516,10 @@ tr.sec-row-new  td { background: #effcf6; }
           <input class="config-input" id="apm-work" placeholder="जैसे: BC Overlay 40mm, Drain Repair" style="width:100%;">
         </div>
         <div>
-          <label class="form-label">Section / KM</label>
-          <input class="config-input" id="apm-section" placeholder="जैसे: KM 0-5" style="width:100%;">
+          <label class="form-label">कौन-कौन से टुकड़े जोड़ें? (Section / KM)</label>
+          <div id="apm-secbox" style="max-height:170px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:6px 8px;font-size:13px;background:#fff;"></div>
+          <div style="font-size:10.5px;color:var(--text3);margin-top:4px;">एक साल में एक टुकड़ा केवल एक योजना में जुड़ेगा — "पैच मरम्मत" को छूट। प्रोजेक्ट/दूसरे विभाग वाले टुकड़े नहीं जुड़ेंगे।</div>
+          <input type="hidden" id="apm-section">
         </div>
         <div>
           <label class="form-label">अनुमानित लागत (₹)</label>
@@ -4464,6 +4571,52 @@ tr.sec-row-new  td { background: #effcf6; }
   </div>
 </div>
 
+<!-- ══ PLAN FORWARDING MODAL (अग्रेषण पत्र — Upload/Note) ══ -->
+<div class="modal-overlay" id="plan-fwd-modal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">📤 अग्रेषण पत्र — Upload / Note</div>
+        <div class="modal-sub" id="fwd-sub">—</div>
+      </div>
+      <div class="modal-close" onclick="closeModal('plan-fwd-modal')">✕</div>
+    </div>
+    <div class="modal-body">
+      <label style="display:block;font-size:13px;font-weight:600;margin-bottom:5px;">📝 नोट (जैसे पत्र संख्या / दिनांक) — वैकल्पिक</label>
+      <textarea id="fwd-note" rows="2" placeholder="जैसे: पत्रांक 123/PWD दि. 01-04-2026" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;padding:8px;font-family:inherit;font-size:13px;resize:vertical;"></textarea>
+      <label style="display:block;font-size:13px;font-weight:600;margin:12px 0 5px;">📎 अग्रेषण पत्र फाइल अपलोड — वैकल्पिक</label>
+      <input type="file" id="fwd-file" accept=".pdf,.doc,.docx,image/*" style="font-size:13px;">
+      <div id="fwd-current" style="font-size:12px;color:var(--text3);margin-top:6px;"></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:8px;">आप केवल नोट लिख सकते हैं, या फाइल अपलोड कर सकते हैं, या दोनों।</div>
+      <div id="fwd-result" style="margin-top:10px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('plan-fwd-modal')">रद्द करें</button>
+      <button class="btn-primary" id="fwd-submit-btn" onclick="submitPlanForwarding()">✅ सहेजें</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PLAN FILES MODAL (फ़ोटो/निरीक्षण/Estimate/अग्रेषण — देखें व हटाएँ) ══ -->
+<div class="modal-overlay" id="plan-files-modal">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="pfm-title">फ़ाइलें</div>
+        <div class="modal-sub" id="pfm-sub">—</div>
+      </div>
+      <div class="modal-close" onclick="closeModal('plan-files-modal')">✕</div>
+    </div>
+    <div class="modal-body">
+      <div id="pfm-list" style="border:1px solid var(--border);border-radius:8px;overflow:hidden;"></div>
+      <div id="pfm-usage" style="display:none;margin-top:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('plan-files-modal')">बंद करें</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ ADD TO PROJECT MODAL ══ -->
 <div class="modal-overlay" id="add-proj-modal">
   <div class="modal" style="max-width:640px;">
@@ -4492,8 +4645,10 @@ tr.sec-row-new  td { background: #effcf6; }
           <input class="config-input" id="aprj-work" placeholder="इस सड़क पर क्या काम होगा" style="width:100%;">
         </div>
         <div>
-          <label class="form-label">KM Numbers Covered</label>
-          <input class="config-input" id="aprj-km" placeholder="जैसे: KM 2-5" style="width:100%;">
+          <label class="form-label">कौन-कौन से टुकड़े जोड़ें? (KM Numbers Covered)</label>
+          <div id="aprj-secbox" style="max-height:170px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:6px 8px;font-size:13px;background:#fff;"></div>
+          <div style="font-size:10.5px;color:var(--text3);margin-top:4px;">प्रोजेक्ट व योजना परस्पर exclusive — जो टुकड़ा किसी योजना/दूसरे प्रोजेक्ट/दूसरे विभाग के पास है वह नहीं जुड़ेगा।</div>
+          <input type="hidden" id="aprj-km">
         </div>
         <div>
           <label class="form-label">Road Sanctioned Amount (₹)</label>
@@ -5508,6 +5663,8 @@ function loadData() {
           D.plan      = secondary.plan      || [];
           D.workTypes = secondary.workTypes || DEFAULT_WORK_TYPES.slice();
           D.roadTypes = secondary.roadTypes || DEFAULT_ROAD_TYPES.slice();
+          D.surfaces  = (secondary.surfaces && secondary.surfaces.length) ? secondary.surfaces : DEFAULT_SURFACES.slice();
+          SURF_OPTS   = [''].concat(D.surfaces);   // Chainage grid का Surface dropdown सेटिंग से
           D.docCats   = secondary.docCats   || DEFAULT_DOC_CATS_JS.slice();
           D.convs       = (secondary.convs||[]).map(function(c){ if(!c.Conv_Status) c.Conv_Status='Open'; return c; });
           D.bills       = secondary.bills       || [];
@@ -5532,6 +5689,7 @@ function loadData() {
           populateRoadTypeDropdowns();
           populateYearDropdowns();
           renderRoadTypesList();
+          _applySurfOpts(); renderSurfacesList();
           renderRoads();
           restoreLastPage();
           restoreSurface();   // refresh पर वही surface (Estimator/भुगतान) वापस खोलो
@@ -5630,6 +5788,9 @@ function populateYearDropdowns() {
   }
 }
 
+// ── Surface प्रकार (Chainage dropdown) — सेटिंग से प्रबंधित ────
+var DEFAULT_SURFACES = ['BC','WBM','Gravel','CC','Earthen','Interlocking'];
+
 // ── Work Types ───────────────────────────────────────────────
 var DEFAULT_WORK_TYPES = ['पैच मरम्मत','विशेष मरामत','नवीनीकरण','चौड़ीकरण एवं सुदृढीकरण','पुल/पुलिया/सेतु मरम्मत','नव निर्माण','अन्य'];
 
@@ -5643,6 +5804,14 @@ function populateRoadTypeDropdowns() {
     fSel.innerHTML = '<option value="">— सभी —</option>';
     types.forEach(function(t){ var o=new Option(t,t); fSel.appendChild(o); });
     if (fCur) fSel.value = fCur;
+  }
+  // वार्षिक योजना श्रेणी फ़िल्टर (ap-type)
+  var apSel = document.getElementById('ap-type');
+  if (apSel) {
+    var apCur = apSel.value;
+    apSel.innerHTML = '<option value="">— सभी —</option>';
+    types.forEach(function(t){ apSel.appendChild(new Option(t,t)); });
+    if (apCur) apSel.value = apCur;
   }
   // Form dropdown (rf-type)
   var rSel = document.getElementById('rf-type');
@@ -5746,6 +5915,113 @@ function deleteRoadTypeItem(typeName) {
     .deleteRoadType(typeName);
 }
 
+// ── Surface प्रकार प्रबंधन (Chainage dropdown सेटिंग) ──────────
+function _applySurfOpts() { SURF_OPTS = ['' ].concat(D.surfaces || DEFAULT_SURFACES); }
+function renderSurfacesList() {
+  var el = document.getElementById('surf-mgmt-list');
+  if (!el) return;
+  var list = (D.surfaces && D.surfaces.length) ? D.surfaces : DEFAULT_SURFACES;
+  if (!list.length) { el.innerHTML='<div style="padding:12px;color:var(--text3);text-align:center;">कोई Surface नहीं</div>'; return; }
+  el.innerHTML = list.map(function(t, i) {
+    var te = t.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    var isDefault = DEFAULT_SURFACES.indexOf(t) >= 0;
+    var upDis = i===0 ? 'disabled style="opacity:.3;cursor:not-allowed;padding:3px 7px;font-size:12px;"' : 'style="padding:3px 7px;font-size:12px;"';
+    var dnDis = i===list.length-1 ? 'disabled style="opacity:.3;cursor:not-allowed;padding:3px 7px;font-size:12px;"' : 'style="padding:3px 7px;font-size:12px;"';
+    return '<div style="display:flex;align-items:center;padding:9px 14px;border-bottom:1px solid var(--border);gap:6px;">' +
+      '<span style="color:var(--text3);font-size:11px;width:20px;">'+(i+1)+'.</span>' +
+      '<span style="flex:1;font-size:13px;">' + t + (isDefault ? ' <span style="font-size:10px;color:var(--text3);background:#f1f5f9;border-radius:3px;padding:1px 5px;">default</span>' : '') + '</span>' +
+      '<button class="act-btn" title="ऊपर" onclick="moveSurface('+i+',-1)" '+upDis+'>▲</button>' +
+      '<button class="act-btn" title="नीचे" onclick="moveSurface('+i+',1)" '+dnDis+'>▼</button>' +
+      '<button class="act-btn edit" onclick="startEditSurface(this,\''+te+'\')" style="padding:3px 8px;font-size:11px;">✏️ Edit</button>' +
+      '<button class="act-btn del"  onclick="deleteSurfaceItem(\''+te+'\')" style="padding:3px 8px;font-size:11px;">🗑️</button>' +
+    '</div>';
+  }).join('');
+}
+// Surface को ऊपर/नीचे करें — क्रम तुरंत dropdown में लागू + डेटाबेस में सहेजें
+function moveSurface(idx, dir){
+  var list = D.surfaces; if(!list || !list.length) return;
+  var j = idx + dir;
+  if(j < 0 || j >= list.length) return;
+  var tmp = list[idx]; list[idx] = list[j]; list[j] = tmp;
+  _applySurfOpts(); renderSurfacesList();
+  var stEl = document.getElementById('surf-mgmt-status');
+  if(stEl) stEl.innerHTML = '<div class="status-box loading">⏳ क्रम सहेजा जा रहा है...</div>';
+  _opStart();
+  google.script.run
+    .withSuccessHandler(function(res){ _opEnd(); if(stEl){ stEl.innerHTML = (res&&res.success) ? '<div class="status-box success">✅ क्रम सहेजा गया</div>' : '<div class="status-box error">❌ '+((res&&res.msg)||'')+'</div>'; } })
+    .withFailureHandler(function(err){ _opEnd(); if(stEl) stEl.innerHTML='<div class="status-box error">❌ '+(err.message||err)+'</div>'; })
+    .saveSurfaceOrder(list.slice());
+}
+function addNewSurface() {
+  var inp = document.getElementById('new-surf-input');
+  var stEl = document.getElementById('surf-mgmt-status');
+  var name = inp.value.trim();
+  if (!name) { inp.focus(); return; }
+  stEl.innerHTML = '<div class="status-box loading">⏳ जोड़ा जा रहा है...</div>';
+  _opStart();
+  google.script.run
+    .withSuccessHandler(function(res){
+      _opEnd();
+      if (res.success) {
+        if(!D.surfaces) D.surfaces=DEFAULT_SURFACES.slice();
+        D.surfaces.push(name); inp.value=''; _applySurfOpts(); renderSurfacesList();
+        stEl.innerHTML='<div class="status-box success">✅ "'+name+'" जोड़ा गया</div>';
+      } else { stEl.innerHTML='<div class="status-box error">❌ '+res.msg+'</div>'; }
+    })
+    .withFailureHandler(function(err){ _opEnd(); stEl.innerHTML='<div class="status-box error">❌ '+(err.message||err)+'</div>'; })
+    .addSurface(name);
+}
+function startEditSurface(btn, oldName) {
+  var row = btn.closest ? btn.closest('div[style*="display:flex"]') : btn.parentElement;
+  var nameSpan = row.querySelector('span');
+  var inp = document.createElement('input');
+  inp.className = 'config-input'; inp.style.flex='1'; inp.style.fontSize='13px';
+  inp.value = oldName;
+  nameSpan.replaceWith(inp);
+  btn.textContent='💾 Save'; btn.onclick=function(){ saveEditSurface(inp, oldName, btn); };
+  var cancelBtn = btn.nextElementSibling;
+  cancelBtn.textContent='✕'; cancelBtn.onclick=function(){ renderSurfacesList(); };
+  inp.focus(); inp.select();
+}
+function saveEditSurface(inp, oldName, btn) {
+  var newName = inp.value.trim();
+  var stEl = document.getElementById('surf-mgmt-status');
+  if (!newName) { inp.focus(); return; }
+  if (newName === oldName) { renderSurfacesList(); return; }
+  btn.disabled=true;
+  stEl.innerHTML='<div class="status-box loading">⏳ Update हो रहा है...</div>';
+  _opStart();
+  google.script.run
+    .withSuccessHandler(function(res){
+      _opEnd();
+      if (res.success) {
+        var idx = D.surfaces.indexOf(oldName);
+        if (idx >= 0) D.surfaces[idx] = newName;
+        _applySurfOpts(); renderSurfacesList();
+        stEl.innerHTML='<div class="status-box success">✅ "'+ oldName+'" → "'+newName+'" update हुआ</div>';
+      } else { stEl.innerHTML='<div class="status-box error">❌ '+res.msg+'</div>'; renderSurfacesList(); }
+    })
+    .withFailureHandler(function(err){ _opEnd(); stEl.innerHTML='<div class="status-box error">❌ '+(err.message||err)+'</div>'; renderSurfacesList(); })
+    .updateSurface(oldName, newName);
+}
+function deleteSurfaceItem(name) {
+  var stEl = document.getElementById('surf-mgmt-status');
+  if (!confirm('"'+name+'" को delete करें?')) return;
+  stEl.innerHTML='<div class="status-box loading">⏳ Delete हो रहा है...</div>';
+  _opStart();
+  google.script.run
+    .withSuccessHandler(function(res){
+      _opEnd();
+      if (res.success) {
+        D.surfaces = D.surfaces.filter(function(t){ return t !== name; });
+        _applySurfOpts(); renderSurfacesList();
+        stEl.innerHTML='<div class="status-box success">✅ "'+name+'" हटाया गया</div>';
+      } else { stEl.innerHTML='<div class="status-box error">❌ '+res.msg+'</div>'; }
+    })
+    .withFailureHandler(function(err){ _opEnd(); stEl.innerHTML='<div class="status-box error">❌ '+(err.message||err)+'</div>'; })
+    .deleteSurface(name);
+}
+
 function populateWorkTypeDropdown() {
   var sel = document.getElementById('ap-wtype');
   if (!sel) return;
@@ -5767,55 +6043,88 @@ function renderWorkTypesList() {
     var isDefault = DEFAULT_WORK_TYPES.indexOf(t) >= 0;
     var te = String(t).replace(/'/g,"\\'");
     return '<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;'+(i>0?'border-top:1px solid var(--border)':'')+';background:'+(isDefault?'#f8f9fc':'white')+'">' +
-      '<span style="font-size:18px;">'+(isDefault?'🔒':'✏️')+'</span>'+
+      '<span style="font-size:16px;">🔧</span>'+
       '<span style="font-size:13px;flex:1;font-weight:'+(isDefault?'500':'600')+';">'+t+'</span>'+
-      (isDefault
-        ? '<span style="font-size:10px;color:var(--text3);background:var(--bg2);padding:2px 8px;border-radius:10px;">डिफ़ॉल्ट</span>'
-        : '<div style="display:flex;gap:8px;align-items:center;">' +
-            '<span style="font-size:10px;color:var(--green-gov);background:var(--green-lt);padding:2px 8px;border-radius:10px;">कस्टम</span>' +
-            '<button onclick="renameWorkTypeUI(\''+te+'\')" style="font-size:11px;padding:3px 10px;background:#eff6ff;color:var(--navy);border:1px solid #bfdbfe;border-radius:4px;cursor:pointer;font-family:var(--font-hi);">✏ Edit</button>' +
-            '<button onclick="deleteWorkTypeUI(\''+te+'\')" style="font-size:11px;padding:3px 10px;background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;border-radius:4px;cursor:pointer;font-family:var(--font-hi);">🗑 हटाएं</button>' +
-          '</div>'
-      )+
+      '<div style="display:flex;gap:8px;align-items:center;">' +
+        (isDefault
+          ? '<span style="font-size:10px;color:var(--text3);background:var(--bg2);padding:2px 8px;border-radius:10px;">डिफ़ॉल्ट</span>'
+          : '<span style="font-size:10px;color:var(--green-gov);background:var(--green-lt);padding:2px 8px;border-radius:10px;">कस्टम</span>') +
+        '<button onclick="renameWorkTypeUI(\''+te+'\')" style="font-size:11px;padding:3px 10px;background:#eff6ff;color:var(--navy);border:1px solid #bfdbfe;border-radius:4px;cursor:pointer;font-family:var(--font-hi);">✏ Edit</button>' +
+        '<button onclick="deleteWorkTypeUI(\''+te+'\')" style="font-size:11px;padding:3px 10px;background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;border-radius:4px;cursor:pointer;font-family:var(--font-hi);">🗑 हटाएं</button>' +
+      '</div>'+
     '</div>';
   }).join('');
 }
 
 function renameWorkTypeUI(oldName) {
   var nv = prompt('कार्य प्रकार का नया नाम:\n\nपुराना नाम: '+oldName+'\n\nनया नाम:', oldName);
-  if (!nv || nv.trim() === oldName) return;
+  if (nv === null) return;
   nv = nv.trim();
+  if (!nv || nv === oldName) return;
   var statEl = document.getElementById('wt-status');
-  if (statEl) statEl.innerHTML = '<div class="status-box loading">⏳ Save हो रहा है...</div>';
+  if (statEl) statEl.innerHTML = '<div class="status-box loading">⏳ जाँच हो रही है...</div>';
+  _opStart();
+  // पहले देखें यह प्रकार कितनी योजनाओं में प्रयुक्त है
   google.script.run
-    .withSuccessHandler(function(res){
-      if (res.success) {
-        var idx = (D.workTypes||[]).indexOf(oldName);
-        if (idx >= 0) D.workTypes[idx] = nv;
-        populateWorkTypeDropdown();
-        renderWorkTypesList();
-        if (statEl) statEl.innerHTML = '<div class="status-box success">✅ "'+nv+'" rename हो गया</div>';
-      } else if (statEl) { statEl.innerHTML = '<div class="status-box error">❌ '+res.msg+'</div>'; }
+    .withSuccessHandler(function(use){
+      _opEnd();
+      var n = (use && use.count) || 0;
+      var applyEverywhere = false;
+      if (n > 0) {
+        applyEverywhere = confirm('यह कार्य प्रकार "'+oldName+'" पहले से '+n+' योजना(ओं) में प्रयुक्त है।\n\n[ OK ] = सभी योजनाओं में भी नाम बदलें ("'+nv+'")\n[ Cancel ] = रद्द करें');
+        if (!applyEverywhere) { if (statEl) statEl.innerHTML = ''; return; }
+      }
+      if (statEl) statEl.innerHTML = '<div class="status-box loading">⏳ Save हो रहा है...</div>';
+      _opStart();
+      google.script.run
+        .withSuccessHandler(function(res){
+          _opEnd();
+          if (res.success) {
+            var idx = (D.workTypes||[]).indexOf(oldName);
+            if (idx >= 0) D.workTypes[idx] = nv; else { if(!D.workTypes)D.workTypes=[]; D.workTypes.push(nv); }
+            if (applyEverywhere) (D.plan||[]).forEach(function(p){ if (String(p.Work_Type||'').trim()===oldName) p.Work_Type = nv; });
+            populateWorkTypeDropdown(); renderWorkTypesList();
+            if (document.getElementById('page-annualplan') && document.getElementById('page-annualplan').classList.contains('active')) applyPlanFilter();
+            if (statEl) statEl.innerHTML = '<div class="status-box success">✅ "'+nv+'" rename हो गया'+(res.planUpdated?(' — '+res.planUpdated+' योजनाओं में भी'):'')+'</div>';
+          } else if (statEl) { statEl.innerHTML = '<div class="status-box error">❌ '+res.msg+'</div>'; }
+        })
+        .withFailureHandler(function(err){ _opEnd(); if (statEl) statEl.innerHTML = '<div class="status-box error">❌ '+(err.message||err)+'</div>'; })
+        .renameWorkType(oldName, nv, applyEverywhere);
     })
-    .withFailureHandler(function(err){ if (statEl) statEl.innerHTML = '<div class="status-box error">❌ '+(err.message||err)+'</div>'; })
-    .renameWorkType(oldName, nv);
+    .withFailureHandler(function(err){ _opEnd(); if (statEl) statEl.innerHTML = '<div class="status-box error">❌ '+(err.message||err)+'</div>'; })
+    .getWorkTypeUsage(oldName);
 }
 
 function deleteWorkTypeUI(name) {
-  if (!confirm('"'+name+'" कार्य प्रकार हटाएं?\n\nइस प्रकार से जुड़े मौजूदा कार्य प्रभावित नहीं होंगे।')) return;
   var statEl = document.getElementById('wt-status');
-  if (statEl) statEl.innerHTML = '<div class="status-box loading">⏳ हटाया जा रहा है...</div>';
+  if (statEl) statEl.innerHTML = '<div class="status-box loading">⏳ जाँच हो रही है...</div>';
+  _opStart();
   google.script.run
-    .withSuccessHandler(function(res){
-      if (res.success) {
-        D.workTypes = (D.workTypes||[]).filter(function(t){ return t !== name; });
-        populateWorkTypeDropdown();
-        renderWorkTypesList();
-        if (statEl) statEl.innerHTML = '<div class="status-box success">✅ हटा दिया गया</div>';
-      } else if (statEl) { statEl.innerHTML = '<div class="status-box error">❌ '+res.msg+'</div>'; }
+    .withSuccessHandler(function(use){
+      _opEnd();
+      var n = (use && use.count) || 0;
+      if (n > 0) {
+        if (statEl) statEl.innerHTML = '<div class="status-box error">⚠ "'+name+'" '+n+' योजना(ओं) में प्रयुक्त है — पहले उन योजनाओं से इसे हटाएँ या बदलें, तभी यह हट सकेगा।</div>';
+        alert('"'+name+'" अभी '+n+' योजना(ओं) में प्रयुक्त है।\nपहले वहाँ से हटाएँ/बदलें, फिर यह प्रकार हट सकेगा।');
+        return;
+      }
+      if (!confirm('"'+name+'" कार्य प्रकार हटाएं?')) { if (statEl) statEl.innerHTML=''; return; }
+      if (statEl) statEl.innerHTML = '<div class="status-box loading">⏳ हटाया जा रहा है...</div>';
+      _opStart();
+      google.script.run
+        .withSuccessHandler(function(res){
+          _opEnd();
+          if (res.success) {
+            D.workTypes = (D.workTypes||[]).filter(function(t){ return t !== name; });
+            populateWorkTypeDropdown(); renderWorkTypesList();
+            if (statEl) statEl.innerHTML = '<div class="status-box success">✅ हटा दिया गया</div>';
+          } else if (statEl) { statEl.innerHTML = '<div class="status-box error">❌ '+((res.msg)||'')+'</div>'; }
+        })
+        .withFailureHandler(function(err){ _opEnd(); if (statEl) statEl.innerHTML = '<div class="status-box error">❌ '+(err.message||err)+'</div>'; })
+        .deleteWorkType(name);
     })
-    .withFailureHandler(function(err){ if (statEl) statEl.innerHTML = '<div class="status-box error">❌ '+(err.message||err)+'</div>'; })
-    .deleteWorkType(name);
+    .withFailureHandler(function(err){ _opEnd(); if (statEl) statEl.innerHTML = '<div class="status-box error">❌ '+(err.message||err)+'</div>'; })
+    .getWorkTypeUsage(name);
 }
 
 function addNewWorkType() {
@@ -6004,16 +6313,68 @@ function isInMaintenance(rid){
   var today=new Date(); today.setHours(0,0,0,0);
   return end>=today.getTime();
 }
+// किसी एक टुकड़े (section) का अपना DLP-in? — इसकी आखिरी कार्य माह/वर्ष + अनुरक्षण अवधि
+function _sectionInDlp(s, maintYears){
+  var yr=String(s.Last_Work_Year||'').trim();
+  if(!yr || yr.toLowerCase()==='running') return false;   // चालू/खाली → DLP में नहीं
+  var y=parseInt(yr,10); if(!y) return false;
+  var mo=parseInt(String(s.Last_Work_Month||'').trim(),10); if(!mo||mo<1||mo>12) mo=1;
+  var end=new Date(y+(maintYears||2), mo-1, 1);
+  var today=new Date(); today.setHours(0,0,0,0);
+  return end.getTime()>=today.getTime();
+}
+// सड़क का DLP-वर्गीकरण — {inDlp, free, total, cls: 'full'|'partial'|'free'}
+// टुकड़े (owned, गैर-assigned) के आधार पर; टुकड़े न हों तो road-स्तर isInMaintenance से
+function getRoadDlpStatus(rid){
+  var my=getRoadMaintenanceYears(rid);
+  var secs=(D.sections||[]).filter(function(s){return s.Road_ID===rid && !String(s.Assigned_To||'').trim();});
+  if(!secs.length){
+    var inm=isInMaintenance(rid);
+    return { inDlp: inm?1:0, free: inm?0:1, total:1, cls: inm?'full':'free' };
+  }
+  var inDlp=0, free=0;
+  secs.forEach(function(s){ if(_sectionInDlp(s,my)) inDlp++; else free++; });
+  var cls = (inDlp===0) ? 'free' : (free===0 ? 'full' : 'partial');
+  return { inDlp:inDlp, free:free, total:secs.length, cls:cls };
+}
+
+// सड़क का Remark — नाम के नीचे छोटे ऑरेंज अक्षरों में; बड़ा हो तो Read More
+function _rmkEsc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function _roadRemarkHtml(r){
+  var rem = String(r.Remark||'').replace(/\[Dump:[\s\S]*?\]/g,'').trim();  // Dump-आंतरिक टेक्स्ट छोड़ें
+  if(!rem) return '';
+  var rid = String(r.Road_ID||'').replace(/[^a-z0-9]/gi,'_');
+  var LIMIT = 55;
+  var st = 'font-size:10px;color:#ea580c;line-height:1.35;margin-top:2px;';
+  if(rem.length <= LIMIT) return '<div style="'+st+'">📝 '+_rmkEsc(rem)+'</div>';
+  return '<div style="'+st+'">'+
+    '<span id="rmk-s-'+rid+'">📝 '+_rmkEsc(rem.slice(0,LIMIT))+'… <a href="javascript:void(0)" onclick="_roadRmkToggle(\''+rid+'\',1)" style="color:#c2410c;font-weight:700;">Read More</a></span>'+
+    '<span id="rmk-f-'+rid+'" style="display:none;">📝 '+_rmkEsc(rem)+' <a href="javascript:void(0)" onclick="_roadRmkToggle(\''+rid+'\',0)" style="color:#c2410c;font-weight:700;">कम देखें</a></span>'+
+  '</div>';
+}
+function _roadRmkToggle(rid, showFull){
+  var s=document.getElementById('rmk-s-'+rid), f=document.getElementById('rmk-f-'+rid);
+  if(s) s.style.display = showFull ? 'none' : '';
+  if(f) f.style.display = showFull ? '' : 'none';
+}
 
 function getRoadLength(road){
-  // Road Master में Total_Length_KM पहले check करें
+  // Sections से — अपने पास (गैर-assigned) की लंबाई; कोई टुकड़ा किसी और के पास हो तो नीचे लाल में "कुल"
+  var secs=D.sections.filter(function(s){return s.Road_ID===road.Road_ID;});
+  if(secs.length){
+    var total=secs.reduce(function(sum,s){return sum+(parseFloat(s.Length_KM)||0);},0);
+    var owned=secs.reduce(function(sum,s){return sum+((String(s.Assigned_To||'').trim())?0:(parseFloat(s.Length_KM)||0));},0);
+    if(total>0){
+      if(owned < total-0.0001){
+        return owned.toFixed(2)+' KM<div style="font-size:9px;color:#dc2626;font-weight:700;line-height:1.2;margin-top:1px;">कुल: '+total.toFixed(2)+' KM</div>';
+      }
+      return total.toFixed(2)+' KM';
+    }
+  }
+  // Sections नहीं — Road Master का Total_Length_KM
   var master=parseFloat(road.Total_Length_KM)||0;
   if(master>0) return master.toFixed(2)+' KM';
-  // नहीं मिला तो Sections से जोड़ें
-  var secs=D.sections.filter(function(s){return s.Road_ID===road.Road_ID;});
-  if(!secs.length) return '—';
-  var total=secs.reduce(function(sum,s){return sum+(parseFloat(s.Length_KM)||0);},0);
-  return total>0?total.toFixed(2)+' KM':'—';
+  return '—';
 }
 
 // औसत चौड़ाई — Chainage Detail की प्रत्येक section की चौड़ाई का लंबाई-भारित औसत
@@ -6153,19 +6514,51 @@ function applyRoadFilter(){
     if ((r.Status || 'Active') === 'Dumped') return false;
     if(s&&!(r.Road_Name||'').toLowerCase().includes(s)&&!(r.Road_ID||'').toLowerCase().includes(s))return false;
     var lw=getLastWork(r.Road_ID);
-    if(yr&&lw.y!==yr)return false;
-    if(mo&&lw.m!==mo)return false;
+    var dmode = (document.getElementById('r-datemode')||{}).value || '';
+    if(yr || mo){
+      if(!dmode){
+        // इसी माह/वर्ष (exact)
+        if(yr && lw.y!==yr) return false;
+        if(mo && lw.m!==mo) return false;
+      } else if(yr){
+        // इसके बाद / इसके पहले — आखिरी कार्य की तुलना चुने माह/वर्ष से
+        var _rY=parseInt(lw.y,10)||0, _rM=parseInt(lw.m,10)||0;
+        if(!_rY) return false;   // आखिरी कार्य दिनांक नहीं → तुलना में बाहर
+        var _sY=parseInt(yr,10)||0, _sM=parseInt(mo,10)||0;
+        var _rv=_rY*12+(mo?_rM:0), _sv=_sY*12+(mo?_sM:0);
+        if(dmode==='after'  && !(_rv >  _sv)) return false;
+        if(dmode==='before' && !(_rv <  _sv)) return false;
+      }
+    }
     if(ty&&r.Road_Type!==ty)return false;
-    if(dlp==='active'&&!isInMaintenance(r.Road_ID))return false;
+    var assoc=(document.getElementById('r-assoc')||{}).value||'';
+    if(assoc){
+      var inPlan=(D.plan||[]).some(function(p){ return p.Road_ID===r.Road_ID && (p.Status||'')!=='Dropped' && !isPlanYearExpired(p.Year||''); });
+      var inProj=(D.projRoads||[]).some(function(pr){ return pr.Road_ID===r.Road_ID; });
+      if(assoc==='plan'    && !inPlan) return false;
+      if(assoc==='project' && !inProj) return false;
+      if(assoc==='none'    && (inPlan||inProj)) return false;
+    }
+    if(dlp){
+      var _ds=getRoadDlpStatus(r.Road_ID);
+      if(dlp==='active'  && _ds.inDlp===0)         return false;   // DLP में (पूर्ण/आंशिक)
+      if(dlp==='free'    && _ds.inDlp>0)           return false;   // बिल्कुल मुक्त
+      if(dlp==='partial' && _ds.cls!=='partial')   return false;   // आंशिक ही
+    }
     return true;
   });
   document.getElementById('r-count').textContent=list.length+' सड़कें';
+  _ROAD_FILTERED = list;   // 🖨️ प्रिंट के लिए वर्तमान फ़िल्टर की सूची
   var tb=document.getElementById('roads-tbody');
   var rtClass = {'शाहरी मार्ग':'rt-urban','ग्रामीण मार्ग':'rt-rural','राज्य मार्ग':'rt-state','राष्ट्रीय मार्ग':'rt-national'}; // custom types get no class
 
   tb.innerHTML=list.length?list.map(function(r,i){
     var lw  = getLastWork(r.Road_ID);
-    var lwText = lw.d ? fmtDate(lw.d) : ((lw.m!=='—' ? lw.m+'/' : '') + lw.y);
+    // आखिरी कार्य दिनांक हमेशा mm/yyyy में (dd/mm/yyyy फीड हो तब भी केवल माह/वर्ष)
+    var lwText;
+    var _lwTs = lw.d ? _parseDMY(lw.d) : 0;
+    if (_lwTs) { var _lwD = new Date(_lwTs); lwText = ('0'+(_lwD.getMonth()+1)).slice(-2) + '/' + _lwD.getFullYear(); }
+    else { var _mm = (lw.m && lw.m!=='—') ? ('0'+parseInt(lw.m,10)).slice(-2) : ''; lwText = (_mm ? _mm+'/' : '') + lw.y; }
     var lwHtml = lwText;
     var maintEndTs = getMaintenanceEndTs(r.Road_ID);
     if (maintEndTs) {
@@ -6196,7 +6589,7 @@ function applyRoadFilter(){
     return '<tr class="'+(isDumped?'road-dumped':'')+'">' +
       '<td style="text-align:center;color:var(--text3);font-size:12px;">'+(i+1)+'</td>'+
       '<td style="font-family:var(--font-en);font-size:12px;color:var(--text3);letter-spacing:.02em;">'+(r.Road_ID||'')+(isDumped?'<span class="dump-label">Dump</span>':'')+_shareRemark(r)+'</td>'+
-      '<td style="font-weight:500;"><span class="link-cell" onclick="openRoadModal(\''+rid_e+'\')">'+r.Road_Name+'</span></td>'+
+      '<td style="font-weight:500;"><span class="link-cell" onclick="openRoadModal(\''+rid_e+'\')">'+r.Road_Name+'</span>'+_roadRemarkHtml(r)+'</td>'+
       '<td><span class="'+tc+'">'+(r.Road_Type||'')+'</span></td>'+
       '<td style="color:var(--text3);">'+(r.Srishti_Code||'')+'</td>'+
       '<td>'+getRoadVS(r.Road_ID)+'</td>'+
@@ -6209,23 +6602,193 @@ function applyRoadFilter(){
   }).join(''):nodata(11,'कोई सड़क नहीं मिली');
 }
 function clearRoadFilter(){
-  ['r-search','r-year','r-month','r-type','r-dlp'].forEach(function(id){document.getElementById(id).value='';});
+  ['r-search','r-year','r-month','r-type','r-dlp','r-datemode','r-assoc'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
   applyRoadFilter();
+}
+
+// ══ 🖨️ प्रिंट (A4) — वर्तमान फ़िल्टर की सड़क सूची / वार्षिक कार्ययोजना ══
+var _ROAD_FILTERED=[], _PLAN_FILTERED=null;
+function _htmlEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+// प्रिंट हेतु सादा (टैग-रहित) लंबाई
+function _plainLen(road){ return String(getRoadLength(road)||'—').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim(); }
+// आखिरी कार्य mm/yyyy (सूची जैसा)
+function _lastWorkMY(rid){
+  var lw=getLastWork(rid);
+  var ts=lw.d?_parseDMY(lw.d):0;
+  if(ts){var d=new Date(ts);return ('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear();}
+  var mm=(lw.m&&lw.m!=='—')?('0'+parseInt(lw.m,10)).slice(-2):'';
+  return (mm?mm+'/':'')+(lw.y||'');
+}
+// सड़क की स्थिति — सादा टेक्स्ट (योजना/प्रोजेक्ट/DLP)
+function _roadStatusText(rid){
+  var out=[];
+  var pes=(D.plan||[]).filter(function(p){return p.Road_ID===rid&&(p.Status||'')!=='Dropped'&&!isPlanYearExpired(p.Year||'');});
+  if(pes.length){
+    var wts=[]; pes.forEach(function(p){var w=p.Work_Type||'';if(w&&wts.indexOf(w)<0)wts.push(w);});
+    out.push('योजना: '+(wts.join(', ')||'—'));
+  }
+  var inProj=(D.projRoads||[]).some(function(pr){return pr.Road_ID===rid;});
+  if(inProj) out.push('प्रोजेक्ट में');
+  var ds=getRoadDlpStatus(rid);
+  if(ds&&ds.cls==='full') out.push('DLP में');
+  else if(ds&&ds.cls==='partial') out.push('आंशिक DLP');
+  return out.length?out.join(' · '):'—';
+}
+// फ़िल्टर सारांश (हेडर में दिखाने हेतु) — केवल भरे हुए फ़िल्टर
+function _roadFilterSummary(){
+  var p=[]; var g=function(id){var e=document.getElementById(id);return e?e.value:'';};
+  var _t=function(sel){var e=document.getElementById(sel);if(!e)return'';var o=e.options[e.selectedIndex];return o?o.textContent.trim():'';};
+  if(g('r-search')) p.push('खोज: "'+g('r-search')+'"');
+  if(g('r-year')||g('r-month')){ p.push('आखिरी कार्य: '+(_t('r-month')!=='माह'?_t('r-month')+' ':'')+g('r-year')+(g('r-datemode')?' ('+_t('r-datemode')+')':'')); }
+  if(g('r-type')) p.push('श्रेणी: '+g('r-type'));
+  if(g('r-assoc')) p.push(_t('r-assoc'));
+  if(g('r-dlp')) p.push(_t('r-dlp'));
+  return p.join('  |  ');
+}
+// A4 प्रिंट — नया window नहीं; एक छिपे iframe में render कर सीधे यही प्रिंट डायलॉग खोलें
+function _openPrintWindow(title, subtitle, tableHtml, landscape){
+  var when=new Date().toLocaleString('en-IN',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  var doc='<!doctype html><html lang="hi"><head><meta charset="utf-8"><title>'+_htmlEsc(title)+'</title>'+
+    '<style>'+
+    '@page{size:A4'+(landscape?' landscape':'')+';margin:'+(landscape?'8mm':'12mm 10mm')+';}'+
+    '*{box-sizing:border-box;}'+
+    'body{font-family:"Noto Sans","Nirmala UI","Segoe UI",Arial,sans-serif;color:#111;margin:0;font-size:11px;line-height:1.35;}'+
+    '.ph{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #1a3a5c;padding-bottom:6px;margin-bottom:8px;}'+
+    '.ph h1{font-size:16px;margin:0;color:#1a3a5c;}'+
+    '.ph .sub{font-size:10px;color:#444;margin-top:2px;}'+
+    '.ph .when{font-size:9px;color:#666;text-align:right;white-space:nowrap;}'+
+    '.fsum{font-size:10px;color:#333;background:#f1f5f9;border:1px solid #dbe3ec;border-radius:4px;padding:4px 8px;margin-bottom:8px;}'+
+    'table{width:100%;border-collapse:collapse;margin-bottom:10px;}'+
+    'th,td{border:1px solid #b8c2cc;padding:3px 5px;text-align:left;vertical-align:top;}'+
+    'thead th{background:#1a3a5c;color:#fff;font-size:10px;font-weight:700;}'+
+    'tbody tr:nth-child(even){background:#f6f8fa;}'+
+    'td.c,th.c{text-align:center;}td.r,th.r{text-align:right;}'+
+    '.grp{font-size:12px;font-weight:700;color:#1a3a5c;background:#e8eef5;border:1px solid #cdd8e4;border-radius:4px;padding:4px 8px;margin:10px 0 4px;}'+
+    '.en{font-family:"Segoe UI",Arial,sans-serif;}'+
+    '.foot{margin-top:6px;font-size:9px;color:#777;text-align:center;border-top:1px solid #ddd;padding-top:4px;}'+
+    'tr{page-break-inside:avoid;}'+
+    '@media print{.noprint{display:none;}}'+
+    '</style></head><body>'+
+    '<div class="ph"><div><h1>'+_htmlEsc(title)+'</h1>'+(subtitle?'<div class="sub">'+_htmlEsc(subtitle)+'</div>':'')+'</div>'+
+    '<div class="when">मुद्रण: '+_htmlEsc(when)+'</div></div>'+
+    tableHtml+
+    '<div class="foot">सड़क परियोजना प्रबंधन प्रणाली</div>'+
+    '</body></html>';
+  // पुराना print-iframe हटाओ, नया छिपा iframe बनाओ
+  var old=document.getElementById('_printFrame'); if(old&&old.parentNode) old.parentNode.removeChild(old);
+  var fr=document.createElement('iframe');
+  fr.id='_printFrame';
+  fr.setAttribute('aria-hidden','true');
+  fr.style.cssText='position:fixed;left:-10000px;top:0;width:794px;height:1123px;border:0;';
+  document.body.appendChild(fr);
+  var d=fr.contentWindow.document;
+  d.open(); d.write(doc); d.close();
+  var done=false;
+  var doPrint=function(){
+    if(done) return; done=true;
+    try{
+      var cw=fr.contentWindow;
+      cw.focus();
+      cw.onafterprint=function(){ try{ if(fr.parentNode) fr.parentNode.removeChild(fr); }catch(e){} };
+      cw.print();
+      // fallback cleanup (कुछ ब्राउज़र onafterprint नहीं देते)
+      setTimeout(function(){ try{ if(fr.parentNode) fr.parentNode.removeChild(fr); }catch(e){} }, 60000);
+    }catch(e){ try{ if(fr.parentNode) fr.parentNode.removeChild(fr); }catch(_){} }
+  };
+  fr.onload=function(){ setTimeout(doPrint,250); };
+  // document.write के बाद onload भरोसेमंद न हो — सीधे भी try करो
+  setTimeout(doPrint,450);
+}
+function printRoadList(){
+  var list=_ROAD_FILTERED||[];
+  if(!list.length){ alert('प्रिंट के लिए कोई सड़क नहीं — पहले फ़िल्टर लगाएँ या Clear करें।'); return; }
+  var rows=list.map(function(r,i){
+    return '<tr>'+
+      '<td class="c">'+(i+1)+'</td>'+
+      '<td class="en c">'+_htmlEsc(r.Road_ID||'')+'</td>'+
+      '<td>'+_htmlEsc(r.Road_Name||'')+'</td>'+
+      '<td>'+_htmlEsc(r.Road_Type||'')+'</td>'+
+      '<td>'+_htmlEsc(getRoadVS(r.Road_ID)||'')+'</td>'+
+      '<td class="en r">'+_htmlEsc(_plainLen(r))+'</td>'+
+      '<td class="en c">'+_htmlEsc(getRoadWidth(r.Road_ID)||'—')+'</td>'+
+      '<td class="en c">'+_htmlEsc(_lastWorkMY(r.Road_ID)||'—')+'</td>'+
+      '<td>'+_htmlEsc(_roadStatusText(r.Road_ID))+'</td>'+
+    '</tr>';
+  }).join('');
+  var tbl='<table><thead><tr>'+
+    '<th class="c" style="width:26px;">क्र.</th>'+
+    '<th class="c" style="width:52px;">Road ID</th>'+
+    '<th>मार्ग का नाम</th>'+
+    '<th style="width:80px;">श्रेणी</th>'+
+    '<th style="width:80px;">विधानसभा</th>'+
+    '<th class="r" style="width:64px;">लंबाई</th>'+
+    '<th class="c" style="width:52px;">चौड़ाई</th>'+
+    '<th class="c" style="width:56px;">आखिरी कार्य</th>'+
+    '<th style="width:150px;">स्थिति</th>'+
+    '</tr></thead><tbody>'+rows+'</tbody></table>';
+  var fs=_roadFilterSummary();
+  _openPrintWindow('सड़क सूची', 'कुल '+list.length+' मार्ग', (fs?'<div class="fsum">🔎 फ़िल्टर: '+_htmlEsc(fs)+'</div>':'')+tbl);
+}
+function printAnnualPlan(){
+  var pf=_PLAN_FILTERED;
+  if(!pf||!pf.groups||!pf.groups.length){ alert('प्रिंट के लिए कोई कार्य नहीं — पहले फ़िल्टर देखें।'); return; }
+  var body='';
+  var shownWt=pf.selWt? (function(){var e=document.getElementById('ap-wt');var o=e&&e.options[e.selectedIndex];return o?o.textContent.trim():pf.selWt;})() : 'सभी योजनाएँ';
+  pf.groups.forEach(function(g){
+    var rows=g.entries.map(function(p){
+      var _r=(D.roads||[]).find(function(r){return r.Road_ID===p.Road_ID;})||{};
+      var road=p.Road_Name||_r.Road_Name||p.Road_ID||'—';
+      var work=p.Proposed_Work||'—';
+      var sec=p.Section_KM||'';
+      var cost=parseFloat(p.Estimated_Cost||0)||0;
+      var sta=p.Status||'Proposed';
+      var staHi={'Proposed':'प्रस्तावित','Sanctioned':'स्वीकृत','Dropped':'निरस्त'}[sta]||sta;
+      var estHi=((p.Estimate_Status||'Pending')==='Submitted')?'Submitted':'Pending';
+      return '<tr>'+
+        '<td class="c">'+_htmlEsc(p.Priority||'—')+'</td>'+
+        '<td>'+_htmlEsc(road)+'</td>'+
+        '<td>'+_htmlEsc(_r.Road_Type||'—')+'</td>'+
+        '<td class="en c">'+_htmlEsc(p.Road_ID||'—')+'</td>'+
+        '<td>'+_htmlEsc(_r.Srishti_Code||'—')+'</td>'+
+        '<td>'+_htmlEsc(work)+(sec?' <span class="en" style="color:#0284c7;">('+_htmlEsc(sec)+')</span>':'')+'</td>'+
+        '<td class="en r">'+(cost?(cost/100000).toFixed(2):'—')+'</td>'+
+        '<td class="c">'+_htmlEsc(estHi)+'</td>'+
+        '<td class="c">'+_htmlEsc(staHi)+'</td>'+
+      '</tr>';
+    }).join('');
+    var subTot=g.entries.reduce(function(s,p){return s+(parseFloat(p.Estimated_Cost||0)||0);},0);
+    body+='<div class="grp">🔧 '+_htmlEsc(g.name)+' — '+g.entries.length+' कार्य'+(subTot?'  ·  अनु. लागत ₹'+(subTot/100000).toFixed(2)+' लाख':'')+'</div>';
+    body+='<table><thead><tr>'+
+      '<th class="c" style="width:30px;">वरी.</th>'+
+      '<th style="width:16%;">सड़क / कार्य</th>'+
+      '<th style="width:78px;">श्रेणी</th>'+
+      '<th class="c" style="width:52px;">Road ID</th>'+
+      '<th style="width:74px;">सृष्टि कोड</th>'+
+      '<th>प्रस्तावित कार्य विवरण</th>'+
+      '<th class="r" style="width:64px;">लागत (लाख)</th>'+
+      '<th class="c" style="width:64px;">आगणन</th>'+
+      '<th class="c" style="width:56px;">स्थिति</th>'+
+      '</tr></thead><tbody>'+rows+'</tbody></table>';
+  });
+  var grand=0; pf.groups.forEach(function(g){g.entries.forEach(function(p){grand+=(parseFloat(p.Estimated_Cost||0)||0);});});
+  var sub='वित्त वर्ष '+pf.year+'  ·  योजना: '+shownWt+'  ·  कुल '+pf.total+' कार्य  ·  कुल अनु. लागत ₹'+(grand/100000).toFixed(2)+' लाख';
+  _openPrintWindow('वार्षिक कार्ययोजना', sub, body);
 }
 
 // ── Dump Roads Page ───────────────────────────────────────────
 function renderDumpRoads() {
   var list = D.roads.filter(function(r){ return r.Status === 'Dumped'; });
+  var assigned = (D.sections||[]).filter(function(s){ return String(s.Assigned_To||'').trim(); });
   var el   = document.getElementById('dump-road-count');
-  if (el) el.textContent = list.length + ' Dumped सड़कें';
+  if (el) el.textContent = list.length + ' Dumped सड़कें' + (assigned.length ? ' · ' + assigned.length + ' टुकड़े अन्यत्र' : '');
   var tb = document.getElementById('dump-roads-tbody');
   if (!tb) return;
   var rtClass = {'शाहरी मार्ग':'rt-urban','ग्रामीण मार्ग':'rt-rural','राज्य मार्ग':'rt-state','राष्ट्रीय मार्ग':'rt-national'}; // custom types get no class
-  tb.innerHTML = list.length ? list.map(function(r, i) {
+  // (क) पूरी तरह Dumped सड़कें
+  var roadsHtml = list.map(function(r, i) {
     var rid_e   = (r.Road_ID||'').replace(/'/g,"\\'");
     var rname_e = (r.Road_Name||'').replace(/'/g,"\\'");
     var tc      = rtClass[r.Road_Type] || '';
-    // Dump reason from Remark (text inside [Dump: ... ])
     var rem    = r.Remark || '';
     var dumpMatch = rem.match(/\[Dump:\s*(.*?)\s*—\s*[\d/]+\]/);
     var dumpReason = dumpMatch ? dumpMatch[1] : (rem || '—');
@@ -6243,7 +6806,25 @@ function renderDumpRoads() {
         '</div>' +
       '</td>' +
     '</tr>';
-  }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:32px;">✅ कोई Dumped सड़क नहीं है</td></tr>';
+  }).join('');
+  // (ख) किसी दूसरे विभाग/अभियंता को दिए गए मार्ग के टुकड़े (केवल वही भाग)
+  var piecesHtml = assigned.map(function(s, i) {
+    var road = (D.roads||[]).find(function(r){ return r.Road_ID===s.Road_ID; }) || {};
+    var tc   = rtClass[road.Road_Type] || '';
+    var se   = (s.Section_ID||'').replace(/'/g,"\\'");
+    var piece = (s.KM_Number ? s.KM_Number+' · ' : '') + _fmt3(s.Chainage_From||'') + '–' + _fmt3(s.Chainage_To||'') + ' (' + _fmt2(s.Length_KM||'') + ' KM)';
+    return '<tr style="background:#fff7ed;">' +
+      '<td style="text-align:center;color:var(--text3);font-size:11px;">'+(list.length+i+1)+'</td>' +
+      '<td style="font-family:var(--font-en);font-size:11px;color:var(--text3);">'+(s.Road_ID||'')+'</td>' +
+      '<td style="font-weight:500;color:#7c2d12;">'+(road.Road_Name||s.Road_ID||'')+' <span style="font-size:10px;background:#fed7aa;color:#9a3412;border-radius:4px;padding:1px 6px;white-space:nowrap;">टुकड़ा: '+piece+'</span></td>' +
+      '<td><span class="'+tc+'" style="font-size:11px;">'+(road.Road_Type||'')+'</span></td>' +
+      '<td style="font-size:12px;">'+(s.Vidhansabha||getRoadVS(s.Road_ID))+'</td>' +
+      '<td style="font-size:12px;color:var(--text2);">→ <b>'+(s.Assigned_To||'')+'</b>'+(s.Assign_Remark?'<div style="font-size:11px;color:var(--text3);">'+s.Assign_Remark+'</div>':'')+'</td>' +
+      '<td style="text-align:center;white-space:nowrap;"><button class="act-btn restore" title="वापस अपने पास लें" onclick="unassignSecConfirm(\''+se+'\')" style="width:auto;padding:3px 10px;font-size:11px;">↩ वापस लें</button></td>' +
+    '</tr>';
+  }).join('');
+  var allHtml = roadsHtml + piecesHtml;
+  tb.innerHTML = allHtml ? allHtml : '<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:32px;">✅ कोई Dumped सड़क/टुकड़ा नहीं है</td></tr>';
 }
 
 // बीते वित्त वर्ष (31 मार्च के बाद) की कार्ययोजना — केवल देखने के लिए, अब बदला नहीं जा सकता (वार्षिक कार्य योजना पेज की "पुरानी कार्य योजना" tab में दिखती है)
@@ -8609,11 +9190,18 @@ function switchPlanTab(tab){
 function applyPlanFilter(){
   var yr=document.getElementById('ap-year').value;
   var st=document.getElementById('ap-st').value;
+  var ty=(document.getElementById('ap-type')||{}).value||'';
+  var est=(document.getElementById('ap-est')||{}).value||'';
   var allEntries=(D.plan||[]).filter(function(p){
     var y=p.Year||p['Financial\nYear']||'';
     if(isPlanYearExpired(y))return false;
     if(yr&&y!==yr)return false;
     if(st&&(p.Status||p['Status\n(स्थिति)']||'')!==st)return false;
+    if(est&&((p.Estimate_Status||'Pending'))!==est)return false;
+    if(ty){
+      var _r=(D.roads||[]).find(function(r){return r.Road_ID===p.Road_ID;});
+      if(!_r||_r.Road_Type!==ty)return false;   // नव निर्माण/अन्य (सड़क-रहित) श्रेणी-फ़िल्टर में बाहर
+    }
     return true;
   });
   // Get work types from settings
@@ -8632,22 +9220,63 @@ function applyPlanFilter(){
     el.innerHTML='<div style="text-align:center;color:var(--text3);padding:40px;">इस वित्त वर्ष में कोई कार्य नहीं — ऊपर "+ कार्य जोड़ें" से शुरू करें</div>';
     return;
   }
+  // ── प्रत्येक योजना (कार्य प्रकार) में कितने काम — गिनती ──
+  var counts={}, orphanCount=0;
+  allEntries.forEach(function(p){
+    var t=p.Work_Type||'';
+    if(t && workTypes.indexOf(t)>=0) counts[t]=(counts[t]||0)+1;
+    else orphanCount++;
+  });
+  // ── ऊपर "योजना" dropdown भरो (चयन बनाए रखते हुए) ──
+  var wtSel=document.getElementById('ap-wt');
+  var selWt = wtSel ? wtSel.value : '';
+  if(wtSel){
+    var opts='<option value="">— सभी योजनाएँ —</option>';
+    workTypes.forEach(function(t){ if(counts[t]) opts+='<option value="'+t.replace(/"/g,'&quot;')+'">'+t+' ('+counts[t]+')</option>'; });
+    if(orphanCount) opts+='<option value="__orphan__">अन्य / अज्ञात ('+orphanCount+')</option>';
+    wtSel.innerHTML=opts;
+    // चयन मान्य न हो तो सभी
+    var valid=false; for(var oi=0;oi<wtSel.options.length;oi++){ if(wtSel.options[oi].value===selWt){valid=true;break;} }
+    wtSel.value = valid ? selWt : '';
+    selWt = wtSel.value;
+  }
+  // ── Summary बार (हर योजना का chip — क्लिक करके focus) ──
+  var totalCnt=allEntries.length;
+  var chip=function(val,label,cnt,active){
+    var ve=String(val).replace(/'/g,"\\'");
+    return '<button onclick="selectPlanWt(\''+ve+'\')" style="border:1px solid '+(active?'var(--navy)':'var(--border)')+';background:'+(active?'var(--navy)':'#fff')+';color:'+(active?'#fff':'var(--text)')+';border-radius:999px;padding:5px 12px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;">'+label+' <b>'+cnt+'</b></button>';
+  };
+  var sHtml='<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:16px;box-shadow:0 2px 8px rgba(0,0,0,.04);">'+
+    '<div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:8px;">📊 योजना सारांश ('+(yr||getCurrentFY())+') — कुल '+totalCnt+' कार्य</div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+ chip('','सभी',totalCnt,!selWt);
+  workTypes.forEach(function(t){ if(counts[t]) sHtml+=chip(t,t,counts[t],selWt===t); });
+  if(orphanCount) sHtml+=chip('__orphan__','अन्य/अज्ञात',orphanCount,selWt==='__orphan__');
+  sHtml+='</div></div>';
+
+  // ── केवल चयनित योजना (या सभी) के section दिखाओ ──
   var html='';
   var seen=[];
+  var _printGroups=[];   // 🖨️ प्रिंट के लिए दिख रहे समूह
   workTypes.forEach(function(wtName){
     var entries=allEntries.filter(function(p){return (p.Work_Type||'')===wtName;});
-    entries.forEach(function(p){ if(seen.indexOf(p)<0) seen.push(p); });
+    entries.forEach(function(p){ if(seen.indexOf(p)<0) seen.push(p); });   // seen tracking हमेशा
+    var show = (!selWt) ? true : (selWt===wtName);   // सभी→सब; विशिष्ट→मेल; __orphan__→कोई नहीं
+    if(!show) return;
+    if(selWt && !entries.length) return;             // focused view में खाली न दिखाएँ
     entries.sort(function(a,b){return (parseInt(a.Priority)||9999)-(parseInt(b.Priority)||9999);});
     html+=_renderPlanSection(wtName,entries,yr||getCurrentFY());
+    _printGroups.push({name:wtName,entries:entries.slice()});
   });
-  // किसी भी Work_Type से मेल न खाने वाली entries (खाली/अमान्य Work_Type) — फिर भी दिखाएं ताकि कोई काम छुप न जाए
   var orphans=allEntries.filter(function(p){ return seen.indexOf(p)<0; });
-  if(orphans.length){
+  if(orphans.length && (!selWt || selWt==='__orphan__')){
     orphans.sort(function(a,b){return (parseInt(a.Priority)||9999)-(parseInt(b.Priority)||9999);});
     html+=_renderPlanSection('अन्य / अज्ञात कार्य प्रकार',orphans,yr||getCurrentFY());
+    _printGroups.push({name:'अन्य / अज्ञात कार्य प्रकार',entries:orphans.slice()});
   }
-  el.innerHTML=html||'<div style="text-align:center;color:var(--text3);padding:40px;">कोई कार्य नहीं मिला</div>';
+  _PLAN_FILTERED = { groups:_printGroups, year:(yr||getCurrentFY()), total:totalCnt, selWt:selWt };
+  el.innerHTML = sHtml + (html||'<div style="text-align:center;color:var(--text3);padding:30px;">इस योजना में कोई कार्य नहीं</div>');
 }
+function selectPlanWt(val){ var s=document.getElementById('ap-wt'); if(s){ s.value=val; } applyPlanFilter(); }
 
 function _renderPlanSection(wtName,entries,yr){
   var _TD='padding:9px 11px;border-bottom:1px solid #f0f0f0;font-size:13px;vertical-align:middle;';
@@ -8665,12 +9294,26 @@ function _renderPlanSection(wtName,entries,yr){
     h+='<div style="padding:20px;text-align:center;color:var(--text3);font-size:13px;">इस प्रकार में कोई कार्य नहीं — "+ कार्य जोड़ें" से जोड़ें</div></div>';
     return h;
   }
-  h+='<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;min-width:900px;">';
+  h+='<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;min-width:1360px;table-layout:fixed;">';
   h+='<thead><tr style="background:#f1f5f9;">';
-  ['वरी.','सड़क / कार्य विवरण','अनु. लागत (लाख)','📷 फोटो','📋 निरीक्षण नोट','📤 अग्रेषण पत्र','✅ स्वीकृति','⚙'].forEach(function(th,i){
-    var align=i===0||i>=2?'center':'left';
-    var w=i===0?'50px':i===2?'110px':i>=3&&i<=5?'110px':i===7?'80px':'';
-    h+='<th style="padding:8px 11px;text-align:'+align+';font-size:11px;font-weight:700;color:#475569;'+(w?'width:'+w+';':'')+'">'+(th)+'</th>';
+  // {label, width, align} — width खाली = शेष जगह (सड़क/कार्य कॉलम); बाकी सब निश्चित (एक जैसी चौड़ाई)
+  var _cols=[
+    {t:'वरी.',            w:'46px', a:'center'},
+    {t:'सड़क / कार्य विवरण', w:'',     a:'left'},
+    {t:'श्रेणी',           w:'92px', a:'left'},
+    {t:'Road ID',         w:'72px', a:'center'},
+    {t:'सृष्टि कोड',        w:'110px',a:'left'},
+    {t:'अनु. लागत (लाख)',   w:'92px', a:'center'},
+    {t:'📐 आगणन स्थिति',    w:'118px',a:'center'},
+    {t:'📷 फोटो',          w:'118px',a:'center'},
+    {t:'📋 निरीक्षण नोट',    w:'118px',a:'center'},
+    {t:'📄 Estimate PDF',  w:'118px',a:'center'},
+    {t:'📤 अग्रेषण पत्र',    w:'118px',a:'center'},
+    {t:'✅ स्वीकृति',        w:'104px',a:'center'},
+    {t:'⚙',               w:'78px', a:'center'}
+  ];
+  _cols.forEach(function(c){
+    h+='<th style="padding:8px 9px;text-align:'+c.a+';font-size:11px;font-weight:700;color:#475569;'+(c.w?'width:'+c.w+';':'')+'">'+c.t+'</th>';
   });
   h+='</tr></thead><tbody>';
   entries.forEach(function(p){
@@ -8685,6 +9328,10 @@ function _renderPlanSection(wtName,entries,yr){
     var photoLink=p.Photo_Link||p.Photo_Links||p['Photo_Links\n(Drive)']||'';
     var inspLink=p.Inspection_Note_Link||'';
     var fwdLink=p.Forwarding_Letter_Link||'';
+    var estLink=p.Estimate_PDF_Link||'';
+    var fwdNote=p.Forwarding_Note||'';
+    var estStatus=((p.Estimate_Status||'Pending')==='Submitted')?'Submitted':'Pending';
+    var rCat=_r.Road_Type||'', rId=p.Road_ID||'', rSrishti=_r.Srishti_Code||'';
     var isSanctioned=sta==='Sanctioned', isDropped=sta==='Dropped';
     var rowBg=isDropped?'#fff5f5':isSanctioned?'#f0fdf4':'#fff';
     var rowHover=isDropped?'#fee2e2':isSanctioned?'#dcfce7':'#f8fafc';
@@ -8694,23 +9341,49 @@ function _renderPlanSection(wtName,entries,yr){
     // Priority
     h+='<td style="'+_TD+';text-align:center;font-weight:800;color:var(--navy);font-size:16px;">'+pri+'</td>';
     // Road/Work
-    h+='<td style="'+_TD+'"><div style="font-weight:600;color:var(--text);">'+road+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px;">'+work+(sec?' · <span style="color:#0284c7;">'+sec+'</span>':'')+'</div></td>';
+    h+='<td style="'+_TD+';word-break:break-word;"><div style="font-weight:600;color:var(--text);">'+road+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px;">'+work+(sec?' · <span style="color:#0284c7;">'+sec+'</span>':'')+'</div></td>';
+    // श्रेणी
+    h+='<td style="'+_TD+';font-size:12px;word-break:break-word;">'+(rCat||'—')+'</td>';
+    // Road ID
+    h+='<td style="'+_TD+';text-align:center;font-family:var(--font-en);font-size:12px;color:var(--text3);">'+(rId||'—')+'</td>';
+    // सृष्टि कोड (एक ही लाइन में — wrap नहीं; लंबा हो तो ellipsis, पूरा hover पर)
+    h+='<td title="'+String(rSrishti||'').replace(/"/g,'&quot;')+'" style="'+_TD+';font-size:12px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+(rSrishti||'—')+'</td>';
     // Cost
     h+='<td style="'+_TD+';text-align:right;font-weight:700;color:var(--navy);font-family:var(--font-en);">'+(cost?(cost/100000).toFixed(2):'—')+'</td>';
+    // आगणन की स्थिति (Pending/Submitted) — क्लिक करके बदलें
+    h+='<td style="'+_TD+';text-align:center;">';
+    if(estStatus==='Submitted'){
+      h+='<div style="display:flex;flex-direction:column;gap:4px;align-items:center;">'+
+         '<span style="background:#16a34a;color:#fff;border-radius:20px;padding:4px 12px;font-size:11px;font-weight:700;">✅ Submitted</span>'+
+         '<button onclick="togglePlanEstimateStatus(\''+pe+'\',\'Pending\')" style="background:none;border:none;color:var(--text3);font-size:10px;cursor:pointer;text-decoration:underline;padding:0;">↩ Pending करें</button>'+
+         '</div>';
+    } else {
+      h+='<button onclick="togglePlanEstimateStatus(\''+pe+'\',\'Submitted\')" style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:20px;padding:4px 12px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;" title="आगणन भेजे जाने पर Submitted मार्क करें">🕒 Pending</button>';
+    }
+    h+='</td>';
     // Photo
     h+='<td style="'+_TD+';text-align:center;"><div style="display:flex;flex-direction:column;gap:4px;align-items:center;">';
-    if(photoLink) h+='<a href="'+photoLink+'" target="_blank" style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;font-size:11px;font-weight:600;text-decoration:none;border-radius:5px;padding:3px 8px;">👁 सभी देखें</a>';
+    if(photoLink) h+='<button onclick="openPlanFilesModal(\''+pe+'\',\'photo\')" style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;font-size:11px;font-weight:600;border-radius:5px;padding:3px 8px;cursor:pointer;">👁 सभी देखें</button>';
     h+='<label style="background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer;white-space:nowrap;">📷 '+(photoLink?'+ और जोड़ें':'Upload')+'<input type="file" accept="image/*,.pdf" style="display:none;" onchange="submitPlanFile(\''+pe+'\',\'photo\',this)"></label>';
     h+='</div></td>';
     // Inspection Note
     h+='<td style="'+_TD+';text-align:center;"><div style="display:flex;flex-direction:column;gap:4px;align-items:center;">';
-    if(inspLink) h+='<a href="'+inspLink+'" target="_blank" style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;font-size:11px;font-weight:600;text-decoration:none;border-radius:5px;padding:3px 8px;">👁 सभी देखें</a>';
+    if(inspLink) h+='<button onclick="openPlanFilesModal(\''+pe+'\',\'inspection\')" style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;font-size:11px;font-weight:600;border-radius:5px;padding:3px 8px;cursor:pointer;">👁 सभी देखें</button>';
     h+='<label style="background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer;white-space:nowrap;">📋 '+(inspLink?'+ और जोड़ें':'Upload')+'<input type="file" accept=".pdf,.doc,.docx,image/*" style="display:none;" onchange="openPlanFileShareModal(\''+pe+'\',\'inspection\',this)"></label>';
     h+='</div></td>';
-    // Forwarding Letter
+    // Estimate PDF — नया version डालने से पहले पुराना हटाने का विकल्प (load कम रहे)
     h+='<td style="'+_TD+';text-align:center;"><div style="display:flex;flex-direction:column;gap:4px;align-items:center;">';
-    if(fwdLink) h+='<a href="'+fwdLink+'" target="_blank" style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;font-size:11px;font-weight:600;text-decoration:none;border-radius:5px;padding:3px 8px;">👁 सभी देखें</a>';
-    h+='<label style="background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer;white-space:nowrap;">📤 '+(fwdLink?'+ और जोड़ें':'Upload')+'<input type="file" accept=".pdf,.doc,.docx,image/*" style="display:none;" onchange="openPlanFileShareModal(\''+pe+'\',\'forwarding\',this)"></label>';
+    if(estLink){
+      h+='<button onclick="openPlanFilesModal(\''+pe+'\',\'estimate\')" style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;font-size:11px;font-weight:600;border-radius:5px;padding:3px 8px;cursor:pointer;">👁 देखें / हटाएँ</button>';
+    } else {
+      h+='<label style="background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer;white-space:nowrap;">📄 Upload<input type="file" accept=".pdf" style="display:none;" onchange="submitPlanFile(\''+pe+'\',\'estimate\',this)"></label>';
+    }
+    h+='</div></td>';
+    // Forwarding Letter — Upload/Note (फाइल, या केवल नोट जैसे पत्र संख्या, या दोनों)
+    h+='<td style="'+_TD+';text-align:center;"><div style="display:flex;flex-direction:column;gap:4px;align-items:center;">';
+    if(fwdNote) h+='<div style="background:#fffbeb;border:1px solid #fde68a;color:#92400e;font-size:10px;border-radius:5px;padding:2px 6px;max-width:112px;word-break:break-word;line-height:1.3;">📝 '+fwdNote+'</div>';
+    if(fwdLink) h+='<button onclick="openPlanFilesModal(\''+pe+'\',\'forwarding\')" style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;font-size:11px;font-weight:600;border-radius:5px;padding:3px 8px;cursor:pointer;">👁 सभी देखें</button>';
+    h+='<button onclick="openPlanForwardingModal(\''+pe+'\')" style="background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer;white-space:nowrap;">📤 '+((fwdLink||fwdNote)?'बदलें/जोड़ें':'Upload/Note')+'</button>';
     h+='</div></td>';
     // Sanction
     h+='<td style="'+_TD+';text-align:center;">';
@@ -8731,7 +9404,11 @@ function _renderPlanSection(wtName,entries,yr){
 
 function submitPlanFile(planId, uploadType, input) {
   var f=input.files[0]; if(!f) return;
-  if(f.size>6*1024*1024){showToast('File 6MB से बड़ी है'); input.value=''; return;}
+  var _maxMB = (uploadType==='estimate') ? 20 : 6;
+  if(f.size>_maxMB*1024*1024){showToast('File '+_maxMB+'MB से बड़ी है'); input.value=''; return;}
+  // बड़ी Estimate PDF (>4MB) — hosted पर signed URL से सीधे Storage पर (function की ~6MB body-सीमा से बचाव)
+  var _hosted=(location.protocol==='http:'||location.protocol==='https:');
+  if(uploadType==='estimate' && _hosted && f.size>4*1024*1024){ _directUploadPlanFile(planId,uploadType,f,input); return; }
   var td=input.closest?input.closest('td'):null;
   var prev=td?td.innerHTML:'';
   if(td) td.innerHTML='<span style="font-size:11px;color:var(--text3);">⏳ Upload...</span>';
@@ -8743,7 +9420,7 @@ function submitPlanFile(planId, uploadType, input) {
       .withSuccessHandler(function(res){
         if(res&&res.success){
           showToast('Upload सफल');
-          var fMap={photo:'Photo_Link',inspection:'Inspection_Note_Link',forwarding:'Forwarding_Letter_Link'};
+          var fMap={photo:'Photo_Link',inspection:'Inspection_Note_Link',forwarding:'Forwarding_Letter_Link',estimate:'Estimate_PDF_Link'};
           if(pEntry) pEntry[fMap[uploadType]]=res.link;
           applyPlanFilter();
         } else {
@@ -8760,6 +9437,219 @@ function submitPlanFile(planId, uploadType, input) {
         workType:pEntry.Work_Type||'',roadName:pEntry.Road_Name||''});
   };
   reader.readAsDataURL(f);
+}
+
+// बड़ी फ़ाइल: signed URL लेकर ब्राउज़र सीधे Supabase Storage पर PUT करे, फिर server पर register
+function _directUploadPlanFile(planId, uploadType, f, input){
+  var td=input.closest?input.closest('td'):null; var prev=td?td.innerHTML:'';
+  if(td) td.innerHTML='<span style="font-size:11px;color:var(--text3);">⏳ Upload...</span>';
+  var pEntry=(D.plan||[]).find(function(p){return p.Plan_ID===planId;})||{};
+  var fMap={photo:'Photo_Link',inspection:'Inspection_Note_Link',forwarding:'Forwarding_Letter_Link',estimate:'Estimate_PDF_Link'};
+  var fail=function(msg){ _opEnd(); if(td)td.innerHTML=prev; if(input)input.value=''; showToast('Error: '+msg); };
+  _opStart();
+  google.script.run
+    .withSuccessHandler(function(prep){
+      if(!prep||!prep.success){ fail((prep&&prep.error)||'prepare failed'); return; }
+      fetch(prep.uploadUrl, { method:'PUT', headers:{'content-type':f.type||'application/octet-stream','x-upsert':'true'}, body:f })
+        .then(function(r){ if(!r.ok) throw new Error('storage '+r.status); return r; })
+        .then(function(){
+          google.script.run
+            .withSuccessHandler(function(res){
+              _opEnd();
+              if(res&&res.success){ showToast('Upload सफल'); if(pEntry) pEntry[fMap[uploadType]]=res.link; applyPlanFilter(); }
+              else { if(td)td.innerHTML=prev; showToast('Error: '+((res&&res.error)||'register failed')); }
+            })
+            .withFailureHandler(function(err){ _opEnd(); if(td)td.innerHTML=prev; showToast('Error: '+((err&&err.message)||'failed')); })
+            .finalizePlanUpload({planId:planId, uploadType:uploadType, id:prep.id, path:prep.path, folder:prep.folder, fileName:f.name, mimeType:f.type||'application/octet-stream', size:f.size});
+        })
+        .catch(function(e){ fail('Upload विफल — '+(e.message||e)); });
+    })
+    .withFailureHandler(function(err){ fail((err&&err.message)||'failed'); })
+    .preparePlanUpload({planId:planId, uploadType:uploadType, fileName:f.name, mimeType:f.type||'application/octet-stream'});
+}
+
+// ── आगणन की स्थिति (Pending ⇄ Submitted) ──
+function togglePlanEstimateStatus(planId, status) {
+  var pEntry=(D.plan||[]).find(function(p){return p.Plan_ID===planId;});
+  _opStart();
+  google.script.run
+    .withSuccessHandler(function(res){
+      _opEnd();
+      if(res&&res.success){
+        if(pEntry) pEntry.Estimate_Status=res.status;
+        applyPlanFilter();
+      } else { showToast('Error: '+((res&&res.error)||'failed')); }
+    })
+    .withFailureHandler(function(err){ _opEnd(); showToast('Error: '+((err&&err.message)||'failed')); })
+    .setPlanEstimateStatus({planId:planId,status:status});
+}
+
+// ── Estimate PDF / अन्य अपलोड हटाएँ (नया version डालने से पहले) ──
+function deletePlanFileConfirm(planId, uploadType) {
+  var label = uploadType==='estimate' ? 'Estimate PDF' : 'यह फाइल';
+  if(!confirm(label+' हटा दें? नया version अपलोड करने से पहले पुराना हटाना ठीक रहता है (load कम रहता है)।')) return;
+  var pEntry=(D.plan||[]).find(function(p){return p.Plan_ID===planId;});
+  _opStart();
+  google.script.run
+    .withSuccessHandler(function(res){
+      _opEnd();
+      if(res&&res.success){
+        showToast('हटाया गया');
+        var fMap={photo:'Photo_Link',inspection:'Inspection_Note_Link',forwarding:'Forwarding_Letter_Link',estimate:'Estimate_PDF_Link'};
+        if(pEntry) pEntry[fMap[uploadType]]='';
+        applyPlanFilter();
+      } else { showToast('Error: '+((res&&res.error)||'failed')); }
+    })
+    .withFailureHandler(function(err){ _opEnd(); showToast('Error: '+((err&&err.message)||'failed')); })
+    .deletePlanFile({planId:planId,uploadType:uploadType});
+}
+
+// ── अग्रेषण पत्र: Upload/Note मॉडल (फाइल, या केवल नोट, या दोनों) ──
+var _fwdModalPlanId='';
+function openPlanForwardingModal(planId){
+  _fwdModalPlanId=planId;
+  var p=(D.plan||[]).find(function(x){return x.Plan_ID===planId;})||{};
+  document.getElementById('fwd-sub').textContent=(p.Road_Name||p.Road_ID||'—')+' — '+(p.Proposed_Work||'');
+  document.getElementById('fwd-note').value=p.Forwarding_Note||'';
+  document.getElementById('fwd-file').value='';
+  var cur=document.getElementById('fwd-current');
+  cur.innerHTML=(p.Forwarding_Letter_Link)?('मौजूदा फाइल: <a href="'+p.Forwarding_Letter_Link+'" target="_blank" style="color:#166534;">👁 देखें</a>'):'';
+  document.getElementById('fwd-result').innerHTML='';
+  document.getElementById('fwd-submit-btn').disabled=false;
+  document.getElementById('plan-fwd-modal').classList.add('open');
+}
+function submitPlanForwarding(){
+  var planId=_fwdModalPlanId;
+  var note=document.getElementById('fwd-note').value.trim();
+  var fileInput=document.getElementById('fwd-file');
+  var f=fileInput.files[0];
+  var resEl=document.getElementById('fwd-result');
+  var btn=document.getElementById('fwd-submit-btn');
+  if(f && f.size>6*1024*1024){ resEl.innerHTML='<div class="status-box error">❌ File 6MB से बड़ी है</div>'; return; }
+  var pEntry=(D.plan||[]).find(function(x){return x.Plan_ID===planId;})||{};
+  btn.disabled=true;
+  resEl.innerHTML='<div class="status-box loading">⏳ सहेजा जा रहा है...</div>';
+  // पहले नोट सहेजो (हमेशा — खाली भी मान्य, ताकि हटाया जा सके)
+  _opStart();
+  google.script.run
+    .withSuccessHandler(function(res){
+      if(!res||!res.success){ _opEnd(); btn.disabled=false; resEl.innerHTML='<div class="status-box error">❌ '+((res&&res.error)||'नोट सहेजना विफल')+'</div>'; return; }
+      if(pEntry) pEntry.Forwarding_Note=note;
+      if(!f){ // केवल नोट
+        _opEnd(); showToast('सहेजा गया'); closeModal('plan-fwd-modal'); applyPlanFilter(); return;
+      }
+      // फाइल भी अपलोड करो
+      var reader=new FileReader();
+      reader.onload=function(e){
+        var b64=e.target.result.split(',')[1];
+        google.script.run
+          .withSuccessHandler(function(r2){
+            _opEnd();
+            if(r2&&r2.success){
+              if(pEntry) pEntry.Forwarding_Letter_Link=r2.link;
+              showToast('सहेजा गया'); closeModal('plan-fwd-modal'); applyPlanFilter();
+            } else { btn.disabled=false; resEl.innerHTML='<div class="status-box error">❌ '+((r2&&r2.error)||'Upload विफल')+'</div>'; }
+          })
+          .withFailureHandler(function(err){ _opEnd(); btn.disabled=false; resEl.innerHTML='<div class="status-box error">❌ '+((err&&err.message)||'failed')+'</div>'; })
+          .uploadPlanFile({planId:planId,uploadType:'forwarding',base64:b64,fileName:f.name,mimeType:f.type,
+            year:pEntry.Year||pEntry['Financial\nYear']||'',workType:pEntry.Work_Type||'',roadName:pEntry.Road_Name||''});
+      };
+      reader.readAsDataURL(f);
+    })
+    .withFailureHandler(function(err){ _opEnd(); btn.disabled=false; resEl.innerHTML='<div class="status-box error">❌ '+((err&&err.message)||'failed')+'</div>'; })
+    .setPlanForwardingNote({planId:planId,note:note});
+}
+
+// ── कार्ययोजना फाइल-व्यूअर (in-app): देखें + हटाएँ (कई जगह लिंक हो तो चुनाव) ──
+var _pfmCtx=null;
+function openPlanFilesModal(planId, uploadType){
+  _pfmCtx={planId:planId, uploadType:uploadType};
+  var labels={photo:'📷 फोटो',inspection:'📋 निरीक्षण नोट',estimate:'📄 Estimate PDF',forwarding:'📤 अग्रेषण पत्र'};
+  var p=(D.plan||[]).find(function(x){return x.Plan_ID===planId;})||{};
+  document.getElementById('pfm-title').textContent=(labels[uploadType]||'फ़ाइलें');
+  document.getElementById('pfm-sub').textContent=(p.Road_Name||p.Road_ID||'—')+' — '+(p.Proposed_Work||'');
+  document.getElementById('pfm-usage').style.display='none';
+  document.getElementById('pfm-list').innerHTML='<div style="padding:20px;text-align:center;color:var(--text3);">⏳ लोड हो रहा है...</div>';
+  document.getElementById('plan-files-modal').classList.add('open');
+  _pfmReload();
+}
+function _pfmReload(){
+  var c=_pfmCtx; if(!c) return;
+  document.getElementById('pfm-usage').style.display='none';
+  google.script.run
+    .withSuccessHandler(function(res){
+      var el=document.getElementById('pfm-list');
+      if(!res||!res.success){ el.innerHTML='<div style="padding:16px;color:#dc2626;">Error: '+((res&&res.error)||'failed')+'</div>'; return; }
+      var files=res.files||[];
+      if(!files.length){ el.innerHTML='<div style="padding:20px;text-align:center;color:var(--text3);">इस फ़ोल्डर में कोई फाइल नहीं है</div>'; return; }
+      el.innerHTML=files.map(function(f){
+        var ne=String(f.name||'').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+        return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);">'+
+          '<span style="font-size:18px;">📄</span>'+
+          '<span style="flex:1;font-size:13px;word-break:break-word;">'+(f.name||'—')+'<div style="font-size:10px;color:var(--text3);">'+String(f.created||'').slice(0,10)+'</div></span>'+
+          '<a href="'+f.url+'" target="_blank" rel="noopener" style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;font-size:12px;text-decoration:none;border-radius:6px;padding:5px 10px;">👁 खोलें</a>'+
+          '<button onclick="planFileDeleteFlow(\''+f.id+'\',\''+ne+'\')" style="background:#fef2f2;border:1px solid #fecaca;color:#dc2626;font-size:12px;border-radius:6px;padding:5px 10px;cursor:pointer;">🗑 हटाएँ</button>'+
+          '</div>';
+      }).join('');
+    })
+    .withFailureHandler(function(err){ document.getElementById('pfm-list').innerHTML='<div style="padding:16px;color:#dc2626;">Error: '+((err&&err.message)||'failed')+'</div>'; })
+    .listPlanFolderFiles({planId:c.planId, uploadType:c.uploadType});
+}
+function planFileDeleteFlow(fileId, fileName){
+  var c=_pfmCtx; if(!c) return;
+  _opStart();
+  google.script.run
+    .withSuccessHandler(function(res){
+      _opEnd();
+      if(!res||!res.success){ showToast('Error: '+((res&&res.error)||'failed')); return; }
+      var locs=res.locations||[];
+      if(locs.length<=1){
+        if(!confirm('यह फाइल हटाएँ?\n'+fileName)) return;
+        _pfmDoDelete([fileId], [{planId:c.planId, uploadType:c.uploadType}]);
+      } else {
+        _pfmShowUsage(fileId, fileName, locs);
+      }
+    })
+    .withFailureHandler(function(err){ _opEnd(); showToast('Error: '+((err&&err.message)||'failed')); })
+    .getPlanFileUsage({name:fileName, uploadType:c.uploadType});
+}
+function _pfmShowUsage(fileId, fileName, locs){
+  var c=_pfmCtx;
+  var rows=locs.map(function(l){
+    var here=(l.planId===c.planId)?' <b style="color:#0284c7;">(यही कार्य)</b>':'';
+    return '<div style="padding:6px 4px;border-bottom:1px solid #f1f5f9;font-size:12px;">📍 '+(l.roadName||l.planId)+' · '+(l.workType||'')+' · '+(l.year||'')+here+'</div>';
+  }).join('');
+  var allIds=locs.map(function(l){return l.fileId;});
+  var allAffected=locs.map(function(l){return {planId:l.planId, uploadType:c.uploadType};});
+  var hereLoc=locs.filter(function(l){return l.planId===c.planId;})[0];
+  var hereId=hereLoc?hereLoc.fileId:fileId;
+  window._pfmDelAll=function(){ if(confirm('यह फाइल सभी '+locs.length+' जगह से हटाएँ?')) _pfmDoDelete(allIds, allAffected); };
+  window._pfmDelHere=function(){ if(confirm('केवल यहीं (इसी कार्य) से हटाएँ?')) _pfmDoDelete([hereId], [{planId:c.planId, uploadType:c.uploadType}]); };
+  var box=document.getElementById('pfm-usage');
+  box.innerHTML='<div style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:6px;">⚠ यह फाइल '+locs.length+' कार्यों में लिंक है — कहाँ से हटाना है?</div>'+
+    '<div style="max-height:160px;overflow:auto;margin-bottom:10px;">'+rows+'</div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+
+    '<button onclick="_pfmDelAll()" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:7px 12px;font-size:12px;cursor:pointer;">🗑 सभी जगह से हटाएँ</button>'+
+    '<button onclick="_pfmDelHere()" style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:6px;padding:7px 12px;font-size:12px;cursor:pointer;">केवल यहीं से हटाएँ</button>'+
+    '<button onclick="document.getElementById(\'pfm-usage\').style.display=\'none\'" style="background:#f1f5f9;border:1px solid var(--border);border-radius:6px;padding:7px 12px;font-size:12px;cursor:pointer;">रद्द</button>'+
+    '</div>';
+  box.style.display='block';
+}
+function _pfmDoDelete(fileIds, affected){
+  _opStart();
+  google.script.run
+    .withSuccessHandler(function(res){
+      _opEnd();
+      if(res&&res.success){
+        showToast('हटाया गया');
+        document.getElementById('pfm-usage').style.display='none';
+        _pfmReload();
+        // सर्वर-सत्य से D.plan sync (link fields खाली हुए तो row में दर्शाओ)
+        google.script.run.withSuccessHandler(function(fresh){ if(fresh&&fresh.plan){ D.plan=fresh.plan; if(document.getElementById('page-annualplan').classList.contains('active')) applyPlanFilter(); } }).withFailureHandler(function(){}).getSecondaryData();
+      } else { showToast('Error: '+((res&&res.error)||'failed')); }
+    })
+    .withFailureHandler(function(err){ _opEnd(); showToast('Error: '+((err&&err.message)||'failed')); })
+    .deletePlanFilesByIds({fileIds:fileIds, affected:affected});
 }
 
 // निरीक्षण नोट / अग्रेषण पत्र अपलोड करते समय — पूछें कि क्या यह कार्ययोजना की अन्य सड़कों/कार्यों से भी संबंधित है,
@@ -8874,15 +9764,52 @@ function openEditPlanModal(planId) {
   var p=(D.plan||[]).find(function(x){return x.Plan_ID===planId;});
   if(!p){showToast('Entry नहीं मिली'); return;}
   document.getElementById('epm-plan-id').value=planId;
+  document.getElementById('epm-road-id').value=p.Road_ID||'';
   document.getElementById('epm-work').value=p.Proposed_Work||p['Proposed_Work\n(प्रस्तावित कार्य)']||'';
   document.getElementById('epm-section').value=p.Section_KM||p['Section/\nKM']||'';
   document.getElementById('epm-cost').value=p.Estimated_Cost||p['Est_Cost (₹)\n(अनुमानित)']||'';
   document.getElementById('epm-priority').value=p.Priority||'';
   document.getElementById('epm-status').value=p.Status||p['Status\n(स्थिति)']||'Proposed';
+  // कार्य प्रकार (योजना) dropdown — वर्तमान चयनित
+  var wtSel=document.getElementById('epm-wtype');
+  var curWt=p.Work_Type||'';
+  wtSel.innerHTML='';
+  var wtl=(D.workTypes||DEFAULT_WORK_TYPES).slice();
+  if(curWt && wtl.indexOf(curWt)<0) wtl.unshift(curWt);
+  wtl.forEach(function(t){ var o=document.createElement('option'); o.value=t; o.textContent=t; if(t===curWt)o.selected=true; wtSel.appendChild(o); });
+  renderEpmSections();
   document.getElementById('epm-result').innerHTML='';
   document.getElementById('epm-submit-btn').disabled=false;
   document.getElementById('edit-plan-modal').classList.add('open');
 }
+// edit-plan overlay: इस सड़क के टुकड़े checkbox — इस योजना में पहले से जुड़े pre-checked; अन्य eligibility सहित
+function renderEpmSections(){
+  var box=document.getElementById('epm-secbox'); if(!box) return;
+  var planId=document.getElementById('epm-plan-id').value;
+  var rid=document.getElementById('epm-road-id').value;
+  var wt=document.getElementById('epm-wtype').value;
+  var p=(D.plan||[]).find(function(x){return x.Plan_ID===planId;})||{};
+  var year=p.Year||'';
+  var secs=(D.sections||[]).filter(function(s){return s.Road_ID===rid;});
+  if(!secs.length){ box.innerHTML='<div style="color:var(--text3);padding:4px;">इस सड़क में Chainage टुकड़े नहीं — पूरी सड़क इसी योजना में रहेगी।</div>'; _epmSyncSecSummary(); return; }
+  var pmap=_planInfoMapClient();
+  box.innerHTML=secs.map(function(s){
+    var inThis=String(s.Plan_IDs||'').split(',').map(function(x){return x.trim();}).indexOf(planId)>=0;
+    var reason=inThis?'':_secReasonPlan(s,pmap,year,wt);   // इसमें पहले से है तो हमेशा योग्य
+    var dis=(!inThis && reason)?'disabled':'';
+    return '<label style="display:flex;align-items:center;gap:6px;padding:3px 2px;'+((!inThis&&reason)?'opacity:.55;':'')+'">'+
+      '<input type="checkbox" class="epm-secchk" value="'+s.Section_ID+'" '+(inThis?'checked':'')+' '+dis+' onchange="_epmSyncSecSummary()">'+
+      '<span>'+_secLabel(s)+'</span>'+
+      ((!inThis&&reason)?'<span style="font-size:10px;color:#dc2626;margin-left:auto;white-space:nowrap;">'+reason+'</span>':(inThis?'<span style="font-size:10px;color:var(--green-gov);margin-left:auto;">इसमें है</span>':''))+
+    '</label>';
+  }).join('');
+  _epmSyncSecSummary();
+}
+function _epmSyncSecSummary(){
+  var parts=[]; document.querySelectorAll('.epm-secchk:checked').forEach(function(c){ var s=(D.sections||[]).find(function(x){return x.Section_ID===c.value;}); if(s) parts.push(s.KM_Number|| (_fmt3(s.Chainage_From||'')+'–'+_fmt3(s.Chainage_To||''))); });
+  var el=document.getElementById('epm-section'); if(el) el.value=parts.join(', ');
+}
+function _epmCheckedSectionIds(){ var a=[]; document.querySelectorAll('.epm-secchk:checked').forEach(function(c){a.push(c.value);}); return a; }
 
 function submitEditPlan() {
   var planId=document.getElementById('epm-plan-id').value;
@@ -8891,8 +9818,10 @@ function submitEditPlan() {
   document.getElementById('epm-result').innerHTML='<div class="status-box loading">⏳ Update हो रहा है...</div>';
   var data={
     planId:planId,
+    workType:document.getElementById('epm-wtype').value,
     proposedWork:document.getElementById('epm-work').value.trim(),
     sectionKm:document.getElementById('epm-section').value.trim(),
+    sectionIds:_epmCheckedSectionIds(),
     estimatedCost:document.getElementById('epm-cost').value,
     priority:document.getElementById('epm-priority').value,
     status:document.getElementById('epm-status').value
@@ -8901,10 +9830,15 @@ function submitEditPlan() {
     .withSuccessHandler(function(res){
       btn.disabled=false;
       if(res&&res.success){
-        document.getElementById('epm-result').innerHTML='<div class="status-box success">✅ Update हो गया</div>';
+        var skp=res.sectionsSkipped||[];
+        var skpMsg=skp.length?'<div style="font-size:11px;color:#b45309;margin-top:4px;">⚠ '+skp.length+' टुकड़ा नहीं जुड़ा ('+skp.map(function(x){return x.reason;}).filter(function(v,i,a){return a.indexOf(v)===i;}).join(', ')+')</div>':'';
+        document.getElementById('epm-result').innerHTML='<div class="status-box success">✅ Update हो गया</div>'+skpMsg;
         var p=(D.plan||[]).find(function(x){return x.Plan_ID===planId;});
-        if(p){p.Proposed_Work=data.proposedWork;p.Section_KM=data.sectionKm;p.Estimated_Cost=data.estimatedCost;p.Priority=data.priority;p.Status=data.status;}
-        setTimeout(function(){closeModal('edit-plan-modal');applyPlanFilter();},700);
+        if(p){p.Work_Type=data.workType;p.Proposed_Work=data.proposedWork;p.Section_KM=data.sectionKm;p.Estimated_Cost=data.estimatedCost;p.Priority=data.priority;p.Status=data.status;}
+        // local D.sections membership अपडेट
+        (res.sectionsAdded||[]).forEach(function(sid){ var s=(D.sections||[]).find(function(x){return x.Section_ID===sid;}); if(s){ s.Plan_IDs=(String(s.Plan_IDs||'').split(',').map(function(t){return t.trim();}).filter(Boolean).concat([planId])).join(','); } });
+        (res.sectionsRemoved||[]).forEach(function(sid){ var s=(D.sections||[]).find(function(x){return x.Section_ID===sid;}); if(s){ s.Plan_IDs=String(s.Plan_IDs||'').split(',').map(function(t){return t.trim();}).filter(function(t){return t&&t!==planId;}).join(','); } });
+        setTimeout(function(){closeModal('edit-plan-modal');applyPlanFilter();renderRoads();},700);
       } else {
         document.getElementById('epm-result').innerHTML='<div class="status-box error">❌ '+(res&&res.error?res.error:'Update नहीं हुआ')+'</div>';
       }
@@ -8997,6 +9931,9 @@ function openAddPlanFromView(workType, year) {
   document.getElementById('apm-cancel-btn').style.display = '';
   document.getElementById('apm-close-btn').style.display = 'none';
   toggleApmRoadField();
+  // #5 — टुकड़ा-checkbox सूची (सड़क चुनने पर selector से, year बदलने पर यहाँ, work-type inline onchange से)
+  var _ay2=document.getElementById('apm-year'); if(_ay2) _ay2.onchange = renderApmSections;
+  renderApmSections();
   document.getElementById('add-plan-modal').classList.add('open');
 }
 
@@ -9021,6 +9958,7 @@ function openRoadModal(rid){
   _secCurRid = rid;
   _secDirty  = {};
   _secNewRows = [];
+  _secFilter = { surf:'', mo:'', yr:'', remList:[] };  _secRemarkOpen=false;   // नई सड़क खुलने पर फ़िल्टर रीसेट
   document.getElementById('sec-add-btn').onclick    = function(){ secAddRow(rid); };
   document.getElementById('sec-import-btn').onclick = function(){ openSecImport(rid); };
   renderSecTable(rid);
@@ -13068,6 +14006,9 @@ var _secDirty     = {};    // {sectionId: true} — existing rows in edit mode
 var _secNewRows   = [];    // new rows pending save
 var _secEditCache = {};    // {sectionId: {field:value}} — preserves DOM values across re-renders
 var _secCurRid    = '';
+var _secFullDetail = false; // #3 — true पर assigned (दूसरे विभाग वाले) टुकड़े भी दिखें
+var _secFilter    = { surf:'', mo:'', yr:'', remList:[] };  // Surface/माह/वर्ष single; Remark बहु-चयन (checkbox)
+var _secRemarkOpen = false;   // Remark multi-select dropdown खुला है या नहीं
 var _secTmpCnt    = 0;
 var _secSaving    = false; // blocks all commands while GAS call is running
 var _secImportRows = [], _secImportRid = '';
@@ -13110,7 +14051,13 @@ function _secSetBtns(disabled) {
 
 // ── Render sec table ─────────────────────────────────────────
 function renderSecTable(rid) {
-  var secs = D.sections.filter(function(s){ return s.Road_ID===rid; });
+  _secCurRid = rid || _secCurRid;
+  var all = D.sections.filter(function(s){ return s.Road_ID===rid; });
+  var assignedCount = all.filter(function(s){ return String(s.Assigned_To||'').trim(); }).length;
+  // #3 — assigned टुकड़े सामान्यतः छिपे; "Full Detail" पर सब दिखें
+  var baseSecs = _secFullDetail ? all : all.filter(function(s){ return !String(s.Assigned_To||'').trim(); });
+  var secs = _secApplyFilters(baseSecs);   // Surface/माह/वर्ष/Remark फ़िल्टर
+  _secRenderFilterBar(all, secs.length, baseSecs.length);
   var hasPending = Object.keys(_secDirty).length > 0 || _secNewRows.length > 0;
   var sb = document.getElementById('sec-save-bar');
   var stEl = document.getElementById('sec-save-status');
@@ -13122,13 +14069,203 @@ function renderSecTable(rid) {
   }
   var tbody = document.getElementById('sec-tbody');
   if (!tbody) return;
-  var html = secs.map(function(s) {
+  var toggleRow = '';
+  if (assignedCount > 0) {
+    toggleRow = '<tr><td colspan="16" style="background:#fff7ed;padding:7px 10px;font-size:12px;border-bottom:1px solid var(--border);">' +
+      (_secFullDetail
+        ? '🔎 पूरा विवरण — इनमें से '+assignedCount+' टुकड़ा किसी दूसरे विभाग/अभियंता के पास है। <a href="javascript:void(0)" onclick="toggleSecFullDetail()" style="color:var(--navy);font-weight:700;">केवल अपने टुकड़े दिखाएँ</a>'
+        : '⚠ '+assignedCount+' टुकड़ा किसी दूसरे विभाग/अभियंता के पास है (यहाँ छिपा)। <a href="javascript:void(0)" onclick="toggleSecFullDetail()" style="color:var(--navy);font-weight:700;">📋 Full Detail देखें</a>') +
+      '</td></tr>';
+  }
+  var rows = secs.map(function(s) {
     return _secDirty[s.Section_ID] ? _secEditRowHtml(s, false) : _secViewRowHtml(s);
   }).join('') + _secNewRows.map(function(r) {
     return _secEditRowHtml(r, true);
   }).join('');
-  if (!html) html = '<tr><td colspan="16" style="text-align:center;color:var(--text3);">कोई Section data नहीं — ऊपर ➕ से जोड़ें</td></tr>';
-  tbody.innerHTML = html;
+  var _anyF = _secFilter.surf||_secFilter.mo||_secFilter.yr||_secFilter.rem;
+  if (!rows) rows = '<tr><td colspan="16" style="text-align:center;color:var(--text3);">'+(_anyF?'फ़िल्टर अनुसार कोई लाइन नहीं — फ़िल्टर बदलें/हटाएँ':'कोई Section data नहीं — ऊपर ➕ से जोड़ें')+'</td></tr>';
+  // कुल लंबाई (जो लाइनें दिख रही हैं उनका योग) — लंबाई कॉलम के नीचे
+  var totalLen = secs.reduce(function(a,s){ return a + (parseFloat(s.Length_KM)||0); }, 0);
+  var totalRow = secs.length ? ('<tr style="background:#f1f5f9;font-weight:700;">'+
+    '<td colspan="3" style="text-align:right;color:var(--navy);">कुल लंबाई →</td>'+
+    '<td style="font-family:var(--font-en);color:var(--navy);">'+totalLen.toFixed(3)+'</td>'+
+    '<td colspan="12"></td></tr>') : '';
+  tbody.innerHTML = toggleRow + rows + totalRow;
+}
+function toggleSecFullDetail(){ _secFullDetail = !_secFullDetail; renderSecTable(_secCurRid); }
+
+// ── Chainage फ़िल्टर (Surface/माह/वर्ष/Remark) ──
+function _secApplyFilters(list){
+  var f=_secFilter;
+  return list.filter(function(s){
+    if(f.surf && String(s.Top_Surface||'').trim()!==f.surf) return false;
+    if(f.mo   && String(s.Last_Work_Month||'').trim()!==f.mo) return false;
+    if(f.yr   && String(s.Last_Work_Year||'').trim()!==f.yr) return false;
+    if(f.remList && f.remList.length && f.remList.indexOf(String(s.Remark||'').trim())<0) return false;
+    return true;
+  });
+}
+function _secApplyFilter(key,val){ _snapshotEdits(); _secFilter[key]=val; renderSecTable(_secCurRid); }
+function _secClearFilter(){ _snapshotEdits(); _secFilter={surf:'',mo:'',yr:'',remList:[]}; _secRemarkOpen=false; renderSecTable(_secCurRid); }
+// 🏷 Remark बहु-चयन (checkbox dropdown) — कई remark चुनें, केवल उन्हीं की लाइनें दिखें
+function _secRemarkFilterHtml(){
+  var all=D.sections.filter(function(s){return s.Road_ID===_secCurRid;});
+  var vals={}; all.forEach(function(s){var v=String(s.Remark||'').trim(); if(v)vals[v]=(vals[v]||0)+1;});
+  document.querySelectorAll('#sec-tbody [data-f="rem"]').forEach(function(e){var v=String(e.value||'').trim(); if(v&&!vals[v])vals[v]=1;});
+  var keys=Object.keys(vals).sort(function(a,b){return a.localeCompare(b,undefined,{numeric:true});});
+  var sel=_secFilter.remList||[];
+  var label = sel.length ? (sel.length+' चुने') : 'सभी';
+  var items = keys.length ? keys.map(function(v){
+    var ve=v.replace(/"/g,'&quot;'); var chk=sel.indexOf(v)>=0?'checked':'';
+    return '<label style="display:flex;align-items:center;gap:6px;padding:3px 4px;font-size:12px;white-space:nowrap;cursor:pointer;"><input type="checkbox" class="sec-remchk" value="'+ve+'" '+chk+' onchange="_secToggleRemark()"><span>'+v+' ('+vals[v]+')</span></label>';
+  }).join('') : '<div style="color:var(--text3);padding:4px;font-size:12px;">कोई Remark नहीं</div>';
+  return '<details class="sec-remark-dd"'+(_secRemarkOpen?' open':'')+' ontoggle="_secRemarkOpen=this.open" style="position:relative;display:inline-block;">'+
+    '<summary style="cursor:pointer;border:1px solid '+(sel.length?'var(--navy)':'var(--border)')+';border-radius:6px;padding:3px 10px;font-size:11px;background:#fff;'+(sel.length?'color:var(--navy);font-weight:600;':'')+'">🏷 Remark: '+label+' ▾</summary>'+
+    '<div style="position:absolute;z-index:50;top:100%;left:0;margin-top:2px;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.15);padding:6px;max-height:230px;overflow:auto;min-width:170px;">'+
+      (keys.length?'<div style="display:flex;gap:10px;font-size:10px;border-bottom:1px solid var(--border);padding-bottom:3px;margin-bottom:3px;"><a href="javascript:void(0)" onclick="_secRemarkAll(true)" style="color:var(--navy);font-weight:700;">✓ सभी</a><a href="javascript:void(0)" onclick="_secRemarkAll(false)" style="color:#dc2626;font-weight:700;">✕ हटाएँ</a></div>':'')+
+      items+
+    '</div></details>';
+}
+function _secToggleRemark(){
+  var arr=[]; document.querySelectorAll('.sec-remchk:checked').forEach(function(c){arr.push(c.value);});
+  _secFilter.remList=arr; _secRemarkOpen=true; _snapshotEdits(); renderSecTable(_secCurRid);
+}
+function _secRemarkAll(on){
+  var arr=[]; if(on){ document.querySelectorAll('.sec-remchk').forEach(function(c){arr.push(c.value);}); }
+  _secFilter.remList=arr; _secRemarkOpen=true; _snapshotEdits(); renderSecTable(_secCurRid);
+}
+function _secFilterOpts(field, key, label){
+  var all = D.sections.filter(function(s){ return s.Road_ID===_secCurRid; });
+  var vals={};
+  all.forEach(function(s){ var v=String(s[field]||'').trim(); if(v) vals[v]=(vals[v]||0)+1; });
+  // वर्तमान edit-मोड की पंक्तियों में सीधे DOM से भरे मान भी शामिल करो (अनसेव्ड भी दिखे)
+  document.querySelectorAll('#sec-tbody [data-f="'+key+'"]').forEach(function(e){
+    var v=String(e.value||'').trim(); if(v && !vals[v]) vals[v]=1;
+  });
+  var keys=Object.keys(vals).sort(function(a,b){ return a.localeCompare(b,undefined,{numeric:true}); });
+  var cur=_secFilter[key]||'';
+  var o='<option value="">'+label+'</option>'+keys.map(function(v){
+    return '<option value="'+v.replace(/"/g,'&quot;')+'"'+(v===cur?' selected':'')+'>'+v+' ('+vals[v]+')</option>';
+  }).join('');
+  return '<select class="f-select" style="font-size:11px;padding:2px 6px;min-width:108px;" onchange="_secApplyFilter(\''+key+'\',this.value)">'+o+'</select>';
+}
+function _secRenderFilterBar(all, shownCount, baseCount){
+  var fbar=document.getElementById('sec-filter-bar'); if(!fbar) return;
+  if(!all.length){ fbar.innerHTML=''; return; }
+  var anyF=_secFilter.surf||_secFilter.mo||_secFilter.yr||(_secFilter.remList&&_secFilter.remList.length);
+  fbar.innerHTML='<span style="font-size:11px;color:var(--text3);font-weight:700;">🔎 फ़िल्टर:</span>'+
+    _secFilterOpts('Top_Surface','surf','— Surface —')+
+    _secFilterOpts('Last_Work_Month','mo','— माह —')+
+    _secFilterOpts('Last_Work_Year','yr','— वर्ष —')+
+    _secRemarkFilterHtml()+
+    (anyF?'<button class="btn-sm" style="font-size:11px;padding:2px 8px;background:#fef2f2;color:#dc2626;border-color:#fecaca;" onclick="_secClearFilter()">✕ हटाएँ</button>':'')+
+    (anyF?'<span style="font-size:11px;color:var(--navy);font-weight:600;">'+shownCount+' / '+baseCount+' लाइन</span>':'');
+}
+
+// 🖨️ Chainage Detail को A4 (landscape) पर प्रिंट/PDF — कुल लंबाई सहित
+function printChainageDetail(){
+  var rid = _secCurRid;
+  var road = (D.roads||[]).find(function(r){ return r.Road_ID===rid; }) || {};
+  // केवल जो सामने दिख रहे हैं वही प्रिंट हों (Full Detail टॉगल + Surface/माह/वर्ष/Remark फ़िल्टर लागू)
+  var _raw = (D.sections||[]).filter(function(s){ return s.Road_ID===rid; });
+  var _base = _secFullDetail ? _raw : _raw.filter(function(s){ return !String(s.Assigned_To||'').trim(); });
+  var all = _secApplyFilters(_base);
+  if(!all.length){ alert('प्रिंट के लिए कोई टुकड़ा नहीं दिख रहा — फ़िल्टर बदलें/हटाएँ।'); return; }
+  all.sort(function(a,b){ return (parseKm(a.Chainage_From)||0)-(parseKm(b.Chainage_From)||0); });
+  var totalLen=0;
+  var rows = all.map(function(s,i){
+    var len = parseFloat(s.Length_KM)||0; totalLen+=len;
+    var assigned = String(s.Assigned_To||'').trim();
+    var lw = (s.Last_Work_Year==='Running') ? 'Running' : ((s.Last_Work_Month||'')+((s.Last_Work_Month&&s.Last_Work_Year)?'/':'')+(s.Last_Work_Year||''));
+    return '<tr>'+
+      '<td class="c">'+(i+1)+'</td>'+
+      '<td class="en">'+_htmlEsc(_fmt3(s.Chainage_From||''))+'</td>'+
+      '<td class="en">'+_htmlEsc(_fmt3(s.Chainage_To||''))+'</td>'+
+      '<td>'+_htmlEsc(s.KM_Number||'')+'</td>'+
+      '<td class="en r">'+(len?len.toFixed(3):'—')+'</td>'+
+      '<td class="en c">'+_htmlEsc(s.Width_M?(parseFloat(s.Width_M)||0).toFixed(2):'')+'</td>'+
+      '<td>'+_htmlEsc(s.Top_Surface||'')+'</td>'+
+      '<td class="c">'+_htmlEsc(lw)+'</td>'+
+      '<td class="c">'+_htmlEsc(s.Bituminous_MM||s.Bituminous_Thickness||'')+'</td>'+
+      '<td class="c">'+_htmlEsc(s.Granular_MM||s.Granular_Thickness||'')+'</td>'+
+      '<td>'+_htmlEsc(s.Structure_Detail||'')+(s.Structure_Chainage?(' ('+_htmlEsc(s.Structure_Chainage)+')'):'')+'</td>'+
+      '<td>'+_htmlEsc(s.Vidhansabha||'')+'</td>'+
+      '<td>'+_htmlEsc(s.Loksabha||'')+'</td>'+
+      '<td>'+(assigned?('→ '+_htmlEsc(assigned)):_htmlEsc(s.Remark||''))+'</td>'+
+    '</tr>';
+  }).join('');
+  var totRow = '<tr style="font-weight:700;background:#eef2f9;"><td colspan="4" style="text-align:right;">कुल लंबाई →</td>'+
+    '<td class="en r">'+totalLen.toFixed(3)+'</td><td colspan="9"></td></tr>';
+  var tbl = '<table><thead><tr>'+
+    '<th class="c">क्र.</th><th>Chainage From</th><th>Chainage To</th><th>KM No.</th>'+
+    '<th class="r">लंबाई (KM)</th><th class="c">चौड़ाई (M)</th><th>Surface</th><th class="c">अंतिम कार्य</th>'+
+    '<th class="c">Bit.(MM)</th><th class="c">Gran.(MM)</th><th>Structure</th><th>विधानसभा</th><th>लोकसभा</th><th>Remark / आवंटन</th>'+
+    '</tr></thead><tbody>'+rows+totRow+'</tbody></table>';
+  var _fnote=[];
+  if(_secFilter.surf) _fnote.push('Surface: '+_secFilter.surf);
+  if(_secFilter.mo) _fnote.push('माह: '+_secFilter.mo);
+  if(_secFilter.yr) _fnote.push('वर्ष: '+_secFilter.yr);
+  if(_secFilter.remList&&_secFilter.remList.length) _fnote.push('Remark: '+_secFilter.remList.join(', '));
+  _openPrintWindow('Chainage Detail — '+(road.Road_Name||rid),
+    'Road ID: '+rid+'  ·  '+all.length+' टुकड़े  ·  कुल लंबाई '+totalLen.toFixed(3)+' KM'+(_fnote.length?('  ·  🔎 '+_fnote.join(' | ')):''), tbl, true);
+}
+
+// #3 — टुकड़ा किसी दूसरे विभाग/अभियंता को देना / वापस लेना
+function openAssignSecModal(sid){
+  var s0 = D.sections.find(function(x){ return x.Section_ID===sid; }) || {};
+  var rid = s0.Road_ID || _secCurRid;
+  document.getElementById('asg-sid').value = rid;   // road context
+  var road = (D.roads||[]).find(function(r){ return r.Road_ID===rid; }) || {};
+  document.getElementById('asg-sub').textContent = (road.Road_Name || rid || '');
+  // इस मार्ग के सभी अभी-अपने-पास (गैर-assigned) टुकड़े — checkbox; जिस पर क्लिक किया वह pre-checked
+  var secs = (D.sections||[]).filter(function(x){ return x.Road_ID===rid && !String(x.Assigned_To||'').trim(); });
+  var box = document.getElementById('asg-secbox');
+  if(!secs.length){ box.innerHTML='<div style="color:var(--text3);padding:4px;">कोई देने योग्य टुकड़ा नहीं</div>'; }
+  else box.innerHTML = secs.map(function(x){
+    var chk = (x.Section_ID===sid) ? 'checked' : '';
+    return '<label style="display:flex;align-items:center;gap:6px;padding:3px 2px;">'+
+      '<input type="checkbox" class="asg-secchk" value="'+x.Section_ID+'" '+chk+'>'+
+      '<span>'+_secLabel(x)+'</span></label>';
+  }).join('');
+  document.getElementById('asg-to').value  = '';
+  document.getElementById('asg-rem').value = '';
+  document.getElementById('asg-result').innerHTML = '';
+  document.getElementById('assign-sec-modal').classList.add('open');
+  setTimeout(function(){ document.getElementById('asg-to').focus(); }, 60);
+}
+function submitAssignSec(){
+  var to  = document.getElementById('asg-to').value.trim();
+  var rem = document.getElementById('asg-rem').value.trim();
+  var res = document.getElementById('asg-result');
+  var ids = []; document.querySelectorAll('.asg-secchk:checked').forEach(function(c){ ids.push(c.value); });
+  if(!ids.length){ res.innerHTML='<div class="status-box error">❌ कम से कम एक टुकड़ा चुनें</div>'; return; }
+  if(!to){ res.innerHTML='<div class="status-box error">❌ विभाग/अभियंता का नाम भरें</div>'; return; }
+  var btn=document.getElementById('asg-submit'); btn.disabled=true; btn.textContent='⏳...';
+  _opStart();
+  google.script.run
+    .withSuccessHandler(function(r){ _opEnd(); btn.disabled=false; btn.textContent='💾 दें';
+      if(r && r.success){
+        ids.forEach(function(id){ var s=D.sections.find(function(x){return x.Section_ID===id;}); if(s){ s.Assigned_To=to; s.Assign_Remark=rem; } });
+        closeModal('assign-sec-modal'); renderSecTable(_secCurRid); applyRoadFilter();
+        if(typeof renderDumpRoads==='function') renderDumpRoads();
+      } else res.innerHTML='<div class="status-box error">❌ '+((r&&r.msg)||'नहीं हुआ')+'</div>';
+    })
+    .withFailureHandler(function(e){ _opEnd(); btn.disabled=false; btn.textContent='💾 दें'; res.innerHTML='<div class="status-box error">❌ '+(e.message||e)+'</div>'; })
+    .assignSectionsDept({ sectionIds: ids, assignedTo: to, remark: rem });
+}
+function unassignSecConfirm(sid){
+  if(!confirm('इस टुकड़े को वापस अपने पास लें? (Dump सड़कें से हट जाएगा)')) return;
+  _opStart();
+  google.script.run
+    .withSuccessHandler(function(r){ _opEnd();
+      if(r && r.success){
+        var s=D.sections.find(function(x){return x.Section_ID===sid;}); if(s){ s.Assigned_To=''; s.Assign_Remark=''; }
+        renderSecTable(_secCurRid); applyRoadFilter();
+        if(typeof renderDumpRoads==='function') renderDumpRoads();
+      } else alert('❌ '+((r&&r.msg)||''));
+    })
+    .withFailureHandler(function(e){ _opEnd(); alert('❌ '+(e.message||e)); })
+    .unassignSectionDept(sid);
 }
 
 function _fmt3(v){var n=parseFloat(v);return(v===''||isNaN(n))?v:n.toFixed(3);}
@@ -13139,11 +14276,19 @@ function _secViewRowHtml(s) {
   var se  = (s.Section_ID||'').replace(/'/g,"\\'");
   var ie  = ((s.Chainage_From||'')+'–'+(s.Chainage_To||'')).replace(/'/g,"\\'");
   var dis = _secSaving ? ' disabled' : '';
-  return '<tr>'+
+  var assignedTo = String(s.Assigned_To||'').trim();
+  var rowStyle = assignedTo ? ' style="background:#fff7ed;"' : '';
+  var remCell = assignedTo
+    ? '<span style="font-size:10px;background:#fed7aa;color:#9a3412;border-radius:4px;padding:1px 6px;font-weight:600;white-space:nowrap;">→ '+assignedTo+'</span>'+(s.Assign_Remark?'<div style="font-size:10px;color:var(--text3);margin-top:2px;">'+s.Assign_Remark+'</div>':'')
+    : (s.Remark||'—');
+  var actBtns = assignedTo
+    ? '<button class="act-btn" title="वापस अपने पास लें"'+dis+' onclick="unassignSecConfirm(\''+se+'\')" style="color:#16a34a;border-color:#86efac;">↩</button>'
+    : '<button class="act-btn" title="किसी दूसरे विभाग/अभियंता को दें (Dump)"'+dis+' onclick="openAssignSecModal(\''+se+'\')">🏛️</button>';
+  return '<tr'+rowStyle+'>'+
     '<td style="font-family:var(--font-en);">'+_fmt3(s.Chainage_From||s['Chainage\nFrom']||'')+'</td>'+
     '<td style="font-family:var(--font-en);">'+_fmt3(s.Chainage_To||s['Chainage\nTo']||'')+'</td>'+
     '<td style="font-weight:700;color:var(--navy);">'+(s.KM_Number||'')+'</td>'+
-    '<td style="font-family:var(--font-en);">'+_fmt2(s.Length_KM||'')+'</td>'+
+    '<td style="font-family:var(--font-en);">'+_fmt3(s.Length_KM||'')+'</td>'+
     '<td style="font-family:var(--font-en);">'+_fmt2(s.Width_M||'')+'</td>'+
     '<td style="font-weight:600;">'+(s.Top_Surface||'')+'</td>'+
     '<td>'+(isR?badge('Running'):s.Last_Work_Month||'—')+'</td>'+
@@ -13154,9 +14299,8 @@ function _secViewRowHtml(s) {
     '<td style="font-size:11px;">'+(s.Structure_Detail||'—')+'</td>'+
     '<td style="font-size:11px;">'+(s.Vidhansabha||'—')+'</td>'+
     '<td style="font-size:11px;">'+(s.Loksabha||'—')+'</td>'+
-    '<td style="font-size:11px;color:var(--text2);">'+(s.Remark||'—')+'</td>'+
-    '<td><div class="act-btns">'+
-      '<button class="act-btn edit" title="Edit"'+dis+' onclick="secStartEdit(\''+se+'\')">✏️</button>'+
+    '<td style="font-size:11px;color:var(--text2);max-width:170px;white-space:normal;word-break:break-word;overflow-wrap:anywhere;">'+remCell+'</td>'+
+    '<td><div class="act-btns">'+ actBtns +
       '<button class="act-btn del"  title="Delete"'+dis+' onclick="deleteSecConfirm(\''+se+'\',\''+ie+'\')">🗑️</button>'+
     '</div></td>'+
   '</tr>';
@@ -13204,15 +14348,23 @@ function _secEditRowHtml(s, isNew) {
     '<td>'+inp('vs',vsv,'placeholder="विधानसभा"')+'</td>'+
     '<td>'+inp('ls',lsv,'placeholder="लोकसभा"')+'</td>'+
     '<td>'+inp('rem',rmv,'')+'</td>'+
-    '<td><button class="act-btn" style="color:#dc2626;border-color:#fca5a5;font-size:13px;" title="Cancel" onclick="secCancelRow(\''+se+'\','+(isNew?'true':'false')+')">✕</button></td>'+
+    '<td><div class="act-btns" style="white-space:nowrap;">'+
+      '<button class="act-btn" style="color:var(--green-gov);border-color:#86efac;font-size:11px;width:auto;padding:2px 7px;" title="नई लाइन जोड़ें" onclick="secAddRow(_secCurRid)">➕ Line</button>'+
+      '<button class="act-btn" style="color:#dc2626;border-color:#fca5a5;font-size:13px;" title="Cancel" onclick="secCancelRow(\''+se+'\','+(isNew?'true':'false')+')">✕</button>'+
+    '</div></td>'+
   '</tr>';
 }
 
 // ── Inline edit actions ───────────────────────────────────────
+// किसी लाइन के ✏️ पर क्लिक करते ही उस सड़क की सभी लाइनें (जो किसी दूसरे विभाग/अभियंता के पास नहीं गईं)
+// एक साथ edit मोड में आ जाती हैं — ताकि बार-बार हर लाइन अलग से edit न करनी पड़े।
 function secStartEdit(sid) {
   if (_secSaving) return;
   _snapshotEdits();
-  _secDirty[sid] = true;
+  // वर्तमान में दिख रही (फ़िल्टर लागू) सभी गैर-assigned लाइनें एक साथ edit मोड में
+  var base = (D.sections || []).filter(function(s){ return s.Road_ID===_secCurRid && !String(s.Assigned_To||'').trim(); });
+  _secApplyFilters(base).forEach(function(s){ _secDirty[s.Section_ID] = true; });
+  if (sid) _secDirty[sid] = true;   // सुरक्षा: क्लिक की गई लाइन तो हमेशा edit में
   renderSecTable(_secCurRid);
 }
 
@@ -13229,29 +14381,74 @@ function cancelAllSec() {
   renderSecTable(_secCurRid);
 }
 
+// KM No. में अंतिम संख्या को +1 करो (जैसे "KM 2"→"KM 3", "2"→"3", "KM 0-2"→"KM 0-3"); कोई संख्या न हो तो यथावत
+function _incKmNo(kmStr){
+  var s = String(kmStr||'').trim();
+  if (!s) return '';
+  var m = s.match(/(\d+)(\D*)$/);   // अंतिम अंक-समूह
+  if (!m) return s;
+  var inc = String((parseInt(m[1],10)||0) + 1);
+  return s.slice(0, m.index) + inc + m[2];
+}
+
 function secAddRow(rid) {
   if (_secSaving) return;
   _secCurRid = rid || _secCurRid;
   // Snapshot before re-render so existing typed data is preserved
   _snapshotEdits();
-  var lastTo = '';
+  // ऊपर वाली (अंतिम) लाइन के प्रभावी मान — cache (टाइप किया हुआ) पहले, वरना model
+  var prev = null;
   if (_secNewRows.length > 0) {
     var lastR = _secNewRows[_secNewRows.length-1];
-    var c = _secEditCache[lastR.Section_ID];
-    lastTo = (c && c.to !== undefined) ? c.to : (lastR.Chainage_To||'');
+    var c = _secEditCache[lastR.Section_ID] || {};
+    prev = {
+      to:   c.to   !== undefined ? c.to   : (lastR.Chainage_To||''),
+      km:   c.km   !== undefined ? c.km   : (lastR.KM_Number||''),
+      wid:  c.wid  !== undefined ? c.wid  : (lastR.Width_M||''),
+      surf: c.surf !== undefined ? c.surf : (lastR.Top_Surface||''),
+      mo:   c.mo   !== undefined ? c.mo   : (lastR.Last_Work_Month||''),
+      yr:   c.yr   !== undefined ? c.yr   : (lastR.Last_Work_Year||''),
+      bit:  c.bit  !== undefined ? c.bit  : (lastR.Bituminous_MM||''),
+      gran: c.gran !== undefined ? c.gran : (lastR.Granular_MM||''),
+      vs:   c.vs   !== undefined ? c.vs   : (lastR.Vidhansabha||''),
+      ls:   c.ls   !== undefined ? c.ls   : (lastR.Loksabha||'')
+    };
   } else {
     var secs = D.sections.filter(function(s){return s.Road_ID===_secCurRid;});
     if (secs.length) {
       var lastS = secs[secs.length-1];
-      if (_secDirty[lastS.Section_ID]) {
-        var c2 = _secEditCache[lastS.Section_ID];
-        lastTo = (c2 && c2.to !== undefined) ? c2.to : (lastS.Chainage_To||lastS['Chainage\nTo']||'');
-      } else {
-        lastTo = lastS.Chainage_To||lastS['Chainage\nTo']||'';
-      }
+      var c2 = _secEditCache[lastS.Section_ID] || {};
+      var g = function(ck, mk){ return c2[ck] !== undefined ? c2[ck] : (lastS[mk]||''); };
+      prev = {
+        to:   g('to','Chainage_To') || lastS['Chainage\nTo'] || '',
+        km:   g('km','KM_Number'),
+        wid:  g('wid','Width_M'),
+        surf: g('surf','Top_Surface'),
+        mo:   g('mo','Last_Work_Month'),
+        yr:   g('yr','Last_Work_Year'),
+        bit:  c2.bit  !== undefined ? c2.bit  : (lastS.Bituminous_MM||lastS.Bituminous_Thickness||''),
+        gran: c2.gran !== undefined ? c2.gran : (lastS.Granular_MM||lastS.Granular_Thickness||''),
+        vs:   g('vs','Vidhansabha'),
+        ls:   g('ls','Loksabha')
+      };
     }
   }
-  var nr = { Road_ID: _secCurRid, Chainage_From: lastTo };
+  var nr = { Road_ID: _secCurRid, Chainage_From: (prev ? prev.to : '') };
+  if (prev) {
+    // Chainage To = पिछली To + 1 (किमी); KM No. = पिछली KM का अंतिम अंक + 1 — बदलने योग्य
+    var _pt = parseKm(prev.to);
+    if (!isNaN(_pt)) nr.Chainage_To = fmtKm3(_pt + 1);
+    nr.KM_Number = _incKmNo(prev.km);
+    // ऊपर वाली लाइन से ये फ़ील्ड नई लाइन में स्वतः कॉपी — बदलना हो तो बदलें, वरना वही save कर दें
+    nr.Width_M         = prev.wid;
+    nr.Top_Surface     = prev.surf;
+    nr.Last_Work_Month = prev.mo;
+    nr.Last_Work_Year  = prev.yr;
+    nr.Bituminous_MM   = prev.bit;
+    nr.Granular_MM     = prev.gran;
+    nr.Vidhansabha     = prev.vs;
+    nr.Loksabha        = prev.ls;
+  }
   _secNewRows.push(nr);
   renderSecTable(_secCurRid);
   setTimeout(function(){
@@ -13286,8 +14483,12 @@ function secCalcLen(inp) {
 // ── Collect all row data from DOM ─────────────────────────────
 function _collectSecRow(sid) {
   var row = document.querySelector('tr[data-sid="'+sid+'"]');
-  if (!row) return null;
-  function v(f){ var e=row.querySelector('[data-f="'+f+'"]'); return e?e.value.trim():''; }
+  var cache = _secEditCache[sid];
+  if (!row && !cache) return null;   // न DOM में, न cache में → छोड़ो (डेटा-सुरक्षा)
+  function v(f){
+    if (row) { var e=row.querySelector('[data-f="'+f+'"]'); if(e) return e.value.trim(); }
+    return (cache && cache[f]!==undefined) ? String(cache[f]).trim() : '';
+  }
   return { sectionId:sid, roadId:_secCurRid,
     chainageFrom:v('from'), chainageTo:v('to'), kmNumber:v('km'),
     lengthKm:v('len'), widthM:v('wid'), topSurface:v('surf'),
@@ -13924,6 +15125,8 @@ function openAddRoadToProjModal(pid) {
     .forEach(function(r){
       sel.appendChild(new Option((r.Road_ID||'') + ' — ' + (r.Road_Name||''), r.Road_ID));
     });
+  renderParSections('');   // टुकड़ा-सूची रीसेट
+  var _kw=document.getElementById('par-km-wrap'); if(_kw) _kw.style.display='';
   document.getElementById('proj-add-road-modal').classList.add('open');
 }
 
@@ -13948,7 +15151,47 @@ function openEditProjRoad(prId) {
   document.getElementById('pre-status').value   = pr.Road_Status||'Running';
   document.getElementById('pre-result').innerHTML = '';
   document.getElementById('pre-submit-btn').disabled = false;
+  renderPreSections(pr.Road_ID, pr.Project_ID||'');   // टुकड़ा-checkbox सूची (मौजूदा सदस्यता pre-checked)
   document.getElementById('proj-road-edit-modal').classList.add('open');
+}
+// संपादन में: इस सड़क के सभी टुकड़े — इस प्रोजेक्ट वाले pre-checked (हटाने/जोड़ने योग्य)
+function _secReasonProjectEdit(s, pmap, projectId){
+  if(String(s.Assigned_To||'').trim()) return 'दूसरे विभाग को दिया';
+  var pj=String(s.Project_ID||'').trim();
+  if(pj && pj!==String(projectId)) return 'दूसरे प्रोजेक्ट में';
+  if(!pj){
+    var ids=String(s.Plan_IDs||'').split(',').map(function(x){return x.trim();}).filter(Boolean);
+    if(ids.some(function(pid){var pi=pmap[pid];return pi&&pi.status!=='Dropped';})) return 'योजना में है';
+  }
+  return '';
+}
+function renderPreSections(roadId, projectId){
+  var box=document.getElementById('pre-secbox'); if(!box) return;
+  var secs=(D.sections||[]).filter(function(s){return s.Road_ID===roadId;});
+  if(!secs.length){ box.innerHTML='<div style="color:var(--text3);padding:4px;">इस सड़क में Chainage टुकड़े नहीं — पूरी सड़क प्रोजेक्ट में है।</div>'; return; }
+  var pmap=_planInfoMapClient();
+  box.style.color='';
+  box.innerHTML='<div style="display:flex;gap:12px;margin-bottom:5px;font-size:11px;border-bottom:1px solid var(--border);padding-bottom:4px;">'+
+    '<a href="javascript:void(0)" onclick="_preSelAllSec(true)" style="color:var(--navy);font-weight:700;">✓ सभी चुनें</a>'+
+    '<a href="javascript:void(0)" onclick="_preSelAllSec(false)" style="color:#dc2626;font-weight:700;">✕ सभी हटाएँ</a></div>'+
+    secs.map(function(s){
+      var reason=_secReasonProjectEdit(s,pmap,projectId);
+      var inThis=String(s.Project_ID||'').trim()===String(projectId);
+      var dis=reason?'disabled':'';
+      return '<label style="display:flex;align-items:center;gap:6px;padding:3px 2px;'+(reason?'opacity:.55;':'')+'">'+
+        '<input type="checkbox" class="pre-secchk" value="'+s.Section_ID+'" '+dis+(inThis?' checked':'')+' onchange="_preSyncKm()">'+
+        '<span>'+_secLabel(s)+'</span>'+
+        (reason?'<span style="font-size:10px;color:#dc2626;margin-left:auto;white-space:nowrap;">'+reason+'</span>':'')+
+      '</label>';
+    }).join('');
+  _preSyncKm();
+}
+function _preSelAllSec(on){ document.querySelectorAll('.pre-secchk:not([disabled])').forEach(function(c){c.checked=on;}); _preSyncKm(); }
+function _preCheckedSectionIds(){ var a=[]; document.querySelectorAll('.pre-secchk:checked').forEach(function(c){a.push(c.value);}); return a; }
+function _preSyncKm(){
+  if(!document.querySelector('.pre-secchk')) return;
+  var parts=_preCheckedSectionIds().map(function(id){ var s=(D.sections||[]).find(function(x){return x.Section_ID===id;}); return s?(s.KM_Number||(_fmt3(s.Chainage_From||'')+'–'+_fmt3(s.Chainage_To||''))):''; }).filter(Boolean);
+  var el=document.getElementById('pre-km'); if(el) el.value=parts.join(', ')||'सभी किमी';
 }
 
 function submitEditProjRoad() {
@@ -13964,6 +15207,7 @@ function submitEditProjRoad() {
     prId:         _prEditId,
     workDesc:     work,
     kmCovered:    document.getElementById('pre-km').value,
+    sectionIds:   _preCheckedSectionIds(),
     sanctionedAmt:document.getElementById('pre-amt').value,
     startDate:    sv ? fmtDate(sv) : '',
     endDate:      ev ? fmtDate(ev) : '',
@@ -13984,7 +15228,12 @@ function submitEditProjRoad() {
           pr.Road_End_Date       = data.endDate;
           pr.Road_Status         = data.status;
         }
-        resEl.innerHTML = '<div class="status-box success">✅ सहेज लिया गया</div>';
+        // local D.sections में टुकड़ा-सदस्यता तुरंत दर्शाओ
+        (res.sectionsAdded||[]).forEach(function(sid){ var s=(D.sections||[]).find(function(x){return x.Section_ID===sid;}); if(s) s.Project_ID=pid; });
+        (res.sectionsRemoved||[]).forEach(function(sid){ var s=(D.sections||[]).find(function(x){return x.Section_ID===sid;}); if(s) s.Project_ID=''; });
+        var _sk=res.sectionsSkipped||[];
+        var _skM=_sk.length?'<div style="font-size:11px;color:#b45309;margin-top:4px;">⚠ '+_sk.length+' टुकड़ा नहीं जुड़ा ('+_sk.map(function(x){return x.reason;}).filter(function(v,i,a){return a.indexOf(v)===i;}).join(', ')+')</div>':'';
+        resEl.innerHTML = '<div class="status-box success">✅ सहेज लिया गया</div>'+_skM;
         renderProj(); renderRoads();
         setTimeout(function(){ closeModal('proj-road-edit-modal'); showProjRoadsList(pid); }, 700);
       } else { resEl.innerHTML='<div class="status-box error">❌ '+res.msg+'</div>'; btnEl.disabled=false; }
@@ -14015,22 +15264,60 @@ function deleteProjRoad(prId, roadName) {
 function parRoadChange(sel) {
   var roadId = sel.value;
   var kmSel  = document.getElementById('par-km');
+  var kmWrap = document.getElementById('par-km-wrap');
   if (!roadId) {
     kmSel.innerHTML = '<option value="">— पहले सड़क चुनें —</option>';
+    renderParSections('');
+    if (kmWrap) kmWrap.style.display = '';
     return;
   }
   // Annual Plan से auto-fill
   var plan = D.plan.find(function(p){ return p.Road_ID===roadId && p.Status!=='Dropped'; });
   if (plan && plan.Proposed_Work) document.getElementById('par-work').value = plan.Proposed_Work;
-  // KM dropdown — sections से
+  // KM dropdown — sections से (fallback जब कोई टुकड़ा न हो)
   var secs = D.sections.filter(function(s){ return s.Road_ID===roadId; });
   kmSel.innerHTML = '<option value="सभी किमी">सभी किमी</option>';
   secs.forEach(function(s){
     var km = s.KM_Number||'';
     if (km) kmSel.appendChild(new Option(km, km));
   });
-  // Plan section_km default select
   if (plan && plan.Section_KM) kmSel.value = plan.Section_KM;
+  // टुकड़ा-checkbox सूची भरो; टुकड़े हों तो KM-dropdown छिपाओ (checkbox से ही तय होगा)
+  renderParSections(roadId);
+  if (kmWrap) kmWrap.style.display = secs.length ? 'none' : '';
+}
+// इस सड़क के टुकड़े checkbox सूची में — कौन-कौन से टुकड़े इस परियोजना में
+function renderParSections(roadId){
+  var box=document.getElementById('par-secbox'); if(!box) return;
+  if(!roadId){ box.innerHTML='— पहले सड़क चुनें —'; box.style.color='var(--text3)'; return; }
+  var secs=(D.sections||[]).filter(function(s){return s.Road_ID===roadId;});
+  if(!secs.length){ box.innerHTML='<div style="color:var(--text3);padding:4px;">इस सड़क में Chainage टुकड़े नहीं — पूरी सड़क प्रोजेक्ट में जुड़ेगी। (KM नीचे से चुनें)</div>'; return; }
+  var pmap=_planInfoMapClient();
+  box.style.color='';
+  box.innerHTML='<div style="display:flex;gap:12px;margin-bottom:5px;font-size:11px;border-bottom:1px solid var(--border);padding-bottom:4px;">'+
+    '<a href="javascript:void(0)" onclick="_parSelAllSec(true)" style="color:var(--navy);font-weight:700;">✓ सभी चुनें</a>'+
+    '<a href="javascript:void(0)" onclick="_parSelAllSec(false)" style="color:#dc2626;font-weight:700;">✕ सभी हटाएँ</a></div>'+
+    secs.map(function(s){
+      var reason=_secReasonProject(s,pmap);
+      var dis=reason?'disabled':'';
+      return '<label style="display:flex;align-items:center;gap:6px;padding:3px 2px;'+(reason?'opacity:.55;':'')+'">'+
+        '<input type="checkbox" class="par-secchk" value="'+s.Section_ID+'" '+dis+' onchange="_parSyncKm()">'+
+        '<span>'+_secLabel(s)+'</span>'+
+        (reason?'<span style="font-size:10px;color:#dc2626;margin-left:auto;white-space:nowrap;">'+reason+'</span>':'')+
+      '</label>';
+    }).join('');
+  _parSyncKm();
+}
+function _parSelAllSec(on){ document.querySelectorAll('.par-secchk:not([disabled])').forEach(function(c){ c.checked=on; }); _parSyncKm(); }
+function _parCheckedSectionIds(){ var a=[]; document.querySelectorAll('.par-secchk:checked').forEach(function(c){a.push(c.value);}); return a; }
+function _parSyncKm(){
+  // चुने टुकड़ों का KM सारांश → par-km select में एक अस्थायी option के रूप में सेट
+  var ids=_parCheckedSectionIds();
+  if(!document.querySelector('.par-secchk')) return;   // कोई checkbox नहीं (टुकड़े नहीं) → KM dropdown यथावत
+  var parts=ids.map(function(id){ var s=(D.sections||[]).find(function(x){return x.Section_ID===id;}); return s?(s.KM_Number|| (_fmt3(s.Chainage_From||'')+'–'+_fmt3(s.Chainage_To||''))):''; }).filter(Boolean);
+  var km=parts.join(', ')||'सभी किमी';
+  var kmSel=document.getElementById('par-km');
+  if(kmSel){ kmSel.innerHTML='<option value="'+km.replace(/"/g,'&quot;')+'" selected>'+km+'</option>'; }
 }
 
 function submitAddRoadToProj() {
@@ -14049,6 +15336,7 @@ function submitAddRoadToProj() {
     projectId:    _parProjId,
     workDesc:     work,
     kmCovered:    document.getElementById('par-km').value,
+    sectionIds:   _parCheckedSectionIds(),
     sanctionedAmt:document.getElementById('par-amt').value,
     startDate:    prj.Overall_Start_Date||'',
     endDate:      prj.Overall_End_Date||''
@@ -14058,7 +15346,11 @@ function submitAddRoadToProj() {
     .withSuccessHandler(function(res){
       _opEnd();
       if (res.success) {
-        resEl.innerHTML = '<div class="status-box success">✅ "' + (road.Road_Name||roadId) + '" जोड़ी गई</div>';
+        var _skip=res.sectionsSkipped||[], _add=res.sectionsAdded||[];
+        var _skipMsg=_skip.length?'<div style="font-size:11px;color:#b45309;margin-top:4px;">⚠ '+_skip.length+' टुकड़ा नहीं जुड़ा ('+_skip.map(function(x){return x.reason;}).filter(function(v,i,a){return a.indexOf(v)===i;}).join(', ')+')</div>':'';
+        resEl.innerHTML = '<div class="status-box success">✅ "' + (road.Road_Name||roadId) + '" जोड़ी गई'+(_add.length?' — '+_add.length+' टुकड़े':'')+'</div>'+_skipMsg;
+        // local D.sections में इस प्रोजेक्ट की सदस्यता तुरंत दर्शाओ
+        _add.forEach(function(sid){ var s=(D.sections||[]).find(function(x){return x.Section_ID===sid;}); if(s) s.Project_ID=_parProjId; });
         D.projRoads.push({
           PR_ID: res.prId,
           Project_ID: _parProjId, Road_ID: roadId,
@@ -14556,13 +15848,17 @@ function getRoadStatusHtml(rid, rname) {
   if (planEntries.length) {
     var latest = planEntries[planEntries.length - 1];
     var planYear = latest.Year || '';
-    var metaParts = [];
-    if (latest.Year)      metaParts.push(latest.Year);
-    if (latest.Work_Type) metaParts.push(latest.Work_Type);
+    // इस सड़क की सभी (non-dropped) योजनाओं के नाम (कार्य प्रकार) — comma सहित
+    var wtNames = [];
+    planEntries.forEach(function(p){ var t=String(p.Work_Type||'').trim(); if(t && wtNames.indexOf(t)<0) wtNames.push(t); });
+    var years = [];
+    planEntries.forEach(function(p){ var y=String(p.Year||'').trim(); if(y && years.indexOf(y)<0) years.push(y); });
+    var planNames = wtNames.length ? wtNames.join(', ') : (years.join(', '));
     return '<div style="'+COL+'">' +
       '<div class="sta-plan-chip" style="cursor:pointer;" title="वार्षिक कार्य योजना में देखें" onclick="gotoPlanForRoad(\''+rid+'\',\''+planYear+'\')">📋 योजना में</div>' +
+      (planNames ? '<div class="sta-plan-meta" style="text-align:center;font-weight:600;color:var(--navy2);" title="'+planNames.replace(/"/g,'&quot;')+'">'+planNames+'</div>' : '') +
+      (years.length ? '<div class="sta-plan-meta" style="text-align:center;font-size:9px;color:var(--text3);">'+years.join(', ')+'</div>' : '') +
       '<span style="font-size:10px;color:var(--navy2);cursor:pointer;line-height:1.4;" onclick="openAddToProjectModal(\''+rid+'\',\''+rname_esc+'\')">प्रोजेक्ट में जोड़ें</span>' +
-      (metaParts.length ? '<div class="sta-plan-meta" style="text-align:center;">'+metaParts.join(' · ')+'</div>' : '') +
     '</div>';
   }
 
@@ -14603,8 +15899,50 @@ function openAddToPlanModal(rid, rname) {
   });
   toggleApmRoadField();
 
+  // #5 — टुकड़ा-checkbox सूची (year बदलने पर फिर से; work-type inline onchange से)
+  var _ay=document.getElementById('apm-year'); if(_ay) _ay.onchange = renderApmSections;
+  renderApmSections();
+
   document.getElementById('add-plan-modal').classList.add('open');
 }
+
+// #5 — योजना overlay: सड़क के टुकड़े checkbox के रूप में (नियम-जाँच सहित)
+function _planInfoMapClient(){
+  var m={}; (D.plan||[]).forEach(function(p){ if(p.Plan_ID) m[p.Plan_ID]={year:String(p.Year||'').trim(),workType:String(p.Work_Type||'').trim(),status:String(p.Status||'').trim()}; }); return m;
+}
+function _secReasonPlan(s, pmap, year, workType){
+  if(String(s.Project_ID||'').trim()) return 'प्रोजेक्ट में है';
+  if(String(s.Assigned_To||'').trim()) return 'दूसरे विभाग को दिया';
+  if(String(workType||'').trim()==='पैच मरम्मत') return '';
+  var ids=String(s.Plan_IDs||'').split(',').map(function(x){return x.trim();}).filter(Boolean);
+  for(var i=0;i<ids.length;i++){ var pi=pmap[ids[i]]; if(!pi||pi.status==='Dropped')continue; if(pi.year===String(year||'').trim()&&pi.workType!=='पैच मरम्मत') return 'इस वर्ष पहले से योजना में'; }
+  return '';
+}
+function _secLabel(s){ return (s.KM_Number?s.KM_Number+' · ':'')+_fmt3(s.Chainage_From||'')+'–'+_fmt3(s.Chainage_To||'')+' ('+_fmt2(s.Length_KM||'')+' KM)'; }
+function renderApmSections(){
+  var box=document.getElementById('apm-secbox'); if(!box) return;
+  var rid=document.getElementById('apm-road-id').value;
+  var year=document.getElementById('apm-year').value;
+  var wt=document.getElementById('apm-wtype').value;
+  var secs=(D.sections||[]).filter(function(s){return s.Road_ID===rid;});
+  if(!secs.length){ box.innerHTML='<div style="color:var(--text3);padding:4px;">इस सड़क में Chainage टुकड़े नहीं — पूरी सड़क योजना में जुड़ेगी।</div>'; document.getElementById('apm-section').value=''; return; }
+  var pmap=_planInfoMapClient();
+  box.innerHTML=secs.map(function(s){
+    var reason=_secReasonPlan(s,pmap,year,wt);
+    var dis=reason?'disabled':'';
+    return '<label style="display:flex;align-items:center;gap:6px;padding:3px 2px;'+(reason?'opacity:.55;':'')+'">'+
+      '<input type="checkbox" class="apm-secchk" value="'+s.Section_ID+'" '+dis+' onchange="_apmSyncSecSummary()">'+
+      '<span>'+_secLabel(s)+'</span>'+
+      (reason?'<span style="font-size:10px;color:#dc2626;margin-left:auto;white-space:nowrap;">'+reason+'</span>':'')+
+    '</label>';
+  }).join('');
+  _apmSyncSecSummary();
+}
+function _apmSyncSecSummary(){
+  var parts=[]; document.querySelectorAll('.apm-secchk:checked').forEach(function(c){ var s=(D.sections||[]).find(function(x){return x.Section_ID===c.value;}); if(s) parts.push(s.KM_Number|| (_fmt3(s.Chainage_From||'')+'–'+_fmt3(s.Chainage_To||''))); });
+  var el=document.getElementById('apm-section'); if(el) el.value=parts.join(', ');
+}
+function _apmCheckedSectionIds(){ var a=[]; document.querySelectorAll('.apm-secchk:checked').forEach(function(c){a.push(c.value);}); return a; }
 
 // ── Submit Add to Plan ───────────────────────────────────────
 function submitAddToPlan() {
@@ -14652,6 +15990,7 @@ function submitAddToPlan() {
     workType:      wtype,
     proposedWork:  work,
     sectionKm:     document.getElementById('apm-section').value,
+    sectionIds:    _apmCheckedSectionIds(),
     estimatedCost: document.getElementById('apm-cost').value,
     priority:      document.getElementById('apm-priority').value,
     status:        document.getElementById('apm-status').value
@@ -14661,7 +16000,12 @@ function submitAddToPlan() {
     .withSuccessHandler(function(res) {
       _opEnd();
       if (res.success) {
-        resEl.innerHTML = '<div class="status-box success">✅ "'+data.roadName+'" वार्षिक कार्ययोजना में जोड़ा गया ('+res.planId+')</div>';
+        var skipMsg = '';
+        var skipped = res.sectionsSkipped || [];
+        if (skipped.length) skipMsg = '<div style="font-size:11px;color:#b45309;margin-top:4px;">⚠ '+skipped.length+' टुकड़ा नहीं जुड़ा ('+skipped.map(function(x){return x.reason;}).filter(function(v,i,a){return a.indexOf(v)===i;}).join(', ')+')</div>';
+        resEl.innerHTML = '<div class="status-box success">✅ "'+data.roadName+'" वार्षिक कार्ययोजना में जोड़ा गया ('+res.planId+')'+((res.sectionsAdded&&res.sectionsAdded.length)?' — '+res.sectionsAdded.length+' टुकड़े':'')+'</div>'+skipMsg;
+        // local D.sections में membership तुरंत दर्शाओ
+        (res.sectionsAdded || []).forEach(function(sid){ var s=(D.sections||[]).find(function(x){return x.Section_ID===sid;}); if(s){ s.Plan_IDs = (String(s.Plan_IDs||'').split(',').map(function(t){return t.trim();}).filter(Boolean).concat([res.planId])).join(','); } });
         document.getElementById('apm-submit-btn').style.display = 'none';
         document.getElementById('apm-cancel-btn').style.display = 'none';
         document.getElementById('apm-close-btn').style.display = '';
@@ -14717,9 +16061,9 @@ function openAddToProjectModal(rid, rname) {
     infoText = 'Road ID: ' + rid + ' | कार्ययोजना: ' + (planEntry.Year||'') + ' | ' + (planEntry.Work_Type||'') + ' → ' + code;
     // Work_Type से work description pre-fill
     if (planEntry.Proposed_Work) document.getElementById('aprj-work').value = planEntry.Proposed_Work;
-    if (planEntry.Section_KM)    document.getElementById('aprj-km').value   = planEntry.Section_KM;
   }
   document.getElementById('aprj-road-info').textContent = infoText;
+  renderAprjSections();   // #6 — टुकड़ा-checkbox सूची
 
   // Project dropdown populate (Running/Pending projects पहले)
   var pSel = document.getElementById('aprj-project');
@@ -14746,6 +16090,38 @@ function aprjProjChange(sel) {
   document.getElementById('aprj-end').value   = dmy2ymd(prj.Overall_End_Date||'');
 }
 
+// #6 — प्रोजेक्ट overlay: सड़क के टुकड़े checkbox के रूप में (योजना/प्रोजेक्ट exclusive)
+function _secReasonProject(s, pmap){
+  if(String(s.Assigned_To||'').trim()) return 'दूसरे विभाग को दिया';
+  if(String(s.Project_ID||'').trim()) return 'पहले से प्रोजेक्ट में';
+  var ids=String(s.Plan_IDs||'').split(',').map(function(x){return x.trim();}).filter(Boolean);
+  var inPlan=ids.some(function(pid){var pi=pmap[pid];return pi&&pi.status!=='Dropped';});
+  if(inPlan) return 'योजना में है';
+  return '';
+}
+function renderAprjSections(){
+  var box=document.getElementById('aprj-secbox'); if(!box) return;
+  var rid=document.getElementById('aprj-road-id').value;
+  var secs=(D.sections||[]).filter(function(s){return s.Road_ID===rid;});
+  if(!secs.length){ box.innerHTML='<div style="color:var(--text3);padding:4px;">इस सड़क में Chainage टुकड़े नहीं — पूरी सड़क प्रोजेक्ट में जुड़ेगी।</div>'; document.getElementById('aprj-km').value=''; return; }
+  var pmap=_planInfoMapClient();
+  box.innerHTML=secs.map(function(s){
+    var reason=_secReasonProject(s,pmap);
+    var dis=reason?'disabled':'';
+    return '<label style="display:flex;align-items:center;gap:6px;padding:3px 2px;'+(reason?'opacity:.55;':'')+'">'+
+      '<input type="checkbox" class="aprj-secchk" value="'+s.Section_ID+'" '+dis+' onchange="_aprjSyncSecSummary()">'+
+      '<span>'+_secLabel(s)+'</span>'+
+      (reason?'<span style="font-size:10px;color:#dc2626;margin-left:auto;white-space:nowrap;">'+reason+'</span>':'')+
+    '</label>';
+  }).join('');
+  _aprjSyncSecSummary();
+}
+function _aprjSyncSecSummary(){
+  var parts=[]; document.querySelectorAll('.aprj-secchk:checked').forEach(function(c){ var s=(D.sections||[]).find(function(x){return x.Section_ID===c.value;}); if(s) parts.push(s.KM_Number|| (_fmt3(s.Chainage_From||'')+'–'+_fmt3(s.Chainage_To||''))); });
+  var el=document.getElementById('aprj-km'); if(el) el.value=parts.join(', ');
+}
+function _aprjCheckedSectionIds(){ var a=[]; document.querySelectorAll('.aprj-secchk:checked').forEach(function(c){a.push(c.value);}); return a; }
+
 // ── Submit Add to Project ────────────────────────────────────
 function submitAddToProject() {
   var resEl  = document.getElementById('aprj-result');
@@ -14767,6 +16143,7 @@ function submitAddToProject() {
     projectId:    projId,
     workDesc:     work,
     kmCovered:    document.getElementById('aprj-km').value,
+    sectionIds:   _aprjCheckedSectionIds(),
     sanctionedAmt:document.getElementById('aprj-amt').value,
     startDate:    document.getElementById('aprj-start').value,
     endDate:      document.getElementById('aprj-end').value
@@ -14777,8 +16154,12 @@ function submitAddToProject() {
       _opEnd();
       if (res.success) {
         var code = getWorkTypeCode(res.workType || '');
-        resEl.innerHTML = '<div class="status-box success">✅ परियोजना में जोड़ा गया ('+res.prId+')<br>' +
-          '📌 Status: <strong>'+code+'</strong> &nbsp;|&nbsp; कार्ययोजना से हटाया गया</div>';
+        var skp = res.sectionsSkipped || [];
+        var skpMsg = skp.length ? '<div style="font-size:11px;color:#b45309;margin-top:4px;">⚠ '+skp.length+' टुकड़ा नहीं जुड़ा ('+skp.map(function(x){return x.reason;}).filter(function(v,i,a){return a.indexOf(v)===i;}).join(', ')+')</div>' : '';
+        resEl.innerHTML = '<div class="status-box success">✅ परियोजना में जोड़ा गया ('+res.prId+')'+((res.sectionsAdded&&res.sectionsAdded.length)?' — '+res.sectionsAdded.length+' टुकड़े':'')+'<br>' +
+          '📌 Status: <strong>'+code+'</strong> &nbsp;|&nbsp; कार्ययोजना से हटाया गया</div>'+skpMsg;
+        // local D.sections में membership तुरंत दर्शाओ
+        (res.sectionsAdded || []).forEach(function(sid){ var s=(D.sections||[]).find(function(x){return x.Section_ID===sid;}); if(s){ s.Project_ID=data.projectId; s.Plan_IDs=''; } });
 
         // Local: Annual Plan entries इस road की → Dropped
         D.plan.forEach(function(p){

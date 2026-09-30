@@ -2570,6 +2570,15 @@ function _applyPlanSections_(ss, planId, year, workType, sectionIds) {
   SBApp.flush();
   return { added:added, skipped:skipped };
 }
+// किसी प्रोजेक्ट का Work_Type (3_Projects से)
+function _projectWorkType_(ss, projectId){
+  var sh=ss.getSheetByName('3_Projects'); if(!sh) return '';
+  var vals=sh.getDataRange().getValues(); var hdr=vals[0].map(function(h){return String(h).trim();});
+  var pidC=hdr.indexOf('Project_ID'), wtC=hdr.indexOf('Work_Type');
+  if(pidC<0||wtC<0) return '';
+  for(var r=1;r<vals.length;r++){ if(String(vals[r][pidC]||'').trim()===String(projectId)) return String(vals[r][wtC]||'').trim(); }
+  return '';
+}
 function _applyProjectSections_(ss, projectId, sectionIds) {
   sectionIds = (sectionIds||[]).filter(Boolean);
   if (!sectionIds.length) return { added:[], skipped:[] };
@@ -2578,17 +2587,21 @@ function _applyProjectSections_(ss, projectId, sectionIds) {
   const hdr  = vals[0].map(h=>String(h).trim());
   const sidC=hdr.indexOf('Section_ID'), pjC=hdr.indexOf('Project_ID'), piC=hdr.indexOf('Plan_IDs'), asC=hdr.indexOf('Assigned_To');
   const planMap = _planInfoMap_(ss);
+  const projIsPatch = _projectWorkType_(ss, projectId) === 'पैच मरम्मत';
   const added=[], skipped=[];
   let changed=false;
   for (let r=1;r<vals.length;r++){
     const sid = String(vals[r][sidC]).trim();
     if (sectionIds.indexOf(sid) < 0) continue;
     if (String(vals[r][asC]||'').trim()) { skipped.push({id:sid, reason:'दूसरे विभाग को दिया'}); continue; }
-    if (String(vals[r][pjC]||'').trim()) { skipped.push({id:sid, reason:'पहले से प्रोजेक्ट में'}); continue; }
+    const curProj = String(vals[r][pjC]||'').trim();
     var ids = String(vals[r][piC]||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
-    var inPlan = ids.some(function(pid){ var pi=planMap[pid]; return pi && pi.status!=='Dropped' && pi.workType!=='पैच मरम्मत'; });   // पैच योजना reserve नहीं करती
-    if (inPlan) { skipped.push({id:sid, reason:'योजना में है'}); continue; }
-    vals[r][pjC]=projectId; added.push(sid); changed=true;
+    var inPlan = ids.some(function(pid){ var pi=planMap[pid]; return pi && pi.status!=='Dropped'; });
+    // पहले से किसी प्रोजेक्ट/योजना में — पैच परियोजना में overlap मान्य पर Project_ID double-claim नहीं
+    // (सड़क तो 3B में जुड़ ही रही है); गैर-पैच में रोक दो
+    if (curProj) { if(!projIsPatch) skipped.push({id:sid, reason:'पहले से प्रोजेक्ट में'}); continue; }
+    if (inPlan)  { if(!projIsPatch) skipped.push({id:sid, reason:'योजना में है'});        continue; }
+    vals[r][pjC]=projectId; added.push(sid); changed=true;   // केवल मुक्त टुकड़े claim होते हैं
   }
   if(changed){   // पूरी Project_ID कॉलम एक ही setValues में (per-row setValue से बचाव → तेज़)
     const colArr=[]; for(let r=1;r<vals.length;r++){ colArr.push([vals[r][pjC]]); }

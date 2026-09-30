@@ -16091,29 +16091,39 @@ function aprjProjChange(sel) {
   var prj = D.projects.find(function(p){ return p.Project_ID===sel.value; })||{};
   document.getElementById('aprj-start').value = dmy2ymd(prj.Overall_Start_Date||'');
   document.getElementById('aprj-end').value   = dmy2ymd(prj.Overall_End_Date||'');
+  renderAprjSections();   // चुनी परियोजना (पैच?) के अनुसार टुकड़ा-पात्रता दोबारा तय करो
 }
 
 // #6 — प्रोजेक्ट overlay: सड़क के टुकड़े checkbox के रूप में (योजना/प्रोजेक्ट exclusive)
-function _secReasonProject(s, pmap){
+function _secReasonProject(s, pmap, projIsPatch){
   if(String(s.Assigned_To||'').trim()) return 'दूसरे विभाग को दिया';
+  // पैच मरम्मत परियोजना चुनी हो → किसी अन्य योजना/प्रोजेक्ट में हो तब भी योग्य
+  if(projIsPatch) return '';
   if(String(s.Project_ID||'').trim()) return 'पहले से प्रोजेक्ट में ('+String(s.Project_ID).trim()+')';
   var ids=String(s.Plan_IDs||'').split(',').map(function(x){return x.trim();}).filter(Boolean);
-  // पैच मरम्मत योजना टुकड़ा reserve नहीं करती — ऐसा टुकड़ा प्रोजेक्ट (पैच कार्य) में जोड़ा जा सकता है
-  var inPlan=ids.some(function(pid){var pi=pmap[pid];return pi&&pi.status!=='Dropped'&&pi.workType!=='पैच मरम्मत';});
+  var inPlan=ids.some(function(pid){var pi=pmap[pid];return pi&&pi.status!=='Dropped';});
   if(inPlan) return 'योजना में है';
   return '';
 }
 function renderAprjSections(){
   var box=document.getElementById('aprj-secbox'); if(!box) return;
   var rid=document.getElementById('aprj-road-id').value;
+  var projId=(document.getElementById('aprj-project')||{}).value||'';
+  var prj=(D.projects||[]).find(function(p){return p.Project_ID===projId;})||{};
+  var projIsPatch=String(prj.Work_Type||'').trim()==='पैच मरम्मत';
   var secs=(D.sections||[]).filter(function(s){return s.Road_ID===rid;});
   if(!secs.length){ box.innerHTML='<div style="color:var(--text3);padding:4px;">इस सड़क में Chainage टुकड़े नहीं — पूरी सड़क प्रोजेक्ट में जुड़ेगी।</div>'; document.getElementById('aprj-km').value=''; return; }
   var pmap=_planInfoMapClient();
-  box.innerHTML='<div style="display:flex;gap:12px;margin-bottom:5px;font-size:11px;border-bottom:1px solid var(--border);padding-bottom:4px;">'+
+  // यदि कोई टुकड़ा किसी अन्य योजना/प्रोजेक्ट में है और अभी पैच परियोजना नहीं चुनी — सूचना
+  var anyBlocked=secs.some(function(s){ return !String(s.Assigned_To||'').trim() && (String(s.Project_ID||'').trim() || String(s.Plan_IDs||'').split(',').some(function(pid){var pi=pmap[pid.trim()];return pi&&pi.status!=='Dropped';})); });
+  var hint=(anyBlocked && !projIsPatch)
+    ? '<div style="font-size:10.5px;color:#b45309;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:4px 7px;margin-bottom:5px;">ℹ कुछ टुकड़े किसी अन्य योजना/प्रोजेक्ट में हैं — इन्हें जोड़ने के लिए ऊपर से <b>"पैच मरम्मत" कार्य वाली परियोजना</b> चुनें।</div>'
+    : '';
+  box.innerHTML=hint+'<div style="display:flex;gap:12px;margin-bottom:5px;font-size:11px;border-bottom:1px solid var(--border);padding-bottom:4px;">'+
       '<a href="javascript:void(0)" onclick="_aprjSelAllSec(true)" style="color:var(--navy);font-weight:700;">✓ सभी चुनें</a>'+
       '<a href="javascript:void(0)" onclick="_aprjSelAllSec(false)" style="color:#dc2626;font-weight:700;">✕ सभी हटाएँ</a></div>'+
     secs.map(function(s){
-      var reason=_secReasonProject(s,pmap);
+      var reason=_secReasonProject(s,pmap,projIsPatch);
       var dis=reason?'disabled':'';
       return '<label style="display:flex;align-items:center;gap:6px;padding:3px 2px;'+(reason?'opacity:.55;':'')+'">'+
         '<input type="checkbox" class="aprj-secchk" value="'+s.Section_ID+'" '+dis+' onchange="_aprjSyncSecSummary()">'+

@@ -2498,8 +2498,12 @@ function addToAnnualPlan(data) {
     }
   }
 
-  const lastRow = sheet.getLastRow();
-  const planId = 'AP' + String(lastRow).padStart(3, '0');
+  // अद्वितीय Plan_ID — मौजूदा में सबसे बड़ा अंक + 1 (पहले lastRow से बनता था → row हटाने पर डुप्लिकेट बन जाते थे)
+  const _pv = sheet.getDataRange().getValues();
+  const _pidC = hdr.indexOf('Plan_ID');
+  let _maxN = 0;
+  for (let r = 1; r < _pv.length; r++) { const n = parseInt(String(_pv[r][_pidC]||'').replace(/\D/g,'')) || 0; if (n > _maxN) _maxN = n; }
+  const planId = 'AP' + String(_maxN + 1).padStart(3, '0');
 
   const row = new Array(hdr.length).fill('');
   const set = (col, val) => { const i = hdr.indexOf(col); if (i >= 0) row[i] = val; };
@@ -2550,14 +2554,18 @@ function _applyPlanSections_(ss, planId, year, workType, sectionIds) {
   const piC  = hdr.indexOf('Plan_IDs');
   const planMap = _planInfoMap_(ss);
   const added=[], skipped=[];
+  let changed=false;
   for (let r=1;r<vals.length;r++){
     const sid = String(vals[r][sidC]).trim();
     if (sectionIds.indexOf(sid) < 0) continue;
     const secObj = {}; hdr.forEach(function(h,i){ secObj[h]=vals[r][i]; });
     const reason = _secPlanReason_(secObj, planMap, year, workType);
     if (reason) { skipped.push({id:sid, reason:reason}); continue; }
-    sheet.getRange(r+1, piC+1).setValue(_csvAdd_(secObj.Plan_IDs, planId));
-    added.push(sid);
+    vals[r][piC] = _csvAdd_(secObj.Plan_IDs, planId); added.push(sid); changed=true;
+  }
+  if(changed){   // पूरी Plan_IDs कॉलम एक ही setValues में (per-row setValue से बचाव → तेज़)
+    const colArr=[]; for(let r=1;r<vals.length;r++){ colArr.push([vals[r][piC]]); }
+    sheet.getRange(2, piC+1, colArr.length, 1).setValues(colArr);
   }
   SBApp.flush();
   return { added:added, skipped:skipped };
@@ -2593,7 +2601,9 @@ function _clearPlanFromSections_(ss, planId){
   const sheet=ss.getSheetByName('2_Road_Sections'); if(!sheet) return;
   const vals=sheet.getDataRange().getValues(); const hdr=vals[0].map(h=>String(h).trim());
   const piC=hdr.indexOf('Plan_IDs'); if(piC<0) return;
-  for(let r=1;r<vals.length;r++){ var cur=String(vals[r][piC]||''); if(cur.split(',').map(function(s){return s.trim();}).indexOf(String(planId))>=0){ sheet.getRange(r+1,piC+1).setValue(_csvDel_(cur,planId)); } }
+  let changed=false;
+  for(let r=1;r<vals.length;r++){ var cur=String(vals[r][piC]||''); if(cur.split(',').map(function(s){return s.trim();}).indexOf(String(planId))>=0){ vals[r][piC]=_csvDel_(cur,planId); changed=true; } }
+  if(changed){ const colArr=[]; for(let r=1;r<vals.length;r++){ colArr.push([vals[r][piC]]); } sheet.getRange(2,piC+1,colArr.length,1).setValues(colArr); }
   SBApp.flush();
 }
 function _clearProjectFromSections_(ss, projectId, roadId){
@@ -2672,6 +2682,7 @@ function _reconcilePlanSections_(ss, planId, roadId, year, workType, sectionIds)
   const sidC=hdr.indexOf('Section_ID'), rdC=hdr.indexOf('Road_ID'), piC=hdr.indexOf('Plan_IDs');
   const planMap=_planInfoMap_(ss);
   const added=[], skipped=[], removed=[];
+  let changed=false;
   for(let r=1;r<vals.length;r++){
     if(String(vals[r][rdC]||'').trim()!==String(roadId).trim()) continue;
     const sid=String(vals[r][sidC]).trim();
@@ -2682,12 +2693,14 @@ function _reconcilePlanSections_(ss, planId, roadId, year, workType, sectionIds)
       var secObj={}; hdr.forEach(function(h,i){secObj[h]=vals[r][i];});
       var reason=_secPlanReason_(secObj, planMap, year, workType);
       if(reason){ skipped.push({id:sid,reason:reason}); continue; }
-      sheet.getRange(r+1,piC+1).setValue(_csvAdd_(cur, planId));
-      added.push(sid);
+      vals[r][piC]=_csvAdd_(cur, planId); added.push(sid); changed=true;
     } else if(!want && has){
-      sheet.getRange(r+1,piC+1).setValue(_csvDel_(cur, planId));
-      removed.push(sid);
+      vals[r][piC]=_csvDel_(cur, planId); removed.push(sid); changed=true;
     }
+  }
+  if(changed){   // पूरी Plan_IDs कॉलम एक ही setValues में (तेज़)
+    const colArr=[]; for(let r=1;r<vals.length;r++){ colArr.push([vals[r][piC]]); }
+    sheet.getRange(2, piC+1, colArr.length, 1).setValues(colArr);
   }
   SBApp.flush();
   return {added:added,skipped:skipped,removed:removed};

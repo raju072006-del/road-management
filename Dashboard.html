@@ -15362,8 +15362,8 @@ function submitAddRoadToProj() {
         });
         var _pp = D.projects.find(function(p){ return p.Project_ID===_parProjId; });
         if (_pp) _pp.Project_Type = calcProjType(_parProjId);
-        // Annual Plan drop
-        D.plan.forEach(function(p){ if(p.Road_ID===roadId && p.Status!=='Dropped') p.Status='Dropped'; });
+        // Annual Plan drop — पर स्वीकृत (Sanctioned) को यथावत रखें
+        D.plan.forEach(function(p){ if(p.Road_ID===roadId && p.Status!=='Dropped' && p.Status!=='Sanctioned') p.Status='Dropped'; });
         renderProj(); renderRoads();
         // Detail panel roads tab refresh
         if (_pdpActive === _parProjId) {
@@ -16105,17 +16105,21 @@ function renderAprjSections(){
   var secs=(D.sections||[]).filter(function(s){return s.Road_ID===rid;});
   if(!secs.length){ box.innerHTML='<div style="color:var(--text3);padding:4px;">इस सड़क में Chainage टुकड़े नहीं — पूरी सड़क प्रोजेक्ट में जुड़ेगी।</div>'; document.getElementById('aprj-km').value=''; return; }
   var pmap=_planInfoMapClient();
-  box.innerHTML=secs.map(function(s){
-    var reason=_secReasonProject(s,pmap);
-    var dis=reason?'disabled':'';
-    return '<label style="display:flex;align-items:center;gap:6px;padding:3px 2px;'+(reason?'opacity:.55;':'')+'">'+
-      '<input type="checkbox" class="aprj-secchk" value="'+s.Section_ID+'" '+dis+' onchange="_aprjSyncSecSummary()">'+
-      '<span>'+_secLabel(s)+'</span>'+
-      (reason?'<span style="font-size:10px;color:#dc2626;margin-left:auto;white-space:nowrap;">'+reason+'</span>':'')+
-    '</label>';
-  }).join('');
+  box.innerHTML='<div style="display:flex;gap:12px;margin-bottom:5px;font-size:11px;border-bottom:1px solid var(--border);padding-bottom:4px;">'+
+      '<a href="javascript:void(0)" onclick="_aprjSelAllSec(true)" style="color:var(--navy);font-weight:700;">✓ सभी चुनें</a>'+
+      '<a href="javascript:void(0)" onclick="_aprjSelAllSec(false)" style="color:#dc2626;font-weight:700;">✕ सभी हटाएँ</a></div>'+
+    secs.map(function(s){
+      var reason=_secReasonProject(s,pmap);
+      var dis=reason?'disabled':'';
+      return '<label style="display:flex;align-items:center;gap:6px;padding:3px 2px;'+(reason?'opacity:.55;':'')+'">'+
+        '<input type="checkbox" class="aprj-secchk" value="'+s.Section_ID+'" '+dis+' onchange="_aprjSyncSecSummary()">'+
+        '<span>'+_secLabel(s)+'</span>'+
+        (reason?'<span style="font-size:10px;color:#dc2626;margin-left:auto;white-space:nowrap;">'+reason+'</span>':'')+
+      '</label>';
+    }).join('');
   _aprjSyncSecSummary();
 }
+function _aprjSelAllSec(on){ document.querySelectorAll('.aprj-secchk:not([disabled])').forEach(function(c){ c.checked=on; }); _aprjSyncSecSummary(); }
 function _aprjSyncSecSummary(){
   var parts=[]; document.querySelectorAll('.aprj-secchk:checked').forEach(function(c){ var s=(D.sections||[]).find(function(x){return x.Section_ID===c.value;}); if(s) parts.push(s.KM_Number|| (_fmt3(s.Chainage_From||'')+'–'+_fmt3(s.Chainage_To||''))); });
   var el=document.getElementById('aprj-km'); if(el) el.value=parts.join(', ');
@@ -16154,16 +16158,17 @@ function submitAddToProject() {
       _opEnd();
       if (res.success) {
         var code = getWorkTypeCode(res.workType || '');
+        var wasSanc = D.plan.some(function(p){ return p.Road_ID===data.roadId && p.Status==='Sanctioned'; });
         var skp = res.sectionsSkipped || [];
         var skpMsg = skp.length ? '<div style="font-size:11px;color:#b45309;margin-top:4px;">⚠ '+skp.length+' टुकड़ा नहीं जुड़ा ('+skp.map(function(x){return x.reason;}).filter(function(v,i,a){return a.indexOf(v)===i;}).join(', ')+')</div>' : '';
         resEl.innerHTML = '<div class="status-box success">✅ परियोजना में जोड़ा गया ('+res.prId+')'+((res.sectionsAdded&&res.sectionsAdded.length)?' — '+res.sectionsAdded.length+' टुकड़े':'')+'<br>' +
-          '📌 Status: <strong>'+code+'</strong> &nbsp;|&nbsp; कार्ययोजना से हटाया गया</div>'+skpMsg;
+          '📌 Status: <strong>'+code+'</strong> &nbsp;|&nbsp; '+(wasSanc?'कार्ययोजना में स्वीकृत (Sanctioned) रहेगा':'कार्ययोजना से हटाया गया')+'</div>'+skpMsg;
         // local D.sections में membership तुरंत दर्शाओ
         (res.sectionsAdded || []).forEach(function(sid){ var s=(D.sections||[]).find(function(x){return x.Section_ID===sid;}); if(s){ s.Project_ID=data.projectId; s.Plan_IDs=''; } });
 
-        // Local: Annual Plan entries इस road की → Dropped
+        // Local: Annual Plan entries इस road की → Dropped (पर Sanctioned यथावत)
         D.plan.forEach(function(p){
-          if (p.Road_ID === data.roadId && p.Status !== 'Dropped') p.Status = 'Dropped';
+          if (p.Road_ID === data.roadId && p.Status !== 'Dropped' && p.Status !== 'Sanctioned') p.Status = 'Dropped';
         });
 
         // Local: projRoads में Running status के साथ जोड़ें
@@ -16181,6 +16186,7 @@ function submitAddToProject() {
         var _pp2 = D.projects.find(function(p){ return p.Project_ID===data.projectId; });
         if (_pp2) _pp2.Project_Type = calcProjType(data.projectId);
         renderRoads();
+        if (document.getElementById('page-annualplan').classList.contains('active')) applyPlanFilter();
       } else {
         resEl.innerHTML = '<div class="status-box error">❌ ' + res.msg + '</div>';
         btnEl.disabled = false;

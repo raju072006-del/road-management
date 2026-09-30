@@ -3093,11 +3093,11 @@ function addRoadToProject(data) {
     for (let r = 1; r < planVals.length; r++) {
       const rowRid = String(planVals[r][ridCol] || '').trim();
       const rowSt  = String(planVals[r][stCol]  || '').trim();
-      if (rowRid === data.roadId && rowSt !== 'Dropped') {
-        // Work type capture करें (पहली active entry से)
-        if (!workType && wtCol >= 0) {
-          workType = String(planVals[r][wtCol] || '').trim();
-        }
+      if (rowRid !== data.roadId) continue;
+      // Work type capture करें (पहली active/स्वीकृत entry से)
+      if (!workType && wtCol >= 0 && rowSt !== 'Dropped') workType = String(planVals[r][wtCol] || '').trim();
+      // स्वीकृत (Sanctioned) entries यथावत रहें — केवल शेष active (Proposed आदि) को Dropped करें
+      if (rowSt !== 'Dropped' && rowSt !== 'Sanctioned') {
         planSheet.getRange(r + 1, stCol + 1).setValue('Dropped');
       }
     }

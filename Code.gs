@@ -1850,9 +1850,9 @@ function _csvDel_(csv, id){ return String(csv||'').split(',').map(function(s){re
 
 // किसी section को (year, workType) की योजना में जोड़ना योग्य है? खाली = योग्य, वरना कारण
 function _secPlanReason_(secObj, planMap, year, workType) {
-  if (String(secObj.Project_ID||'').trim())  return 'प्रोजेक्ट में है';
   if (String(secObj.Assigned_To||'').trim()) return 'दूसरे विभाग को दिया';
-  if (String(workType||'').trim() === 'पैच मरम्मत') return '';  // पैच — छूट
+  if (String(workType||'').trim() === 'पैच मरम्मत') return '';  // पैच — पूरी छूट (योजना/प्रोजेक्ट में हो तब भी)
+  if (String(secObj.Project_ID||'').trim())  return 'प्रोजेक्ट में है';
   var ids = String(secObj.Plan_IDs||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
   for (var i=0;i<ids.length;i++){
     var pi = planMap[ids[i]]; if(!pi || pi.status==='Dropped') continue;

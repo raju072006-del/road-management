@@ -4518,7 +4518,7 @@ tr.sec-row-new  td { background: #effcf6; }
         <div>
           <label class="form-label">कौन-कौन से टुकड़े जोड़ें? (Section / KM)</label>
           <div id="apm-secbox" style="max-height:170px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:6px 8px;font-size:13px;background:#fff;"></div>
-          <div style="font-size:10.5px;color:var(--text3);margin-top:4px;">एक साल में एक टुकड़ा केवल एक योजना में जुड़ेगा — "पैच मरम्मत" को छूट। प्रोजेक्ट/दूसरे विभाग वाले टुकड़े नहीं जुड़ेंगे।</div>
+          <div style="font-size:10.5px;color:var(--text3);margin-top:4px;">एक साल में एक टुकड़ा केवल एक योजना में जुड़ेगा — <b>"पैच मरम्मत" को पूरी छूट</b> (किसी अन्य योजना/प्रोजेक्ट में हो तब भी जुड़ सकता है)। केवल दूसरे विभाग को दिए टुकड़े नहीं जुड़ेंगे।</div>
           <input type="hidden" id="apm-section">
         </div>
         <div>
@@ -15911,9 +15911,9 @@ function _planInfoMapClient(){
   var m={}; (D.plan||[]).forEach(function(p){ if(p.Plan_ID) m[p.Plan_ID]={year:String(p.Year||'').trim(),workType:String(p.Work_Type||'').trim(),status:String(p.Status||'').trim()}; }); return m;
 }
 function _secReasonPlan(s, pmap, year, workType){
-  if(String(s.Project_ID||'').trim()) return 'प्रोजेक्ट में है';
   if(String(s.Assigned_To||'').trim()) return 'दूसरे विभाग को दिया';
-  if(String(workType||'').trim()==='पैच मरम्मत') return '';
+  if(String(workType||'').trim()==='पैच मरम्मत') return '';   // पैच को पूरी छूट — योजना/प्रोजेक्ट में हो तब भी योग्य
+  if(String(s.Project_ID||'').trim()) return 'प्रोजेक्ट में है';
   var ids=String(s.Plan_IDs||'').split(',').map(function(x){return x.trim();}).filter(Boolean);
   for(var i=0;i<ids.length;i++){ var pi=pmap[ids[i]]; if(!pi||pi.status==='Dropped')continue; if(pi.year===String(year||'').trim()&&pi.workType!=='पैच मरम्मत') return 'इस वर्ष पहले से योजना में'; }
   return '';

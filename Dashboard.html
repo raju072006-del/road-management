@@ -15918,7 +15918,7 @@ function _secReasonPlan(s, pmap, year, workType){
   for(var i=0;i<ids.length;i++){ var pi=pmap[ids[i]]; if(!pi||pi.status==='Dropped')continue; if(pi.year===String(year||'').trim()&&pi.workType!=='पैच मरम्मत') return 'इस वर्ष पहले से योजना में'; }
   return '';
 }
-function _secLabel(s){ return (s.KM_Number?s.KM_Number+' · ':'')+_fmt3(s.Chainage_From||'')+'–'+_fmt3(s.Chainage_To||'')+' ('+_fmt2(s.Length_KM||'')+' KM)'; }
+function _secLabel(s){ return (s.KM_Number?s.KM_Number+' · ':'')+_fmt3(s.Chainage_From||'')+'–'+_fmt3(s.Chainage_To||'')+' ('+_fmt2(s.Length_KM||'')+' KM)'+(s.Top_Surface?' · <span style="color:#0369a1;font-weight:600;">'+s.Top_Surface+'</span>':''); }
 function renderApmSections(){
   var box=document.getElementById('apm-secbox'); if(!box) return;
   var rid=document.getElementById('apm-road-id').value;

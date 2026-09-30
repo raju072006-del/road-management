@@ -2571,6 +2571,7 @@ function _applyProjectSections_(ss, projectId, sectionIds) {
   const sidC=hdr.indexOf('Section_ID'), pjC=hdr.indexOf('Project_ID'), piC=hdr.indexOf('Plan_IDs'), asC=hdr.indexOf('Assigned_To');
   const planMap = _planInfoMap_(ss);
   const added=[], skipped=[];
+  let changed=false;
   for (let r=1;r<vals.length;r++){
     const sid = String(vals[r][sidC]).trim();
     if (sectionIds.indexOf(sid) < 0) continue;
@@ -2579,8 +2580,11 @@ function _applyProjectSections_(ss, projectId, sectionIds) {
     var ids = String(vals[r][piC]||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
     var inPlan = ids.some(function(pid){ var pi=planMap[pid]; return pi && pi.status!=='Dropped'; });
     if (inPlan) { skipped.push({id:sid, reason:'योजना में है'}); continue; }
-    sheet.getRange(r+1, pjC+1).setValue(projectId);
-    added.push(sid);
+    vals[r][pjC]=projectId; added.push(sid); changed=true;
+  }
+  if(changed){   // पूरी Project_ID कॉलम एक ही setValues में (per-row setValue से बचाव → तेज़)
+    const colArr=[]; for(let r=1;r<vals.length;r++){ colArr.push([vals[r][pjC]]); }
+    sheet.getRange(2, pjC+1, colArr.length, 1).setValues(colArr);
   }
   SBApp.flush();
   return { added:added, skipped:skipped };
@@ -2613,6 +2617,7 @@ function _reconcileProjectSections_(ss, projectId, roadId, sectionIds){
         piC=hdr.indexOf('Plan_IDs'), asC=hdr.indexOf('Assigned_To');
   const planMap=_planInfoMap_(ss);
   const added=[], removed=[], skipped=[];
+  let changed=false;
   for(let r=1;r<vals.length;r++){
     if(String(vals[r][rdC]||'').trim()!==String(roadId)) continue;   // केवल इसी सड़क के टुकड़े
     const sid=String(vals[r][sidC]).trim();
@@ -2624,10 +2629,15 @@ function _reconcileProjectSections_(ss, projectId, roadId, sectionIds){
       if(curProj){ skipped.push({id:sid,reason:'दूसरे प्रोजेक्ट में'}); continue; }
       var ids=String(vals[r][piC]||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
       if(ids.some(function(pid){var pi=planMap[pid];return pi&&pi.status!=='Dropped';})){ skipped.push({id:sid,reason:'योजना में है'}); continue; }
-      sheet.getRange(r+1,pjC+1).setValue(projectId); added.push(sid);
+      vals[r][pjC]=projectId; added.push(sid); changed=true;
     } else if(curProj===String(projectId)){
-      sheet.getRange(r+1,pjC+1).setValue(''); removed.push(sid);       // हटाया गया → मुक्त
+      vals[r][pjC]=''; removed.push(sid); changed=true;               // हटाया गया → मुक्त
     }
+  }
+  // पूरी Project_ID कॉलम एक ही setValues में (per-row अलग setValue = हर टुकड़ा एक HTTP → देरी)
+  if(changed){
+    const colArr=[]; for(let r=1;r<vals.length;r++){ colArr.push([vals[r][pjC]]); }
+    sheet.getRange(2, pjC+1, colArr.length, 1).setValues(colArr);
   }
   SBApp.flush();
   return {added:added, removed:removed, skipped:skipped};
@@ -3105,11 +3115,14 @@ function updateProjectRoad(data) {
     Road_End_Date:       data.endDate      || '',
     Road_Status:         data.status       || 'Running'
   };
+  const ncols = hdr.length;
   for (let r = 1; r < vals.length; r++) {
     if (String(vals[r][pridC]).trim() !== data.prId) continue;
-    Object.entries(fieldMap).forEach(([k, v]) => {
-      const c = hdr.indexOf(k); if (c >= 0) sheet.getRange(r+1, c+1).setValue(v);
-    });
+    // पूरी पंक्ति एक ही setValues में (per-field अलग setValue = हर फ़ील्ड एक HTTP → देरी/Wait)
+    const rowArr = vals[r].slice(0, ncols);
+    while (rowArr.length < ncols) rowArr.push('');
+    Object.entries(fieldMap).forEach(([k, v]) => { const c = hdr.indexOf(k); if (c >= 0) rowArr[c] = v; });
+    sheet.getRange(r+1, 1, 1, ncols).setValues([rowArr]);
     // टुकड़ा-चयन मिलाओ (checkbox से जोड़/हटाव)
     var secRes = null;
     if (data.sectionIds !== undefined) {

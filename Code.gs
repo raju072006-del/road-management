@@ -2470,6 +2470,28 @@ function deleteMBItemsForProject(data) {
   } catch(e) { return { success:false, error:e.message }; }
 }
 
+// एक ही माप-मद (और उसकी सभी भुगतान-प्रविष्टियाँ) हटाएँ
+function deleteMBItem(data) {
+  try {
+    const ss = SBApp.getActiveSpreadsheet();
+    const { items: sheet, entries: esheet } = _ensureMBSheets_(ss);
+    const itemId = String(data.itemId||'').trim();
+    if (!itemId) return { success:false, error:'Item_ID नहीं मिला' };
+    if (sheet.getLastRow()>1) {
+      const iv = sheet.getDataRange().getValues();
+      const iidC = iv[0].map(h=>String(h).trim()).indexOf('Item_ID');
+      if (iidC>=0) for (let r=iv.length-1;r>=1;r--) if (String(iv[r][iidC]).trim()===itemId) sheet.deleteRow(r+1);
+    }
+    if (esheet.getLastRow()>1) {
+      const ev = esheet.getDataRange().getValues();
+      const eItemC = ev[0].map(h=>String(h).trim()).indexOf('Item_ID');
+      if (eItemC>=0) for (let r=ev.length-1;r>=1;r--) if (String(ev[r][eItemC]).trim()===itemId) esheet.deleteRow(r+1);
+    }
+    CacheService.getScriptCache().remove(CACHE_KEY_S);
+    return { success:true };
+  } catch(e) { return { success:false, error:e.message }; }
+}
+
 // ── Annual Plan में Row जोड़ें ────────────────────────────────
 function addToAnnualPlan(data) {
   const ss = SBApp.getActiveSpreadsheet();
@@ -3421,6 +3443,61 @@ function uploadFileToDrive(payload) {
 
 // ── व्यक्तिगत दस्तावेज़ (Personal Documents) — per-user, project-रहित ──
 // हर user के निजी पेपर: विषय/विवरण + जारी तिथि + फाइल। '15_Personal_Docs' शीट, Owner से filter।
+// ── बड़ी दस्तावेज़-फ़ाइल: signed URL से सीधे Storage पर (Netlify function की ~6MB सीमा से बचाव) ──
+function _docFolderPath_(payload){
+  var rmsFolder = getRMSFolder_();
+  var f;
+  if (payload.projectId) {
+    var projLabel = (payload.projectId||'') + (payload.projectName ? ' — ' + payload.projectName : '');
+    var catLabel  = (payload.catNo||'') + '_' + (payload.catName||'General');
+    f = getOrCreateFolder_(getOrCreateFolder_(rmsFolder, projLabel), catLabel);
+  } else {
+    var roadsFolder = getOrCreateFolder_(rmsFolder, 'Roads');
+    var roadFolder  = getOrCreateFolder_(roadsFolder, payload.roadIds||'General');
+    f = getOrCreateFolder_(roadFolder, payload.subType || 'General');
+  }
+  try { f.setSharing(SBDrive.Access.ANYONE_WITH_LINK, SBDrive.Permission.VIEW); } catch(e){}
+  return f.path || '';
+}
+function prepareDocUpload(payload){
+  try {
+    if (typeof SB_CLOUD === 'undefined' || !SB_CLOUD) return { success:false, msg:'बड़ी फ़ाइल केवल ऑनलाइन मोड में अपलोड हो सकती है' };
+    var folder = _docFolderPath_(payload);
+    var r = sbCall_('signUpload', { name: payload.fileName || 'file' });
+    return { success:true, uploadUrl:r.uploadUrl, id:r.id, path:r.path, folder:folder };
+  } catch(e){ return { success:false, msg:e.message }; }
+}
+function finalizeDocUpload(payload){
+  try {
+    if (typeof SB_CLOUD === 'undefined' || !SB_CLOUD) return { success:false, msg:'ऑनलाइन मोड में ही उपलब्ध' };
+    var reg = sbCall_('registerFile', { id:payload.id, path:payload.path, name:payload.fileName || 'file', folder:payload.folder||'', mime:payload.mimeType||'application/octet-stream', size:payload.size|0 });
+    var viewUrl = (reg && reg.url) || '';
+    var ss = SBApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName('4_Documents');
+    var now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy');
+    var docId = 'DOC000';
+    if (sheet) {
+      if (payload.projectId) {
+        docId = 'DOC' + String(sheet.getLastRow()).padStart(3,'0');
+        sheet.appendRow([docId, payload.projectId||'', payload.roadIds||'', payload.catNo||'', payload.catName||'', payload.subType||'', payload.fileName, now, 'Web Upload', viewUrl]);
+        (payload.linkedProjectIds||[]).forEach(function(lpid){
+          lpid=String(lpid).trim(); if(!lpid||lpid===payload.projectId) return;
+          var lid='DOC'+String(sheet.getLastRow()).padStart(3,'0');
+          sheet.appendRow([lid, lpid, '', payload.catNo||'', payload.catName||'', payload.subType||'', payload.fileName, now, 'Web Upload', viewUrl]);
+        });
+      } else {
+        docId = 'DOC'+String(sheet.getLastRow()).padStart(3,'0');
+        sheet.appendRow([docId,'',payload.roadIds||'','',payload.catName||'साधारण दस्तावेज़',payload.subType||'',payload.fileName,now,'Web Upload',viewUrl]);
+      }
+      SBApp.flush();
+      CacheService.getScriptCache().removeAll([CACHE_KEY_P, CACHE_KEY_S]);
+    }
+    return { success:true, docId:docId, fileId:payload.id, viewUrl:viewUrl, fileName:payload.fileName,
+      catNo:payload.catNo||'', catName:payload.catName||(payload.projectId?'':'साधारण दस्तावेज़'),
+      subType:payload.subType||'', projectId:payload.projectId||'', uploadDate:now };
+  } catch(e){ return { success:false, msg:e.message }; }
+}
+
 function _ensurePersonalDocsSheet_(ss) {
   var sh = ss.getSheetByName('15_Personal_Docs');
   if (!sh) { sh = ss.insertSheet('15_Personal_Docs'); sh.appendRow(['Doc_ID', 'Owner', 'Subject', 'Issue_Date', 'File_Name', 'Upload_Date', 'Drive_Link']); SBApp.flush(); }

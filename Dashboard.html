@@ -2053,7 +2053,7 @@ tr.sec-row-new  td { background: #effcf6; }
   <div class="page-hdr">
     <div class="page-hdr-left">
       <div class="page-title">📁 दस्तावेज़</div>
-      <div class="page-sub">8 श्रेणियों के सभी दस्तावेज़ — PDF, फ़ोटो Google Drive में save</div>
+      <div class="page-sub">8 श्रेणियों के सभी दस्तावेज़ — PDF, फ़ोटो सर्वर (डेटाबेस) में save</div>
       <div class="page-hdr-title-line"></div>
     </div>
     <button class="btn-primary" id="doc-upload-btn" onclick="openUploadModal('')">📤 दस्तावेज़ Upload करें</button>
@@ -2890,7 +2890,7 @@ tr.sec-row-new  td { background: #effcf6; }
     <div class="modal-header" style="background:linear-gradient(135deg,var(--navy2),var(--navy));flex-shrink:0;">
       <div style="overflow:hidden;">
         <div class="modal-title" id="fv-title" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">—</div>
-        <div class="modal-sub" id="fv-sub">Google Drive</div>
+        <div class="modal-sub" id="fv-sub">सर्वर Storage</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
         <a id="fv-open" href="#" target="_blank" style="background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.3);padding:5px 12px;border-radius:5px;font-size:12px;text-decoration:none;font-family:var(--font-hi);white-space:nowrap;">🔗 Drive में खोलें</a>
@@ -3911,7 +3911,7 @@ tr.sec-row-new  td { background: #effcf6; }
       <div class="status-box error" style="margin-bottom:14px;">
         ⚠️ <strong id="pdel-info">—</strong> को permanently delete किया जाएगा।<br>
         <span style="font-size:12px;margin-top:6px;display:block;color:#7f1d1d;">
-          इसके सभी Documents, Bills, Conversations एवं Google Drive Folder भी हट जाएंगे। यह action वापस नहीं होगा।
+          इसके सभी Documents, Bills, Conversations एवं सर्वर पर रखी फ़ाइलें भी हट जाएंगी। यह action वापस नहीं होगा।
         </span>
       </div>
       <div id="pdel-result"></div>
@@ -5030,7 +5030,9 @@ function _loadPaymentIframe(projName, details) {
   if (/^https?:/i.test(location.protocol)) {
     var hash = preload ? ('#pl=' + encodeURIComponent(JSON.stringify(preload))) : '';
     fr.removeAttribute('srcdoc');
-    fr.src = 'payment.html?v=' + encodeURIComponent(window._BUILD_TS || '1') + hash;
+    // _r (unique token) ज़रूरी: केवल #hash बदलने पर iframe reload नहीं होता → परियोजना बदलने पर
+    // पुरानी परियोजना का भुगतान ही खुला रहता था (title नई, content पुरानी)। हर बार नया load करो।
+    fr.src = 'payment.html?v=' + encodeURIComponent(window._BUILD_TS || '1') + '&_r=' + Date.now() + hash;
     return;
   }
 
@@ -10107,7 +10109,7 @@ function openProjDetailInline(pid) {
     var rname = (road.Road_Name||pr.Road_ID).replace(/'/g,"\\'");
     return '<tr style="transition:background .1s;" onmouseover="this.style.background=\'#f5f3f0\'" onmouseout="this.style.background=\'\'">'+
       '<td style="'+_TD+'font-weight:500;"><span style="color:#004bca;cursor:pointer;text-decoration:none;" onclick="closeProjDetailPanel();setTimeout(function(){openRoadModal(\''+pr.Road_ID+'\');},200)">'+(road.Road_Name||pr.Road_ID)+'</span></td>'+
-      '<td style="'+_TD2+'">'+(pr.KM_Numbers_Covered||'<span style="color:#c2c6d9;">—</span>')+'</td>'+
+      '<td style="'+_TD2+'">'+(pr.KM_Numbers_Covered||'<span style="color:#c2c6d9;">—</span>')+(function(){var _l=_projRoadLenKm(pid,pr.Road_ID);return _l>0?'<div style="font-size:10px;color:#dc2626;font-weight:700;margin-top:2px;">कुल: '+_l.toFixed(3)+' KM</div>':'';})()+'</td>'+
       '<td style="'+_TD2+';max-width:220px;">'+(pr.Work_Description||pr['Work_Description\n(इस सड़क पर क्या काम)']||'<span style="color:#c2c6d9;">—</span>')+'</td>'+
       '<td style="'+_TD+';font-weight:600;font-family:\'Inter\',sans-serif;">'+fmt(pr.Road_Sanctioned_Amt||pr['Road_Sanctioned\nAmount (₹)']||0)+'</td>'+
       '<td style="'+_TD2+'">'+(pr.Road_Start_Date||'<span style="color:#c2c6d9;">—</span>')+'</td>'+
@@ -10342,7 +10344,11 @@ function openUploadModal(projId, catVal, lockCat, refreshPid) {
   document.getElementById('ul-progress-bar').style.width = '0%';
   document.getElementById('ul-progress-bar').style.background = 'linear-gradient(90deg,var(--navy),var(--saffron2))';
   document.getElementById('ul-result').innerHTML = '';
-  document.getElementById('ul-submit-btn').disabled = false;
+  // submit बटन को ताज़ा करो — पिछली बार सफल upload पर यह "दूसरा अपलोड करें" बन जाता था
+  var _ub = document.getElementById('ul-submit-btn');
+  _ub.disabled = false;
+  _ub.innerHTML = '📤 Upload करें';
+  _ub.onclick = submitUpload;
   document.getElementById('upload-modal').classList.add('open');
 }
 
@@ -10381,6 +10387,23 @@ function submitUpload() {
   var catNo   = parts[0], catName = parts[1]||'';
   var prj     = D.projects.find(function(p){ return p.Project_ID===projId; })||{};
 
+  // Linked projects collect
+  var lpSel = document.getElementById('ul-linked-projs');
+  var linkedIds = [];
+  for (var i=0; i<lpSel.options.length; i++) {
+    if (lpSel.options[i].selected) linkedIds.push(lpSel.options[i].value);
+  }
+  var meta = {
+    projectId:        projId,
+    projectName:      pname(prj),
+    catNo:            catNo,
+    catName:          catName,
+    subType:          document.getElementById('ul-subtype').value.trim(),
+    linkedProjectIds: linkedIds,
+    fileName:         file.name,
+    mimeType:         file.type || 'application/octet-stream'
+  };
+
   btnEl.disabled = true;
   resEl.innerHTML = '';
   var pw = document.getElementById('ul-progress-wrap');
@@ -10388,42 +10411,23 @@ function submitUpload() {
   var pm = document.getElementById('ul-progress-msg');
   pw.style.display = 'block';
   pb.style.width = '10%';
-  pm.textContent = '⏳ फाइल पढ़ी जा रही है...';
+  pm.textContent = '⏳ फाइल तैयार हो रही है...';
   pm.style.color = 'var(--text2)';
 
-  var reader = new FileReader();
-  reader.onload = function(e) {
-    pb.style.width = '35%';
-    pm.textContent = '⏳ Google Drive पर Upload हो रहा है... (बड़ी फाइल में समय लग सकता है)';
-    var base64 = e.target.result.split(',')[1];
-    // Linked projects collect
-    var lpSel = document.getElementById('ul-linked-projs');
-    var linkedIds = [];
-    for (var i=0; i<lpSel.options.length; i++) {
-      if (lpSel.options[i].selected) linkedIds.push(lpSel.options[i].value);
-    }
-    var payload = {
-      projectId:        projId,
-      projectName:      pname(prj),
-      catNo:            catNo,
-      catName:          catName,
-      subType:          document.getElementById('ul-subtype').value.trim(),
-      linkedProjectIds: linkedIds,
-      fileName:         file.name,
-      mimeType:    file.type || 'application/octet-stream',
-      base64:      base64
-    };
-    // Fake progress animation while waiting
-    var prog = 35;
-    var progTimer = setInterval(function(){
-      if (prog < 90) { prog += 3; pb.style.width = prog+'%'; }
-    }, 800);
-    _opStart();
-    google.script.run
-      .withSuccessHandler(function(res){
-        clearInterval(progTimer);
-        _opEnd();
-        pb.style.width = '100%';
+  var progTimer = null;
+  function _stopProg(){ if(progTimer){ clearInterval(progTimer); progTimer=null; } }
+  function _startFakeProg(from){ var prog=from; progTimer=setInterval(function(){ if(prog<90){ prog+=3; pb.style.width=prog+'%'; } }, 800); }
+  function _ulFail(err){
+    _stopProg(); _opEnd();
+    pb.style.background='#dc2626'; pb.style.width='100%';
+    pm.textContent='❌ Error'; pm.style.color='var(--red-gov)';
+    resEl.innerHTML='<div class="status-box error">❌ '+((err&&err.message)||err||'Upload विफल')+'</div>';
+    btnEl.disabled=false;
+  }
+  function _ulSuccess(res){
+    _stopProg(); _opEnd();
+    pb.style.width = '100%';
+    (function(){
         if (res.success) {
           pm.textContent = '✅ Upload सफल!';
           pm.style.color = 'var(--green-gov)';
@@ -10470,24 +10474,42 @@ function submitUpload() {
           resEl.innerHTML = '<div class="status-box error">❌ '+res.msg+'</div>';
           btnEl.disabled = false;
         }
+    })();
+  }
+
+  var hosted = /^https?:/i.test(location.protocol);
+  if (hosted) {
+    // बड़ी फाइल भी चले — signed URL से सीधे Storage पर (Netlify function की ~6MB सीमा से बचाव)
+    pb.style.width = '25%';
+    pm.textContent = '⏳ सर्वर पर अपलोड हो रहा है... (बड़ी फाइल में समय लग सकता है)';
+    _opStart();
+    google.script.run
+      .withSuccessHandler(function(prep){
+        if (!prep || !prep.success) { _ulFail({message:(prep&&prep.msg)||'तैयारी विफल'}); return; }
+        _startFakeProg(30);
+        fetch(prep.uploadUrl, { method:'PUT', headers:{'content-type':meta.mimeType,'x-upsert':'true'}, body:file })
+          .then(function(r){ if(!r.ok) throw new Error('storage '+r.status); })
+          .then(function(){
+            google.script.run.withSuccessHandler(_ulSuccess).withFailureHandler(_ulFail)
+              .finalizeDocUpload(Object.assign({}, meta, { id:prep.id, path:prep.path, folder:prep.folder, size:file.size }));
+          })
+          .catch(function(e){ _ulFail({message:'अपलोड विफल — '+((e&&e.message)||e)}); });
       })
-      .withFailureHandler(function(err){
-        clearInterval(progTimer);
-        _opEnd();
-        pb.style.background='#dc2626'; pb.style.width='100%';
-        pm.textContent='❌ Error';
-        pm.style.color='var(--red-gov)';
-        resEl.innerHTML='<div class="status-box error">❌ '+(err.message||err)+'</div>';
-        btnEl.disabled=false;
-      })
-      .uploadFileToDrive(payload);
-  };
-  reader.onerror = function(){
-    pw.style.display='none';
-    resEl.innerHTML='<div class="status-box error">❌ फाइल पढ़ने में error आया</div>';
-    btnEl.disabled=false;
-  };
-  reader.readAsDataURL(file);
+      .withFailureHandler(_ulFail)
+      .prepareDocUpload(meta);
+  } else {
+    // Local file mode — base64 → uploadFileToDrive
+    pm.textContent = '⏳ फाइल पढ़ी जा रही है...';
+    var reader = new FileReader();
+    reader.onload = function(e){
+      pb.style.width='35%'; pm.textContent='⏳ सर्वर पर Upload हो रहा है...';
+      _startFakeProg(35); _opStart();
+      google.script.run.withSuccessHandler(_ulSuccess).withFailureHandler(_ulFail)
+        .uploadFileToDrive(Object.assign({}, meta, { base64:e.target.result.split(',')[1] }));
+    };
+    reader.onerror = function(){ pw.style.display='none'; resEl.innerHTML='<div class="status-box error">❌ फाइल पढ़ने में error आया</div>'; btnEl.disabled=false; };
+    reader.readAsDataURL(file);
+  }
 }
 
 function openFileViewer(viewUrl, fileName) {
@@ -10835,62 +10857,54 @@ function submitRoadDocUpload() {
   if (f.size > 50*1024*1024) { resEl.innerHTML='<div class="status-box error">❌ फाइल 50MB से बड़ी है</div>'; return; }
 
   btnEl.disabled = true; btnEl.innerHTML = '⏳...';
-  pw.style.display='block'; pb.style.width='15%'; pm.textContent='⏳ फाइल पढ़ी जा रही है...';
+  pw.style.display='block'; pb.style.width='15%'; pm.textContent='⏳ फाइल तैयार हो रही है...';
   pm.style.color='var(--text2)';
 
-  var reader = new FileReader();
-  reader.onload = function(e) {
-    pb.style.width='40%'; pm.textContent='⏳ Upload हो रहा है...';
-    var payload = {
-      roadIds:     rid,
-      projectId:   '',
-      projectName: '',
-      catNo:       '',
-      catName:     'साधारण दस्तावेज़',
-      subType:     folder,
-      description: desc,
-      fileName:    f.name,
-      mimeType:    f.type || 'application/octet-stream',
-      base64:      e.target.result.split(',')[1]
-    };
-    var prog = 40;
-    var progTimer = setInterval(function(){ if(prog<86){prog+=5;pb.style.width=prog+'%';} }, 700);
+  var meta = { roadIds:rid, projectId:'', projectName:'', catNo:'', catName:'साधारण दस्तावेज़',
+    subType:folder, description:desc, fileName:f.name, mimeType:f.type||'application/octet-stream' };
+  var progTimer=null;
+  function _stopProg(){ if(progTimer){ clearInterval(progTimer); progTimer=null; } }
+  function _startFakeProg(from,cap){ var prog=from; progTimer=setInterval(function(){ if(prog<(cap||90)){ prog+=4; pb.style.width=prog+'%'; } },700); }
+  function _rdFail(err){ _stopProg(); _opEnd(); pb.style.background='#dc2626'; pm.textContent='❌ Error'; pm.style.color='var(--red-gov)'; resEl.innerHTML='<div class="status-box error">❌ '+((err&&err.message)||err||'Upload विफल')+'</div>'; btnEl.disabled=false; btnEl.innerHTML='📤 Upload करें'; }
+  function _rdSuccess(res){
+    _stopProg(); _opEnd(); pb.style.width='100%';
+    if (res.success) {
+      pm.textContent='✅ Upload सफल!'; pm.style.color='var(--green-gov)';
+      D.docs.push({ Doc_ID:res.docId, Project_ID:'', Road_IDs:rid, Category_No:'', Category_Name:'साधारण दस्तावेज़', Sub_Type:folder, File_Name:res.fileName, Upload_Date:res.uploadDate, Uploaded_By:'Web Upload', Drive_Link:res.viewUrl });
+      var fn = res.fileName.replace(/'/g,"\\'");
+      resEl.innerHTML='<div class="status-box success">✅ <strong>'+res.fileName+'</strong> Upload हो गई!<br>'
+        +'<button onclick="openFileViewer(\''+res.viewUrl.replace(/'/g,"\\'")+'\',\''+fn+'\')" style="margin-top:6px;background:var(--navy);color:#fff;border:none;padding:5px 12px;border-radius:5px;cursor:pointer;font-family:var(--font-hi);font-size:12px;">👁 देखें</button></div>';
+      btnEl.disabled=false; btnEl.innerHTML='📤 Upload करें';
+      renderRoadDocsTab(rid);
+    } else {
+      pb.style.background='#dc2626'; pm.textContent='❌ Error'; pm.style.color='var(--red-gov)';
+      resEl.innerHTML='<div class="status-box error">❌ '+(res.msg||'Error')+'</div>';
+      btnEl.disabled=false; btnEl.innerHTML='📤 Upload करें';
+    }
+  }
+
+  var hosted = /^https?:/i.test(location.protocol);
+  if (hosted) {
+    pb.style.width='25%'; pm.textContent='⏳ सर्वर पर अपलोड हो रहा है...';
     _opStart();
     google.script.run
-      .withSuccessHandler(function(res) {
-        clearInterval(progTimer); _opEnd(); pb.style.width='100%';
-        if (res.success) {
-          pm.textContent='✅ Upload सफल!'; pm.style.color='var(--green-gov)';
-          D.docs.push({ Doc_ID:res.docId, Project_ID:'', Road_IDs:rid,
-            Category_No:'', Category_Name:'साधारण दस्तावेज़',
-            Sub_Type:folder, File_Name:res.fileName,
-            Upload_Date:res.uploadDate, Uploaded_By:'Web Upload', Drive_Link:res.viewUrl });
-          var fn = res.fileName.replace(/'/g,"\\'");
-          resEl.innerHTML='<div class="status-box success">✅ <strong>'+res.fileName+'</strong> Upload हो गई!<br>'
-            +'<button onclick="openFileViewer(\''+res.viewUrl.replace(/'/g,"\\'")+'\',\''+fn+'\')" style="margin-top:6px;background:var(--navy);color:#fff;border:none;padding:5px 12px;border-radius:5px;cursor:pointer;font-family:var(--font-hi);font-size:12px;">👁 देखें</button>'
-            +'</div>';
-          btnEl.disabled=false; btnEl.innerHTML='📤 Upload करें';
-          renderRoadDocsTab(rid);
-        } else {
-          pb.style.background='#dc2626'; pm.textContent='❌ Error'; pm.style.color='var(--red-gov)';
-          resEl.innerHTML='<div class="status-box error">❌ '+(res.msg||'Error')+'</div>';
-          btnEl.disabled=false; btnEl.innerHTML='📤 Upload करें';
-        }
+      .withSuccessHandler(function(prep){
+        if(!prep||!prep.success){ _rdFail({message:(prep&&prep.msg)||'तैयारी विफल'}); return; }
+        _startFakeProg(30);
+        fetch(prep.uploadUrl,{method:'PUT',headers:{'content-type':meta.mimeType,'x-upsert':'true'},body:f})
+          .then(function(r){ if(!r.ok) throw new Error('storage '+r.status); })
+          .then(function(){ google.script.run.withSuccessHandler(_rdSuccess).withFailureHandler(_rdFail).finalizeDocUpload(Object.assign({},meta,{id:prep.id,path:prep.path,folder:prep.folder,size:f.size})); })
+          .catch(function(e){ _rdFail({message:'अपलोड विफल — '+((e&&e.message)||e)}); });
       })
-      .withFailureHandler(function(err) {
-        clearInterval(progTimer); _opEnd();
-        pb.style.background='#dc2626'; pm.textContent='❌ Error'; pm.style.color='var(--red-gov)';
-        resEl.innerHTML='<div class="status-box error">❌ '+(err.message||err)+'</div>';
-        btnEl.disabled=false; btnEl.innerHTML='📤 Upload करें';
-      })
-      .uploadFileToDrive(payload);
-  };
-  reader.onerror = function(){
-    pw.style.display='none';
-    resEl.innerHTML='<div class="status-box error">❌ फाइल पढ़ने में error आया</div>';
-    btnEl.disabled=false; btnEl.innerHTML='📤 Upload करें';
-  };
-  reader.readAsDataURL(f);
+      .withFailureHandler(_rdFail)
+      .prepareDocUpload(meta);
+  } else {
+    pm.textContent='⏳ फाइल पढ़ी जा रही है...';
+    var reader = new FileReader();
+    reader.onload = function(e){ pb.style.width='40%'; pm.textContent='⏳ सर्वर पर Upload हो रहा है...'; _startFakeProg(40,86); _opStart(); google.script.run.withSuccessHandler(_rdSuccess).withFailureHandler(_rdFail).uploadFileToDrive(Object.assign({},meta,{base64:e.target.result.split(',')[1]})); };
+    reader.onerror = function(){ pw.style.display='none'; resEl.innerHTML='<div class="status-box error">❌ फाइल पढ़ने में error आया</div>'; btnEl.disabled=false; btnEl.innerHTML='📤 Upload करें'; };
+    reader.readAsDataURL(f);
+  }
 }
 
 function editLetterRemark(lid, pid) {
@@ -11056,7 +11070,8 @@ function renderPdpMeasurements(pid) {
     h += '<td style="padding:9px 10px;text-align:right;font-weight:700;color:'+(over?'#dc2626':done?'#166534':'var(--navy)')+';font-family:var(--font-en);">'+(over?'▲':done?'✓':'')+balQty.toFixed(3)+'</td>';
     h += '<td style="padding:9px 10px;text-align:right;font-family:var(--font-en);">'+(rate?'₹'+rate.toLocaleString('en-IN'):'—')+'</td>';
     h += '<td style="padding:9px 10px;text-align:right;font-weight:700;font-family:var(--font-en);color:var(--navy);">'+(amt?'₹'+amt.toLocaleString('en-IN'):'—')+'</td>';
-    h += '<td style="padding:9px 8px;text-align:center;"><button onclick="mbOpenAddEntry(\''+ie+'\',\''+pe2+'\',\''+unit+'\')" style="background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;border-radius:5px;padding:4px 8px;font-size:11px;cursor:pointer;font-family:inherit;white-space:nowrap;">+ भुगतान</button></td>';
+    h += '<td style="padding:9px 8px;text-align:center;white-space:nowrap;"><button onclick="mbOpenAddEntry(\''+ie+'\',\''+pe2+'\',\''+unit+'\')" style="background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;border-radius:5px;padding:4px 8px;font-size:11px;cursor:pointer;font-family:inherit;white-space:nowrap;margin-right:4px;">+ भुगतान</button>'+
+      '<button onclick="mbDeleteItem(\''+ie+'\',\''+pe2+'\')" title="यह मद हटाएँ" style="background:#fef2f2;border:1px solid #fecaca;color:#dc2626;border-radius:5px;padding:4px 8px;font-size:11px;cursor:pointer;font-family:inherit;">🗑</button></td>';
     h += '</tr>';
 
     // Expandable entries sub-table
@@ -11310,6 +11325,25 @@ function mbDeleteAllItems(pid, count) {
     })
     .withFailureHandler(function(e){ showToast('Error: '+(e.message||e)); })
     .deleteMBItemsForProject({projectId:pid});
+}
+
+// एक माप-मद हटाएँ (उसकी सभी भुगतान-प्रविष्टियों सहित)
+function mbDeleteItem(itemId, pid) {
+  var it=(D.mbItems||[]).find(function(x){return x.Item_ID===itemId;})||{};
+  if(!confirm('यह मद हटाएँ?\n"'+(it.Description||itemId)+'"\n(इसकी सभी भुगतान प्रविष्टियाँ भी हट जाएँगी)')) return;
+  _opStart();
+  google.script.run
+    .withSuccessHandler(function(res){
+      _opEnd();
+      if(res&&res.success){
+        D.mbItems  =(D.mbItems||[]).filter(function(x){return x.Item_ID!==itemId;});
+        D.mbEntries=(D.mbEntries||[]).filter(function(x){return x.Item_ID!==itemId;});
+        showToast('मद हटा दी गई');
+        renderPdpMeasurements(pid);
+      } else { showToast('Error: '+(res&&res.error?res.error:'नहीं हटाया')); }
+    })
+    .withFailureHandler(function(e){ _opEnd(); showToast('Error: '+(e.message||e)); })
+    .deleteMBItem({itemId:itemId, projectId:pid});
 }
 
 // ── MB: Add/Edit Entry Modal ──────────────────────────────────
@@ -13975,10 +14009,9 @@ function switchPdpPane(pane) {
     }
     if (paEl) paEl.innerHTML = actHtml;
 
-    // Show MB section only for Drawing/Measurement (cat=5)
+    // माप प्रबंधन (MB) हटा दिया — यह अलग "भुगतान प्रबंधन" app में है; Drawing/Measurement अब सामान्य दस्तावेज़ श्रेणी है
     var mbSec = document.getElementById('pdp-mb-section');
-    if (mbSec) mbSec.style.display = (cat === '5') ? 'block' : 'none';
-    if (cat === '5' && _pdpActive) renderPdpMeasurements(_pdpActive);
+    if (mbSec) { mbSec.style.display = 'none'; mbSec.innerHTML = ''; }
     if (_pdpActive) renderPdpDocCat(_pdpActive, cat);
   }
 }
@@ -14842,7 +14875,7 @@ function removeProjRoadFromDetail(prId, roadName) {
           var rn2  = (road.Road_Name||pr.Road_ID).replace(/'/g,"\\'");
           return '<tr>'
             +'<td><span class="link-cell" onclick="closeProjDetailPanel();setTimeout(function(){openRoadModal(\''+pr.Road_ID+'\');},200)">'+(road.Road_Name||pr.Road_ID)+'</span></td>'
-            +'<td>'+(pr.KM_Numbers_Covered||'')+'</td>'
+            +'<td>'+(pr.KM_Numbers_Covered||'')+(function(){var _l=_projRoadLenKm(pid,pr.Road_ID);return _l>0?'<div style="font-size:10px;color:#dc2626;font-weight:700;margin-top:2px;">कुल: '+_l.toFixed(3)+' KM</div>':'';})()+'</td>'
             +'<td style="font-size:11px;">'+(pr.Work_Description||'')+'</td>'
             +'<td>'+fmt(pr.Road_Sanctioned_Amt||0)+'</td>'
             +'<td style="font-size:11px;">'+(pr.Road_Start_Date||'')+'</td>'
@@ -15378,7 +15411,7 @@ function submitAddRoadToProj() {
             var rname2 = (rd.Road_Name||pr.Road_ID).replace(/'/g,"\\'");
             return '<tr>'
               +'<td><span class="link-cell" onclick="closeProjDetailPanel();setTimeout(function(){openRoadModal(\''+pr.Road_ID+'\');},200)">'+(rd.Road_Name||pr.Road_ID)+'</span></td>'
-              +'<td>'+(pr.KM_Numbers_Covered||'')+'</td>'
+              +'<td>'+(pr.KM_Numbers_Covered||'')+(function(){var _l=_projRoadLenKm(_parProjId,pr.Road_ID);return _l>0?'<div style="font-size:10px;color:#dc2626;font-weight:700;margin-top:2px;">कुल: '+_l.toFixed(3)+' KM</div>':'';})()+'</td>'
               +'<td style="font-size:11px;">'+(pr.Work_Description||'')+'</td>'
               +'<td>'+fmt(pr.Road_Sanctioned_Amt||0)+'</td>'
               +'<td style="font-size:11px;">'+(pr.Road_Start_Date||'')+'</td>'

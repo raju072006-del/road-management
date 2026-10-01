@@ -15825,6 +15825,8 @@ function getRoadStatusHtml(rid, rname) {
     var planEntry = D.plan.find(function(p){ return p.Road_ID === rid; });
     var wtype  = planEntry ? (planEntry.Work_Type || '') : '';
     var prj    = D.projects.find(function(p){ return p.Project_ID===activePR.Project_ID; })||{};
+    // कार्य-प्रगति का प्रकार/कोड इस सड़क जिस परियोजना में जुड़ी है उसी के Work_Type से (योजना-entry से नहीं)
+    var effWT  = String(prj.Work_Type||'').trim() || wtype;
     var dispWT = prj.Work_Type || wtype || activePR.Project_ID;
 
     // Pending: Road_Status Pending है या Project का Status Pending है
@@ -15838,8 +15840,8 @@ function getRoadStatusHtml(rid, rname) {
       '</div>';
     }
 
-    var code   = getWorkTypeCode(wtype);
-    var bStyle = WORK_TYPE_BADGE_STYLE[wtype] || 'background:#fff7e6;color:#b45309;border-color:#fcd34d;';
+    var code   = getWorkTypeCode(effWT);
+    var bStyle = WORK_TYPE_BADGE_STYLE[effWT] || 'background:#fff7e6;color:#b45309;border-color:#fcd34d;';
     return '<div style="'+COL+'">' +
       '<span class="sta-running-badge" style="'+bStyle+'" onclick="openProjModal(\''+activePR.Project_ID+'\')" title="'+activePR.Project_ID+'">🏗️ '+code+'</span>' +
       '<div class="sta-proj-id" style="width:auto;">'+dispWT+'</div>' +

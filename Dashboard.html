@@ -4033,7 +4033,7 @@ tr.sec-row-new  td { background: #effcf6; }
       <div style="overflow-x:auto;">
         <table class="tbl" style="font-size:12px;">
           <thead><tr>
-            <th>सड़क का नाम</th><th>KM</th><th>कार्य</th>
+            <th>सड़क का नाम</th><th>KM</th><th class="r">लंबाई (KM)</th><th>कार्य</th>
             <th>राशि (₹)</th><th>प्रारंभ</th><th>समाप्ति</th><th>Status</th><th>Actions</th>
           </tr></thead>
           <tbody id="prl-tbody">—</tbody>
@@ -6936,7 +6936,8 @@ function applyProjFilter(){
         var rc=D.projRoads.filter(function(pr){return pr.Project_ID===pid;}).length;
         if(rc===0) return '<td style="text-align:center;"><span style="font-size:10px;color:var(--navy2);cursor:pointer;" onclick="openAddRoadToProjModal(\''+pe+'\')">➕ जोड़ें</span></td>';
         var lbl=rc===1?'Single':'Multi';
-        return '<td style="text-align:center;font-size:11px;font-weight:600;"><span class="link-cell" onclick="showProjRoadsList(\''+pe+'\')" title="'+rc+' सड़कें">'+lbl+'</span></td>';
+        var _tl=_projTotalLenKm(pid);
+        return '<td style="text-align:center;font-size:11px;font-weight:600;"><span class="link-cell" onclick="showProjRoadsList(\''+pe+'\')" title="'+rc+' सड़कें">'+lbl+'</span>'+(_tl>0?'<div style="font-size:9.5px;color:#dc2626;font-weight:700;margin-top:1px;">'+_tl.toFixed(3)+' KM</div>':'')+'</td>';
       })()+
       '<td style="text-align:right;font-family:var(--font-en);">'+(p.Sanctioned_Length?(parseFloat(p.Sanctioned_Length)||0).toFixed(2):'—')+'</td>'+
       '<td style="text-align:right;font-family:var(--font-en);">'+(function(){var v=parseFloat(String(p.Total_Sanctioned_Amt||p['Total_Sanctioned\nAmount (₹)']||0).replace(/,/g,''))||0;return v?(v/100000).toFixed(2):'—';})()+'</td>'+
@@ -15395,6 +15396,20 @@ function submitAddRoadToProj() {
 }
 
 // ── Project Roads List ─────────────────────────────────────────
+// किसी परियोजना में किसी सड़क की "ली गई लंबाई" (KM) — इस प्रोजेक्ट के claim किए टुकड़ों का योग;
+// कोई टुकड़ा claim न हो तो सड़क के सभी टुकड़ों का योग (fallback)
+function _projRoadLenKm(pid, roadId){
+  var claimed=(D.sections||[]).filter(function(s){ return s.Road_ID===roadId && String(s.Project_ID||'').trim()===String(pid); });
+  var pick = claimed.length ? claimed : (D.sections||[]).filter(function(s){ return s.Road_ID===roadId; });
+  if(pick.length) return pick.reduce(function(a,s){ return a+(parseFloat(s.Length_KM)||0); }, 0);
+  var rd=(D.roads||[]).find(function(r){ return r.Road_ID===roadId; })||{};
+  return parseFloat(rd.Total_Length_KM)||0;
+}
+// परियोजना में चल रही (Completed को छोड़) सभी सड़कों की कुल लंबाई
+function _projTotalLenKm(pid){
+  return (D.projRoads||[]).filter(function(pr){ return pr.Project_ID===pid && pr.Road_Status!=='Completed'; })
+    .reduce(function(a,pr){ return a+_projRoadLenKm(pid, pr.Road_ID); }, 0);
+}
 function showProjRoadsList(pid) {
   _parProjId = pid;
   var prj = D.projects.find(function(p){ return p.Project_ID===pid; })||{};
@@ -15402,15 +15417,18 @@ function showProjRoadsList(pid) {
   document.getElementById('prl-title').textContent = '🗺️ परियोजना में सड़कें (' + prs.length + ')';
   document.getElementById('prl-sub').textContent   = pname(prj) + ' | ' + pid;
   document.getElementById('prl-add-btn').onclick   = function(){ openAddRoadToProjFromList(); };
-  document.getElementById('prl-tbody').innerHTML   = prs.length ? prs.map(function(pr){
+  var _totLen=0;
+  document.getElementById('prl-tbody').innerHTML   = prs.length ? (prs.map(function(pr){
     var road = D.roads.find(function(r){ return r.Road_ID===pr.Road_ID; })||{};
     var rn   = road.Road_Name||pr.Road_ID;
     var rne  = rn.replace(/'/g,"\\'");
     var prid = pr.PR_ID||'';
     var pride= prid.replace(/'/g,"\\'");
+    var lenKm=_projRoadLenKm(pid, pr.Road_ID); if(pr.Road_Status!=='Completed') _totLen+=lenKm;
     return '<tr>'+
       '<td><span class="link-cell" onclick="closeModal(\'proj-roads-list-modal\');setTimeout(function(){openRoadModal(\''+pr.Road_ID+'\');},200)">'+rn+'</span></td>'+
       '<td style="font-size:11px;">'+(pr.KM_Numbers_Covered||'—')+'</td>'+
+      '<td style="text-align:right;font-family:var(--font-en);font-weight:600;color:var(--navy);">'+(lenKm>0?lenKm.toFixed(3):'—')+'</td>'+
       '<td style="font-size:11px;">'+(pr.Work_Description||pr['Work_Description\n(इस सड़क पर क्या काम)']||'—')+'</td>'+
       '<td style="font-family:var(--font-en);">'+fmt(pr.Road_Sanctioned_Amt||pr['Road_Sanctioned\nAmount (₹)']||0)+'</td>'+
       '<td style="font-size:11px;">'+(pr.Road_Start_Date||'—')+'</td>'+
@@ -15421,7 +15439,7 @@ function showProjRoadsList(pid) {
         (prid?'<button class="act-btn del" title="हटाएं" onclick="deleteProjRoad(\''+pride+'\',\''+rne+'\')">🗑</button>':'')+
       '</div></td>'+
     '</tr>';
-  }).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--text3);">कोई सड़क नहीं</td></tr>';
+  }).join('') + '<tr style="background:#f1f5f9;font-weight:700;"><td colspan="2" style="text-align:right;color:var(--navy);">कुल लंबाई →</td><td style="text-align:right;font-family:var(--font-en);color:#dc2626;">'+_totLen.toFixed(3)+' KM</td><td colspan="6"></td></tr>') : '<tr><td colspan="9" style="text-align:center;color:var(--text3);">कोई सड़क नहीं</td></tr>';
   document.getElementById('proj-roads-list-modal').classList.add('open');
 }
 
@@ -15842,8 +15860,9 @@ function getRoadStatusHtml(rid, rname) {
 
     var code   = getWorkTypeCode(effWT);
     var bStyle = WORK_TYPE_BADGE_STYLE[effWT] || 'background:#fff7e6;color:#b45309;border-color:#fcd34d;';
+    // सभी running कार्य के लिए केवल "Running" — रंग कार्य-प्रकार के अनुसार अलग; नीचे प्रकार का नाम
     return '<div style="'+COL+'">' +
-      '<span class="sta-running-badge" style="'+bStyle+'" onclick="openProjModal(\''+activePR.Project_ID+'\')" title="'+activePR.Project_ID+'">🏗️ '+code+'</span>' +
+      '<span class="sta-running-badge" style="'+bStyle+'" onclick="openProjModal(\''+activePR.Project_ID+'\')" title="'+activePR.Project_ID+' · '+code+'">🏗️ Running</span>' +
       '<div class="sta-proj-id" style="width:auto;">'+dispWT+'</div>' +
     '</div>';
   }

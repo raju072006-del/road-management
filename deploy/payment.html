@@ -564,6 +564,7 @@ const MOCK = (function(){
     deleteItem:(id)=>{db.items=db.items.filter(x=>x.ItemID!==id); save(); return true;},
     saveMeasurement:(m)=>{ if(!m.MeasID)m.MeasID=uid(); upsert(db.measurements,'MeasID',m); save(); return m.MeasID;},
     setMeasRemark:(p)=>{ const m=(db.measurements||[]).find(x=>String(x.MeasID)===String(p.measId)); if(m)m.Remark=String(p.remark||'').trim(); save(); return {success:true}; },
+    setMeasWork:(p)=>{ const m=(db.measurements||[]).find(x=>String(x.MeasID)===String(p.measId)); if(m)m.WorkName=String(p.work||'').trim(); save(); return {success:true}; },
     deleteMeasurement:(id)=>{db.measurements=db.measurements.filter(x=>x.MeasID!==id); save(); return true;},
     saveMeasurementsBatch:(p)=>{
       const deletes=(p&&p.deletes)||[], saves=(p&&p.saves)||[];
@@ -665,7 +666,7 @@ const MOCK = (function(){
 /* ===================================================================
    State + utilities
 =================================================================== */
-const state = { data:{items:[],measurements:[],payments:[],paymentDetails:[],paymentAdj:[],project:{}}, tab:'dashboard', measFilter:'all', itemSearch:'', reportDetail:'short', reportEng:'', measEng:'', measBill:'', measBlock:'all', payBill:'', payItem:'', payEng:'', payView:'item' };
+const state = { data:{items:[],measurements:[],payments:[],paymentDetails:[],paymentAdj:[],project:{}}, tab:'dashboard', measFilter:'all', itemSearch:'', reportDetail:'short', reportEng:'', measEng:'', measBill:'', measBlock:'all', measWork:'', payBill:'', payItem:'', payEng:'', payView:'item' };
 const D = ()=> state.data;
 window.state = state; // parent Dashboard (Bill Copy/doc-8 refresh) इसे सीधे पढ़ता है — सर्वर कॉल बचाने हेतु कैश
 
@@ -804,6 +805,8 @@ function sancMeasuredQty(sancId, excludeMeas){
   return round(paySum(actualOfSanc(sancId).filter(m=> !excludeMeas || String(m.MeasID)!==String(excludeMeas)), measQty),3);
 }
 function sancRemainQty(sancM, excludeMeas){ return round(measQty(sancM)-sancMeasuredQty(sancM.MeasID,excludeMeas),3); }
+// इस निर्धारित नाप के सापेक्ष अब तक हुआ कुल भुगतान (उसकी actual नापों पर) — >0 हो तो लिंक टूटने से बचाने हेतु पंक्ति हटाई नहीं जा सकती
+function _sancPaidQty(sancId){ return round(paySum(actualOfSanc(sancId), function(m){ return measPaid(m.MeasID); }), 3); }
 function sancById(id){ return D().measurements.find(m=>String(m.MeasID)===String(id) && isSanc(m)); }
 function sancRefLabel(m){ const s=sancById(sancRefOf(m)); return s? (chRange(s)|| (String(s.Description||'').trim()) ||'निर्धारित') : ''; }
 function detailsOf(field,id){ return D().paymentDetails.filter(d=>String(d[field])===String(id)); }
@@ -853,7 +856,9 @@ window.addEventListener('DOMContentLoaded', function(){
     b.addEventListener('click', function(){ switchTab(b.dataset.tab); });
   });
   document.getElementById('overlay').addEventListener('click', function(e){ if(e.target.id==='overlay' && !_modalLockClose) closeModal(); });
-  document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeModal(); });
+  document.addEventListener('keydown', function(e){ if(e.key!=='Escape') return;
+    if(document.getElementById('mbWorkPop')){ e.stopPropagation(); mbCloseWorkPop(); return; }   // पहले छोटा कार्य-popup हटे, फिर अगली बार नाप बिल्डर
+    closeModal(); });
   // असली-URL मोड में preload dashboard से location hash (#pl=...) में आता है (srcdoc injection नहीं)
   if (!window._PRELOAD_PROJECT) {
     try {
@@ -1350,9 +1355,13 @@ function viewMeas(){
   const bOpt=(v,l)=>`<option value="${v}" ${(state.measBlock||'all')===v?'selected':''}>${l}</option>`;
   const rmks=remarksInUse();
   const rmkOpts='<option value="">— सभी Remark —</option>'+rmks.map(r=>`<option value="${esc(r)}" ${state.measRemark===r?'selected':''}>${esc(r)}</option>`).join('');
+  const wks=worksInUse();
+  const wkOpts='<option value="">— सभी कार्य —</option>'+wks.map(w=>`<option value="${esc(w)}" ${state.measWork===w?'selected':''}>${esc(w)}</option>`).join('');
   const toolbar=`<div class="toolbar">
     <div class="field" style="min-width:230px"><label>आइटम अनुसार छाँटें</label>
       <select class="inp" onchange="state.measFilter=this.value; render()">${opts}</select></div>
+    <div class="field" style="min-width:210px"><label>🧱 कार्य (Work)</label>
+      <select class="inp" onchange="state.measWork=this.value; render()">${wkOpts}</select></div>
     <div class="field" style="min-width:210px"><label>अनुभाग (block)</label>
       <select class="inp" onchange="state.measBlock=this.value; render()">${bOpt('all','सभी')}${bOpt('sanc','① निर्धारित नाप')}${bOpt('paid','② भुगतान हो चुका')}${bOpt('rem','③ Record हो गया, भुगतान शेष')}</select></div>
     <div class="field" style="min-width:200px"><label>🏷 Remark श्रेणी</label>
@@ -1361,13 +1370,14 @@ function viewMeas(){
       <select class="inp" onchange="state.measEng=this.value; render()">${engOpts}</select></div>`:''}
     ${bills.length?`<div class="field" style="min-width:170px"><label>भुगतान / बिल संख्या</label>
       <select class="inp" onchange="state.measBill=this.value; render()">${billOpts}</select></div>`:''}
-    ${(state.measEng||state.measBill||state.measRemark||(state.measBlock&&state.measBlock!=='all'))?`<button class="btn btn-ghost btn-sm" style="align-self:flex-end" onclick="state.measEng='';state.measBill='';state.measRemark='';state.measBlock='all';render()">फ़िल्टर हटाएँ</button>`:''}</div>`;
+    ${(state.measEng||state.measBill||state.measRemark||state.measWork||(state.measBlock&&state.measBlock!=='all'))?`<button class="btn btn-ghost btn-sm" style="align-self:flex-end" onclick="state.measEng='';state.measBill='';state.measRemark='';state.measWork='';state.measBlock='all';render()">फ़िल्टर हटाएँ</button>`:''}</div>`;
   const rmkBanner = state.measRemark ? `<div class="card" style="padding:10px 14px;margin-bottom:14px;border-left:4px solid var(--accent)">🏷 Remark श्रेणी <b>"${esc(state.measRemark)}"</b> के अनुसार छाँटा गया — नीचे केवल उन्हीं नाप-लाइनों की मात्रा (Record/भुगतान/शेष) दिख रही है।</div>` : '';
+  const wkBanner = state.measWork ? `<div class="card" style="padding:10px 14px;margin-bottom:14px;border-left:4px solid var(--navy)">🧱 कार्य <b>"${esc(state.measWork)}"</b> — इसी कार्य से जुड़ी सभी नापें (निर्धारित · भुगतान हो चुका · शेष) नीचे दिख रही हैं।</div>` : '';
 
   const list = state.measFilter==='all' ? its : its.filter(it=>String(it.ItemID)===String(state.measFilter));
   let blocks = list.map(itemMeasCard).join('');
-  if(!blocks.trim()) blocks = emptyCard('📏','कोई परिणाम नहीं','चुने गए फ़िल्टर (आइटम/अभियंता/बिल/Remark) पर कोई नाप नहीं — फ़िल्टर बदलें।','फ़िल्टर हटाएँ','state.measEng=\'\';state.measBill=\'\';state.measRemark=\'\';state.measFilter=\'all\';render()');
-  return head+toolbar+rmkBanner+blocks;
+  if(!blocks.trim()) blocks = emptyCard('📏','कोई परिणाम नहीं','चुने गए फ़िल्टर (आइटम/कार्य/अभियंता/बिल/Remark) पर कोई नाप नहीं — फ़िल्टर बदलें।','फ़िल्टर हटाएँ','state.measEng=\'\';state.measBill=\'\';state.measRemark=\'\';state.measWork=\'\';state.measFilter=\'all\';render()');
+  return head+toolbar+rmkBanner+wkBanner+blocks;
 }
 
 /* ---- नाप-लाइन के साझा सेल (विवरण · चैनेज · पक्ष · नग1 · नग2 · लं · चौ · ऊँ) ---- */
@@ -1397,6 +1407,23 @@ function remarksInUse(){
   });
   out.sort(function(a,b){ return a.localeCompare(b); });
   return out;
+}
+/* सभी "कार्य" नाम (निर्धारित नाप पर WorkName) — पुलिया-1, मार्ग भाग-1 आदि */
+function worksInUse(){
+  const seen={}, out=[];
+  (D().measurements||[]).forEach(function(m){
+    if(!isSanc(m)) return;
+    const w=String((m&&m.WorkName)||'').trim();
+    if(w && !seen[w]){ seen[w]=1; out.push(w); }
+  });
+  out.sort(function(a,b){ return a.localeCompare(b,undefined,{numeric:true}); });
+  return out;
+}
+/* किसी नाप का "कार्य" — निर्धारित का अपना WorkName; actual का उसके SancRef (निर्धारित) से */
+function measWorkOf(m){
+  if(!m) return '';
+  if(isSanc(m)) return String(m.WorkName||'').trim();
+  const s=sancById(m.SancRef); return s? String(s.WorkName||'').trim() : '';
 }
 /* किसी नाप-लाइन का Remark सेल (श्रेणी badge + 🏷 सेट/बदलें बटन) */
 function remarkTd(m){
@@ -1537,19 +1564,22 @@ function mbHighlightRow(measId){
 
 function itemMeasCard(it){
   const unit=esc(it.Unit||''), iid=JSON.stringify(it.ItemID);
-  const fEng=state.measEng, fBill=state.measBill, fRemark=state.measRemark||'', fBlk=state.measBlock||'all', filtered=!!(fEng||fBill||fRemark);
+  const fEng=state.measEng, fBill=state.measBill, fRemark=state.measRemark||'', fWork=state.measWork||'', fBlk=state.measBlock||'all', filtered=!!(fEng||fBill||fRemark||fWork);
   let sanc=sancMeasOfItem(it.ItemID), actual=actualMeasOfItem(it.ItemID);
   if(fEng){ sanc=sanc.filter(s=>String(s.Engineer||'').trim()===fEng); actual=actual.filter(a=>measEngineer(a)===fEng); }
   // 🏷 Remark श्रेणी फ़िल्टर — केवल उसी श्रेणी की नाप-लाइनें (Remark actual नाप पर होता है)
   if(fRemark){ actual=actual.filter(a=>String(a.Remark||'').trim()===fRemark); }
+  // 🧱 कार्य फ़िल्टर — WorkName निर्धारित नाप पर; उसी कार्य के निर्धारित + उनसे जुड़ी actual नापें
+  if(fWork){ sanc=sanc.filter(s=>String(s.WorkName||'').trim()===fWork); actual=actual.filter(a=>measWorkOf(a)===fWork); }
   // बिल फ़िल्टर — इस आइटम में उस बिल का कोई भुगतान है?
   const detInBill=(m)=>detailsOf('MeasID',m.MeasID).filter(d=>!fBill || String(d.PayID)===String(fBill));
   if(filtered){
     const anyBill = !fBill || actual.some(m=>detInBill(m).length);
     if(fRemark && !actual.length) return '';                              // इस Remark की कोई लाइन नहीं
+    if(fWork && !sanc.length && !actual.length) return '';                // इस कार्य की इस आइटम में कोई लाइन नहीं
     if((fEng && !sanc.length && !actual.length) || !anyBill) return '';   // इस आइटम में फ़िल्टर अनुसार कुछ नहीं
   }
-  // Remark चुनने पर block ① (निर्धारित नाप) छिपाओ — Remark केवल actual नाप पर होता है
+  // Remark चुनने पर block ① (निर्धारित नाप) छिपाओ — Remark केवल actual नाप पर होता है; कार्य में block ① दिखेगा
   const showBlk1 = (fBlk==='all'||fBlk==='sanc') && !fRemark;
   // फ़िल्टर अनुसार टोटल
   let fPaidQ=0, fPaidA=0;
@@ -1579,6 +1609,7 @@ function itemMeasCard(it){
       <td class="faint" style="white-space:nowrap">${esc(measEngineer(m))||'—'}</td>
       <td><div class="row-actions" style="align-items:center">
         <button class="btn btn-ghost btn-sm" title="इसके सापेक्ष साइट-नाप जोड़ें/संपादित (builder)" onclick='openMeasBuilder(${JSON.stringify(m.MeasID)})'>＋ नाप</button>
+        <button class="btn btn-ghost btn-sm" style="font-size:9px;${String(m.WorkName||'').trim()?'color:var(--navy);border-color:var(--navy);font-weight:600':''}" title="इस निर्धारित लाइन का कार्य नाम लगाएँ/बदलें" onclick='openMeasWork(${JSON.stringify(m.MeasID)})'>🧱 ${esc(String(m.WorkName||'').trim())||'कार्य'}</button>
         <button class="icon-btn" title="निर्धारित नाप संपादित (linear builder)" onclick='openSancBuilder(${iid})'>✎</button>
         <button class="icon-btn danger" title="हटाएँ" onclick='delMeas(${JSON.stringify(m.MeasID)})'>🗑</button>
         <button class="icon-btn" style="width:15px;height:15px;font-size:8px;padding:0;border-radius:4px${idx===0?';opacity:.25;pointer-events:none':''}" title="ऊपर ले जाएँ" onclick='moveSancLine(${JSON.stringify(m.MeasID)},-1)'>▲</button>
@@ -1705,6 +1736,34 @@ function saveMeasRemark(measId){
       const m=(D().measurements||[]).find(x=>String(x.MeasID)===String(measId));
       if(m) m.Remark=v0;
       closeModal(); loader(false); toast('Remark सहेजा गया'); render();
+    })
+    .catch(function(e){ loader(false); toast('त्रुटि: '+(e.message||e), true); });
+}
+
+/* 🧱 निर्धारित नाप-लाइन पर "कार्य का नाम" सेट/बदलें (पुलिया-1, मार्ग भाग-1 आदि) */
+function openMeasWork(measId){
+  const m=(D().measurements||[]).find(x=>String(x.MeasID)===String(measId));
+  if(!m){ toast('नाप नहीं मिली',true); return; }
+  const works=worksInUse();
+  const dl=works.map(c=>`<option value="${esc(c)}">`).join('');
+  const chips=works.length?('<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+works.map(c=>`<button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('wrk_in').value=this.getAttribute('data-v')" data-v="${esc(c)}">${esc(c)}</button>`).join('')+'</div>'):'';
+  openModal('🧱 कार्य का नाम',
+    `<div class="field"><label>कार्य का नाम</label>
+       <input id="wrk_in" class="inp" list="wrk_dl" value="${esc(m.WorkName||'')}" placeholder="जैसे: पुलिया नंबर-1 / मार्ग निर्माण भाग-1" autocomplete="off">
+       <datalist id="wrk_dl">${dl}</datalist>
+       <div class="faint" style="margin-top:6px">यही कार्य ऊपर "🧱 कार्य" फ़िल्टर में दिखेगा — उसे चुनने पर इस कार्य से जुड़ी सभी नापें (निर्धारित · भुगतान हो चुका · शेष) एक साथ दिखेंगी। खाली छोड़ने पर कार्य हट जाएगा।<br>मौजूदा कार्य में से चुनें या नया लिखें।</div>
+       ${chips}</div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">रद्द</button>
+     <button class="btn btn-primary" onclick="saveMeasWork('${String(measId).replace(/'/g,"\\'")}')">सहेजें</button>`);
+}
+function saveMeasWork(measId){
+  const v0=(val('wrk_in')||'').trim();
+  loader(true);
+  api('setMeasWork',{measId:measId, work:v0})
+    .then(function(){
+      const m=(D().measurements||[]).find(x=>String(x.MeasID)===String(measId));
+      if(m) m.WorkName=v0;
+      closeModal(); loader(false); toast('कार्य सहेजा गया'); render();
     })
     .catch(function(e){ loader(false); toast('त्रुटि: '+(e.message||e), true); });
 }
@@ -2688,7 +2747,8 @@ function _saveMeasModalDo(id,itemId,kind,sancRef,q){
 function delMeas(id){
   const m=D().measurements.find(x=>String(x.MeasID)===String(id));
   if(m && isSanc(m)){
-    if(actualOfSanc(id).length){ toast('पहले इसके सापेक्ष की गई साइट-नापें हटाएँ',true); return; }
+    // निर्धारित: उसके सापेक्ष भुगतान हो चुका हो तो हटाया नहीं जा सकता (लिंक न टूटे) — संपादन कर सकते हैं
+    if(_sancPaidQty(id)>0.0005){ toast('इसके सापेक्ष भुगतान हो चुका है — लिंक न टूटे इसलिए हटाया नहीं जा सकता; केवल संपादन करें',true); return; }
   } else if(Math.abs(measPaid(id))>0.0005){ toast('इस नाप का भुगतान हो चुका है — पहले संबंधित बिल हटाएँ',true); return; }
   confirmModal('नाप हटाएँ?', `"${esc(m.Description||'नाप')}" हटाई जाएगी।`, ()=>{
     loader(true); api('deleteMeasurement',id).then(()=>{
@@ -2791,7 +2851,7 @@ function mbCols(){
   if(d.L!==false) th+=`<th class="r">लं</th>`;
   if(d.B) th+=`<th class="r">चौ</th>`;
   if(d.D) th+=`<th class="r">ऊँ</th>`;
-  if(MB.mode==='sanctioned') th+=`<th>अभियंता</th>`;
+  if(MB.mode==='sanctioned') th+=`<th>अभियंता</th><th>कार्य</th>`;
   else th+=`<th>MB</th><th>पृ.</th><th>दिनांक</th><th>अभियंता</th>`;
   th+=`<th class="r">मात्रा</th>`;
   return th;
@@ -2841,7 +2901,7 @@ function openSancBuilder(itemId){
       <span class="sub">${esc(it.ItemNo||'')} · ${esc(it.Description||'')} — इकाई ${esc(it.Unit||'')} · दर ₹${nf2(itemRate(it))}</span>
       <div class="spacer"></div>
       <span class="calc-box" style="margin:0;padding:8px 12px">स्वीकृत मात्रा (योग) <b id="mb_live">0</b> ${esc(it.Unit||'')}</span></div>
-    <div class="faint" style="margin:0 2px 10px">नीचे जो निर्धारित नाप भरेंगे, उनका योग ही इस आइटम की BOQ स्वीकृत मात्रा बनेगा।</div>`;
+    <div class="faint" style="margin:0 2px 10px">नीचे जो निर्धारित नाप भरेंगे, उनका योग ही इस आइटम की BOQ स्वीकृत मात्रा बनेगा। हर पंक्ति के <b>कार्य</b> कॉलम में 🧱 बटन से उस लाइन का कार्य चुनें/जोड़ें (जैसे पुलिया नंबर-1, मार्ग निर्माण भाग-1); जुड़ा कार्य छोटे लाल अक्षरों में दिखेगा। पहले से मौजूद सभी कार्य ड्रॉप-डाउन में मिलेंगे।</div>`;
 
   const rows = (existing.length?existing:[{}]).map(builderRow).join('');
   const grid=`<div class="section-head" style="margin:0 2px 6px"><h2 style="font-size:14px">निर्धारित नाप (स्वीकृति के अनुसार)</h2></div>
@@ -2873,14 +2933,19 @@ function sancRefCells(s){
 function builderRow(m){
   m=m||{};
   const id=m.MeasID||'', n1=nos1Of(m);
-  // floor = वह न्यूनतम जिससे कम मात्रा नहीं हो सकती, और >0 हो तो पंक्ति हटाई नहीं जा सकती
-  const floor = id ? (MB.mode==='sanctioned' ? sancMeasuredQty(id) : measPaid(id)) : 0;
+  // floor = वह न्यूनतम जिससे कम मात्रा नहीं हो सकती, और >0 हो तो पंक्ति हटाई नहीं जा सकती।
+  // निर्धारित नाप (sanctioned) पर कोई लॉक नहीं — जिस लाइन के सापेक्ष नाप/भुगतान हो चुका हो उसे भी
+  // स्वतंत्र रूप से संपादित/हटाया जा सके (floor=0)। "भुगतान हो चुका" (actual) की रक्षा measPaid से यथावत।
+  const floor = id ? (MB.mode==='sanctioned' ? 0 : measPaid(id)) : 0;
   // पूरी तरह लॉक सिर्फ़ तब जब बिल का भुगतान (चेक) हो चुका हो। बिल बना पर भुगतान शेष हो तो संपादन खुला —
   // पर मात्रा बिल-मात्रा (floor) से कम नहीं हो सकती (mbSave में जाँच)। पंक्ति हटाई भी नहीं जा सकती (floor>0)।
   const paidHardQ = (id && MB.mode!=='sanctioned') ? measBilledPaidQty(id) : 0;
   const paidLock = Math.abs(paidHardQ)>0.0005;
+  // निर्धारित पंक्ति: उसके सापेक्ष भुगतान हो चुका हो तो हटाया नहीं जा सकता (लिंक न टूटे) — पर संपादन खुला, मात्रा 0 नहीं
+  const sancPaidQ = (id && MB.mode==='sanctioned') ? _sancPaidQty(id) : 0;
+  const noDelete  = (MB.mode==='sanctioned') ? (sancPaidQ>0.0005) : (Math.abs(floor)>0.0005);
   const lockTitle = paidLock ? ('इस नाप का भुगतान ('+qf(paidHardQ)+') हो चुका है (चेक जारी) — संपादन डिसेबल')
-    : (MB.mode==='sanctioned' ? ('इसके सापेक्ष नाप '+qf(floor)+' — हटाया नहीं जा सकता') : ('बिल बना ('+qf(floor)+') — हटाया नहीं जा सकता; मात्रा इससे कम नहीं हो सकती'));
+    : (MB.mode==='sanctioned' ? ('इसके सापेक्ष भुगतान ('+qf(sancPaidQ)+') हो चुका — लिंक न टूटे इसलिए हटाया नहीं जा सकता; मात्रा 0 नहीं हो सकती') : ('बिल बना ('+qf(floor)+') — हटाया नहीं जा सकता; मात्रा इससे कम नहीं हो सकती'));
   const dis = paidLock ? 'disabled' : '';
   const sideOpts=['','बायाँ','दायाँ','मध्य'].map(x=>`<option ${String(m.Side||'')===x?'selected':''}>${x||'—'}</option>`).join('');
   const v=(x)=> (x!=null&&String(x).trim()!=='')?esc(x):'';
@@ -2895,17 +2960,56 @@ function builderRow(m){
     ${(MB.dims&&MB.dims.B===false)?'':`<td>${dimCellHTML('Breadth', m.BreadthExpr||m.Breadth, paidLock)}</td>`}
     ${(MB.dims&&MB.dims.D===false)?'':`<td>${dimCellHTML('Depth', m.DepthExpr||m.Depth, paidLock)}</td>`}
     ${MB.mode==='sanctioned'
-      ? `<td><select class="mb-in mb-grow" style="min-width:90px" data-f="Engineer" ${dis}>${engineerOptionsHtml(m.Engineer)}</select></td>`
+      ? `<td><select class="mb-in mb-grow" style="min-width:90px" data-f="Engineer" ${dis}>${engineerOptionsHtml(m.Engineer)}</select></td>
+    <td data-workcell style="white-space:nowrap"><button type="button" class="icon-btn" title="कार्य जोड़ें/बदलें" onclick="mbPickWork(this)" style="font-size:9px;padding:1px 3px;line-height:1" ${dis}>🧱</button><span class="work-disp" style="color:#c0392b;font-size:9px;font-weight:600;margin-left:2px">${v(m.WorkName)}</span><input type="hidden" data-f="WorkName" value="${v(m.WorkName)}"></td>`
       : `<td><input class="mb-in" style="width:58px" data-f="MBNo" value="${v(m.MBNo)}" placeholder="MB" ${dis}></td>
     <td><input class="mb-in" style="width:42px" data-f="MBPage" value="${v(m.MBPage)}" placeholder="पृ." ${dis}></td>
     <td><input class="mb-in" style="width:130px" type="date" data-f="MDate" value="${v((m.MDate||'').slice(0,10))}" ${dis}></td>
     <td><select class="mb-in" data-f="Engineer" style="min-width:96px;max-width:150px;font-size:12px" title="जिस अभियंता ने नाप की (खाली = निर्धारित नाप वाला)" ${dis}>${engineerOptionsHtml(m.Engineer)}</select></td>`}
     <td class="r num" data-qcell>${mbQcellHTML(paidLock)}</td>
-    <td>${Math.abs(floor)>0.0005
+    <td>${noDelete
       ? (`<span class="badge b-amber" style="font-size:10px" title="${lockTitle}">🔒</span>`
          + (MB.mode!=='sanctioned' ? ` <button class="icon-btn" title="इस नाप को हिस्सों में बाँटें (बिल यथावत रहेगा)" onclick='openSplitModal(${JSON.stringify(id)})'>✂</button>` : ''))
       : `<button class="icon-btn danger" title="पंक्ति हटाएँ" onclick="mbDelRow(this)">🗑</button>`}</td>
   </tr>`;
+}
+/* निर्धारित नाप बिल्डर — प्रति-पंक्ति कार्य चुनने का छोटा popup (बिल्डर modal के ऊपर, उसे बंद किए बिना) */
+function mbPickWork(btn){
+  const td=btn&&btn.closest('td'); if(!td) return;
+  const hidden=td.querySelector('input[data-f="WorkName"]');
+  const cur=hidden?String(hidden.value||''):'';
+  const works=worksInUse();
+  const dl=works.map(c=>`<option value="${esc(c)}">`).join('');
+  const chips=works.length?('<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+works.map(c=>`<button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('mbwrk_in').value=this.getAttribute('data-v')" data-v="${esc(c)}">${esc(c)}</button>`).join('')+'</div>'):'';
+  mbCloseWorkPop();
+  const wrap=document.createElement('div');
+  wrap.id='mbWorkPop';
+  wrap.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;padding:16px';
+  wrap.innerHTML=`<div style="background:var(--card,#fff);color:var(--text,#111);border:1px solid var(--line,#ddd);border-radius:12px;max-width:420px;width:100%;padding:18px;box-shadow:0 12px 44px rgba(0,0,0,.35)">
+    <h3 style="margin:0 0 10px;font-size:15px">🧱 कार्य का नाम</h3>
+    <input id="mbwrk_in" class="inp" list="mbwrk_dl" value="${esc(cur)}" placeholder="जैसे: पुलिया नंबर-1 / मार्ग निर्माण भाग-1" autocomplete="off">
+    <datalist id="mbwrk_dl">${dl}</datalist>
+    <div class="faint" style="margin-top:6px">मौजूदा कार्य में से चुनें या नया लिखें। खाली छोड़ने पर इस लाइन से कार्य हट जाएगा।</div>
+    ${chips}
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+      <button type="button" class="btn btn-ghost" onclick="mbCloseWorkPop()">रद्द</button>
+      <button type="button" class="btn btn-primary" onclick="mbApplyWorkPop()">सहेजें</button>
+    </div></div>`;
+  wrap.addEventListener('mousedown',function(e){ if(e.target===wrap) mbCloseWorkPop(); });
+  document.body.appendChild(wrap);
+  wrap._td=td;
+  setTimeout(function(){ const i=document.getElementById('mbwrk_in'); if(i){ i.focus(); i.select&&i.select(); } },30);
+}
+function mbCloseWorkPop(){ const w=document.getElementById('mbWorkPop'); if(w) w.remove(); }
+function mbApplyWorkPop(){
+  const w=document.getElementById('mbWorkPop'); if(!w) return;
+  const td=w._td, inp=document.getElementById('mbwrk_in');
+  const val=inp?String(inp.value||'').trim():'';
+  if(td){
+    const hidden=td.querySelector('input[data-f="WorkName"]'); if(hidden) hidden.value=val;
+    const disp=td.querySelector('.work-disp'); if(disp) disp.textContent=val;
+  }
+  mbCloseWorkPop();
 }
 function mbRows(){ return Array.from(document.querySelectorAll('#mbBody tr')); }
 function mbRowVal(tr,f){ const el=tr.querySelector('[data-f="'+f+'"]'); return el?el.value:''; }
@@ -3053,7 +3157,8 @@ function mbSave(){
       MBNo:mbRowVal(tr,'MBNo'), MBPage:mbRowVal(tr,'MBPage'), MDate:mbRowVal(tr,'MDate'),
       Nos1:(String(n1Raw).trim()===''?'':toNum(n1Raw)), Nos2:(String(n2Raw).trim()===''?'':toNum(n2Raw)), Length:(String(lRaw).trim()===''?'':toNum(lRaw)),
       Breadth:(bNum==null?'':bNum), BreadthExpr:exprIfAny(bRaw), Depth:(dNum==null?'':dNum), DepthExpr:exprIfAny(dRaw), Quantity:q };
-    if(isSancMode){ row.Engineer=mbRowVal(tr,'Engineer'); } else { row.SancRef=MB.sancId; row.Engineer=mbRowVal(tr,'Engineer'); }
+    if(isSancMode){ row.Engineer=mbRowVal(tr,'Engineer'); row.WorkName=String(mbRowVal(tr,'WorkName')||'').trim(); }
+    else { row.SancRef=MB.sancId; row.Engineer=mbRowVal(tr,'Engineer'); }
     if(id){ const pv=D().measurements.find(x=>String(x.MeasID)===String(id)); if(pv && pv.Ord!=null && String(pv.Ord)!=='') row.Ord=pv.Ord; }  // मैनुअल क्रम बनाए रखें
     saves.push(row);
   });

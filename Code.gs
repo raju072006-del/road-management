@@ -4646,7 +4646,7 @@ const PAY_FOLDER_ID = 'payments';  // Supabase मोड — आभासी fol
 
 const PAY_HEADERS = {
   Items:          ['ItemID','ItemNo','Description','DetailDesc','Unit','Rate','SanctionedQty','ApprovedQty'],
-  Measurements:   ['MeasID','ItemID','Kind','SancRef','Engineer','Ord','Description','ChFrom','ChTo','Side','MBNo','MBPage','MDate','Nos','Nos1','Nos2','Length','Breadth','BreadthExpr','Depth','DepthExpr','Quantity','RecordMB','RecordDate','Remark'],
+  Measurements:   ['MeasID','ItemID','Kind','SancRef','Engineer','Ord','Description','ChFrom','ChTo','Side','MBNo','MBPage','MDate','Nos','Nos1','Nos2','Length','Breadth','BreadthExpr','Depth','DepthExpr','Quantity','RecordMB','RecordDate','Remark','WorkName'],
   Payments:       ['PayID','BillNo','BillType','PDate','MBNo','MBPages','Remarks',
                     'ActualEndDate','SyncRoadWork',
                     'BaseAmount','AbovePct','AboveAmt',
@@ -5204,6 +5204,19 @@ function pay_setMeasRemark(payload){
   var col = hdrs.indexOf('Remark');
   if (col === -1) { sh.getRange(1, hdrs.length+1).setValue('Remark').setFontWeight('bold'); col = hdrs.length; }
   sh.getRange(idx, col+1).setValue(String(payload.remark||'').trim());
+  payInvalidateCache_();
+  return { success:true };
+}
+// किसी निर्धारित नाप-लाइन पर "कार्य का नाम" (WorkName) सेट/बदलें — उसी कार्य की सभी नापें एक साथ देखने हेतु
+function pay_setMeasWork(payload){
+  payEnsureSheets_();
+  var sh = paySS_().getSheetByName('Measurements');
+  var idx = payFindRow_(sh, payload.measId);
+  if (idx === -1) return { success:false, msg:'नाप नहीं मिली' };
+  var hdrs = payGetHdrs_(sh);
+  var col = hdrs.indexOf('WorkName');
+  if (col === -1) { sh.getRange(1, hdrs.length+1).setValue('WorkName').setFontWeight('bold'); col = hdrs.length; }
+  sh.getRange(idx, col+1).setValue(String(payload.work||'').trim());
   payInvalidateCache_();
   return { success:true };
 }

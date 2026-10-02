@@ -5220,6 +5220,33 @@ function pay_setMeasWork(payload){
   payInvalidateCache_();
   return { success:true };
 }
+// किसी वास्तविक (actual) नाप का "संबंधित निर्धारित" (SancRef) बदलें — re-link।
+// भुगतान हो चुका हो या Record/बिल बना पर शेष हो, दोनों में मान्य: मात्रा व भुगतान यथावत रहते हैं,
+// केवल किस निर्धारित नाप के सापेक्ष है वह बदलता है। सुरक्षा हेतु नया निर्धारित उसी आइटम का ही होना चाहिए।
+function pay_relinkMeas(payload){
+  payEnsureSheets_();
+  var sh = paySS_().getSheetByName('Measurements');
+  var idx = payFindRow_(sh, payload.measId);
+  if (idx === -1) return { success:false, msg:'नाप नहीं मिली' };
+  var hdrs = payGetHdrs_(sh);
+  var kindCol = hdrs.indexOf('Kind'), sancCol = hdrs.indexOf('SancRef'), itemCol = hdrs.indexOf('ItemID');
+  if (sancCol === -1) return { success:false, msg:'SancRef कॉलम नहीं मिला' };
+  var row = sh.getRange(idx, 1, 1, hdrs.length).getValues()[0];
+  if (String(row[kindCol]) === 'sanctioned') return { success:false, msg:'यह निर्धारित नाप है — इसका संबंधित नहीं बदला जा सकता' };
+  var newRef = String(payload.newSancRef || '').trim();
+  if (!newRef) return { success:false, msg:'नया संबंधित निर्धारित चुनें' };
+  var oldRef = String(row[sancCol] || '');
+  if (newRef === oldRef) return { success:true };
+  var nIdx = payFindRow_(sh, newRef);
+  if (nIdx === -1) return { success:false, msg:'नया निर्धारित नहीं मिला' };
+  var nRow = sh.getRange(nIdx, 1, 1, hdrs.length).getValues()[0];
+  if (String(nRow[kindCol]) !== 'sanctioned') return { success:false, msg:'चयन निर्धारित नाप नहीं है' };
+  if (itemCol !== -1 && String(nRow[itemCol]) !== String(row[itemCol])) return { success:false, msg:'नया निर्धारित इसी आइटम का होना चाहिए' };
+  sh.getRange(idx, sancCol + 1).setValue(newRef);
+  if (itemCol !== -1) paySyncSanc_(row[itemCol]);   // दोनों निर्धारित (पुराना+नया) एक ही आइटम में हैं → एक sync पर्याप्त
+  payInvalidateCache_();
+  return { success:true };
+}
 function pay_deleteMeasurement(measId){
   var sh = paySS_().getSheetByName('Measurements');
   var idx = payFindRow_(sh, measId);

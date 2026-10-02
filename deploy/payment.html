@@ -565,6 +565,10 @@ const MOCK = (function(){
     saveMeasurement:(m)=>{ if(!m.MeasID)m.MeasID=uid(); upsert(db.measurements,'MeasID',m); save(); return m.MeasID;},
     setMeasRemark:(p)=>{ const m=(db.measurements||[]).find(x=>String(x.MeasID)===String(p.measId)); if(m)m.Remark=String(p.remark||'').trim(); save(); return {success:true}; },
     setMeasWork:(p)=>{ const m=(db.measurements||[]).find(x=>String(x.MeasID)===String(p.measId)); if(m)m.WorkName=String(p.work||'').trim(); save(); return {success:true}; },
+    relinkMeas:(p)=>{ const m=(db.measurements||[]).find(x=>String(x.MeasID)===String(p.measId)); if(!m) return {success:false,msg:'नाप नहीं मिली'};
+      const ns=(db.measurements||[]).find(x=>String(x.MeasID)===String(p.newSancRef)); if(!ns||String(ns.Kind)!=='sanctioned') return {success:false,msg:'नया निर्धारित नहीं मिला'};
+      if(String(ns.ItemID)!==String(m.ItemID)) return {success:false,msg:'नया निर्धारित इसी आइटम का होना चाहिए'};
+      m.SancRef=String(p.newSancRef); save(); return {success:true}; },
     deleteMeasurement:(id)=>{db.measurements=db.measurements.filter(x=>x.MeasID!==id); save(); return true;},
     saveMeasurementsBatch:(p)=>{
       const deletes=(p&&p.deletes)||[], saves=(p&&p.saves)||[];
@@ -857,7 +861,7 @@ window.addEventListener('DOMContentLoaded', function(){
   });
   document.getElementById('overlay').addEventListener('click', function(e){ if(e.target.id==='overlay' && !_modalLockClose) closeModal(); });
   document.addEventListener('keydown', function(e){ if(e.key!=='Escape') return;
-    if(document.getElementById('mbWorkPop')){ e.stopPropagation(); mbCloseWorkPop(); return; }   // पहले छोटा कार्य-popup हटे, फिर अगली बार नाप बिल्डर
+    if(document.getElementById('mbWorkPop')||document.getElementById('mbRelinkPop')){ e.stopPropagation(); mbClosePops(); return; }   // पहले छोटा popup (कार्य/re-link) हटे, फिर अगली बार नाप बिल्डर
     closeModal(); });
   // असली-URL मोड में preload dashboard से location hash (#pl=...) में आता है (srcdoc injection नहीं)
   if (!window._PRELOAD_PROJECT) {
@@ -2970,7 +2974,7 @@ function builderRow(m){
     <td>${noDelete
       ? (`<span class="badge b-amber" style="font-size:10px" title="${lockTitle}">🔒</span>`
          + (MB.mode!=='sanctioned' ? ` <button class="icon-btn" title="इस नाप को हिस्सों में बाँटें (बिल यथावत रहेगा)" onclick='openSplitModal(${JSON.stringify(id)})'>✂</button>` : ''))
-      : `<button class="icon-btn danger" title="पंक्ति हटाएँ" onclick="mbDelRow(this)">🗑</button>`}</td>
+      : `<button class="icon-btn danger" title="पंक्ति हटाएँ" onclick="mbDelRow(this)">🗑</button>`}${(MB.mode!=='sanctioned' && id) ? ` <button class="icon-btn" title="इस नाप को किसी और निर्धारित नाप से जोड़ें (संबंधित बदलें) — भुगतान हो चुका या शेष, दोनों में मान्य" onclick='mbRelink(${JSON.stringify(id)})'>🔗</button>` : ''}</td>
   </tr>`;
 }
 /* निर्धारित नाप बिल्डर — प्रति-पंक्ति कार्य चुनने का छोटा popup (बिल्डर modal के ऊपर, उसे बंद किए बिना) */
@@ -3000,7 +3004,8 @@ function mbPickWork(btn){
   wrap._td=td;
   setTimeout(function(){ const i=document.getElementById('mbwrk_in'); if(i){ i.focus(); i.select&&i.select(); } },30);
 }
-function mbCloseWorkPop(){ const w=document.getElementById('mbWorkPop'); if(w) w.remove(); }
+function mbClosePops(){ ['mbWorkPop','mbRelinkPop'].forEach(function(idn){ const w=document.getElementById(idn); if(w) w.remove(); }); }
+function mbCloseWorkPop(){ mbClosePops(); }
 function mbApplyWorkPop(){
   const w=document.getElementById('mbWorkPop'); if(!w) return;
   const td=w._td, inp=document.getElementById('mbwrk_in');
@@ -3009,7 +3014,52 @@ function mbApplyWorkPop(){
     const hidden=td.querySelector('input[data-f="WorkName"]'); if(hidden) hidden.value=val;
     const disp=td.querySelector('.work-disp'); if(disp) disp.textContent=val;
   }
-  mbCloseWorkPop();
+  mbClosePops();
+}
+/* नाप का संबंधित निर्धारित बदलें (re-link) — भुगतान हो चुका हो या Record/बिल बना पर शेष हो, दोनों में मान्य।
+   मात्रा व भुगतान यथावत रहते हैं; केवल किस निर्धारित नाप के सापेक्ष है वह बदलता है (उसी आइटम के अंदर)। */
+function mbRelink(measId){
+  const mm=(D().measurements||[]).find(x=>String(x.MeasID)===String(measId));
+  if(!mm){ toast('नाप नहीं मिली',true); return; }
+  const itemId=mm.ItemID;
+  const others=sancMeasOfItem(itemId).filter(s=>String(s.MeasID)!==String(mm.SancRef||''));
+  if(!others.length){ toast('इसी आइटम में कोई दूसरा निर्धारित नाप नहीं है, जिससे जोड़ा जा सके',true); return; }
+  const opts=sancRefOptions(itemId, mm.SancRef, measId);
+  const cur=sancById(mm.SancRef);
+  const billedPaid=measBilledPaidQty(measId), paid=measPaid(measId);
+  const statusTxt = billedPaid>0.0005 ? `भुगतान हो चुका (${qf(billedPaid)})` : (paid>0.0005 ? `Record/बिल बना — भुगतान शेष (${qf(paid)})` : 'भुगतान नहीं हुआ');
+  mbClosePops();
+  const wrap=document.createElement('div');
+  wrap.id='mbRelinkPop';
+  wrap.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;padding:16px';
+  wrap.innerHTML=`<div style="background:var(--card,#fff);color:var(--text,#111);border:1px solid var(--line,#ddd);border-radius:12px;max-width:480px;width:100%;padding:18px;box-shadow:0 12px 44px rgba(0,0,0,.35)">
+    <h3 style="margin:0 0 6px;font-size:15px">🔗 संबंधित निर्धारित नाप बदलें</h3>
+    <div class="faint" style="margin-bottom:10px">नाप: <b>${esc(measName(mm))}</b> · मात्रा <b>${nf2(measQty(mm))}</b> · स्थिति: ${statusTxt}<br>वर्तमान संबंधित: <b>${cur?esc(measName(cur)):'—'}</b></div>
+    <div class="field"><label>नया संबंधित निर्धारित (इसी आइटम का)</label>
+      <select id="mbrelink_sel" class="inp">${opts}</select></div>
+    <div class="faint" style="margin-top:6px">बदलते ही यह नाप नए निर्धारित से जुड़ जाएगी और पुराने से लिंक हट जाएगा। मात्रा व भुगतान वही रहेंगे — केवल संबंध बदलेगा।</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+      <button type="button" class="btn btn-ghost" onclick="mbClosePops()">रद्द</button>
+      <button type="button" class="btn btn-primary" onclick="mbApplyRelink('${String(measId).replace(/'/g,"\\'")}')">बदलें</button>
+    </div></div>`;
+  wrap.addEventListener('mousedown',function(e){ if(e.target===wrap) mbClosePops(); });
+  document.body.appendChild(wrap);
+}
+function mbApplyRelink(measId){
+  const sel=document.getElementById('mbrelink_sel'); const newRef=sel?String(sel.value||'').trim():'';
+  if(!newRef){ toast('नया संबंधित निर्धारित चुनें',true); return; }
+  const mm=(D().measurements||[]).find(x=>String(x.MeasID)===String(measId));
+  if(mm && String(mm.SancRef||'')===newRef){ toast('यह तो वही संबंधित है — कोई बदलाव नहीं',true); return; }
+  const srcSanc = (typeof MB!=='undefined' && MB) ? MB.sancId : '';
+  loader(true);
+  api('relinkMeas',{measId:measId, newSancRef:newRef})
+    .then(function(){
+      const x=(D().measurements||[]).find(y=>String(y.MeasID)===String(measId)); if(x) x.SancRef=newRef;   // local sync (ItemID वही)
+      mbClosePops(); loader(false); toast('नाप दूसरे निर्धारित से जोड़ दी गई');
+      if(srcSanc && sancById(srcSanc)) openMeasBuilder(srcSanc);   // स्रोत बिल्डर ताज़ा — हटी पंक्ति अब नहीं दिखेगी
+      else { closeModal(); render(); }
+    })
+    .catch(function(e){ loader(false); toast('त्रुटि: '+(e.message||e), true); });
 }
 function mbRows(){ return Array.from(document.querySelectorAll('#mbBody tr')); }
 function mbRowVal(tr,f){ const el=tr.querySelector('[data-f="'+f+'"]'); return el?el.value:''; }

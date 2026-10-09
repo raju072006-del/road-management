@@ -81,13 +81,15 @@ a{color:var(--ink-2)}
 .section-head .spacer{flex:1}
 
 /* stat cards */
-.stats{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:22px}
+.stats{display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-bottom:22px}
 .stat{padding:16px 17px; position:relative; overflow:hidden}
 .stat .label{font-size:12.5px; color:var(--muted); font-weight:600; display:flex; align-items:center; gap:6px}
 .stat .val{font-size:25px; font-weight:600; margin-top:7px; color:var(--ink)}
 .stat .meta{font-size:12px; color:var(--faint); margin-top:3px}
 .stat .bar-ic{position:absolute; right:14px; top:14px; width:34px; height:34px;
   border-radius:9px; display:grid; place-items:center; font-size:17px}
+.stat.s-pre  .bar-ic{background:#ede9fe; color:#7c3aed}
+.stat.s-pre  .val{color:#7c3aed}
 .stat.s-sanc .bar-ic{background:var(--blue-bg); color:var(--blue)}
 .stat.s-done .bar-ic{background:var(--amber-bg); color:var(--amber)}
 .stat.s-paid .bar-ic{background:var(--green-bg); color:var(--green)}
@@ -429,6 +431,10 @@ select.inp{appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmln
 
   <div class="exportbar no-print" style="display:flex;justify-content:flex-end;gap:8px;margin:-10px 2px 14px">
     <span class="faint" style="align-self:center;font-size:12px;margin-right:auto">📤 जो सामने दिख रहा है उसी का निर्यात:</span>
+    <span id="presancBar" class="no-print" style="display:none;gap:8px;margin-right:18px">
+      <button class="btn btn-ghost btn-sm" title="सभी आइटम के मौजूदा ① निर्धारित नाप की 'पूर्व निर्धारित' कॉपी एक साथ बनाएँ/बदलें" onclick="savePresancAll()"><span class="ic">📌</span> सभी आइटम पूर्व निर्धारित सहेजें</button>
+      <button id="presancToggleBtn" class="btn btn-ghost btn-sm" title="पूर्व निर्धारित सेक्शन दिखाएँ/छिपाएँ" onclick="togglePresancView()"><span class="ic">👁</span> पूर्व निर्धारित दिखाएँ</button>
+    </span>
     <button class="btn btn-ghost btn-sm" onclick="exportExcel()"><span class="ic">📊</span> Excel</button>
     <button class="btn btn-ghost btn-sm" onclick="exportPDF()"><span class="ic">📄</span> PDF</button>
     <button class="btn btn-ghost btn-sm" onclick="window.print()"><span class="ic">🖨</span> प्रिंट</button>
@@ -627,7 +633,7 @@ const MOCK = (function(){
 /* ===================================================================
    State + utilities
 =================================================================== */
-const state = { data:{items:[],measurements:[],payments:[],paymentDetails:[],paymentAdj:[],project:{}}, tab:'dashboard', measFilter:'all', itemSearch:'', reportDetail:'short', reportEng:'', measEng:'', measBill:'', measBlock:'all', measWork:'', payBill:'', payItem:'', payEng:'', payView:'item' };
+const state = { data:{items:[],measurements:[],payments:[],paymentDetails:[],paymentAdj:[],project:{}}, tab:'dashboard', measFilter:'all', itemSearch:'', reportDetail:'short', reportEng:'', measEng:'', measBill:'', measBlock:'all', measWork:'', presancVisible:false, payBill:'', payItem:'', payEng:'', payView:'item' };
 const D = ()=> state.data;
 window.state = state; // parent Dashboard (Bill Copy/doc-8 refresh) इसे सीधे पढ़ता है — सर्वर कॉल बचाने हेतु कैश
 
@@ -673,7 +679,8 @@ function items(){ return D().items.slice().sort((a,b)=> toNum(a.ItemNo)-toNum(b.
 function itemById(id){ return D().items.find(i=>String(i.ItemID)===String(id)); }
 function measKind(m){ return String(m.Kind||'actual'); }            // पुरानी लाइनें = वास्तविक
 function isSanc(m){ return measKind(m)==='sanctioned'; }
-function isActual(m){ return measKind(m)!=='sanctioned'; }
+function isPresanc(m){ return measKind(m)==='presanctioned'; }       // पूर्व निर्धारित (केवल देखने/compare हेतु स्नैपशॉट)
+function isActual(m){ const k=measKind(m); return k!=='sanctioned' && k!=='presanctioned'; }
 function measOfItem(id){ return D().measurements.filter(m=>String(m.ItemID)===String(id)); }
 /* ---- sort: पहले चैनेज (कम→ज्यादा), फिर पक्ष (बायाँ→दायाँ→मध्य) ---- */
 function chNum(v){ const n=parseFloat(String(v==null?'':v).trim()); return isNaN(n)?null:n; }
@@ -758,6 +765,7 @@ function cmpSanc(a,b){    // पहले मैनुअल क्रम (Ord),
   return cmpMeas(a,b);
 }
 function sancMeasOfItem(id){ return measOfItem(id).filter(isSanc).sort(cmpSanc); }
+function presancMeasOfItem(id){ return measOfItem(id).filter(isPresanc).sort(cmpSanc); }
 function actualMeasOfItem(id){ return measOfItem(id).filter(isActual).sort(cmpMeas); }
 /* ---- निर्धारित नाप ↔ साइट-नाप का सापेक्ष (strict link via SancRef) ---- */
 function sancRefOf(m){ return m.SancRef||''; }
@@ -796,6 +804,8 @@ function itemSancQty(it){
   return toNum(it.SanctionedQty);
 }
 function itemSancAmt(it){ return round(itemSancQty(it)*itemRate(it),2); }
+function itemPresancQty(it){ return round(paySum(presancMeasOfItem(it.ItemID), measQty),3); }
+function itemPresancAmt(it){ return round(itemPresancQty(it)*itemRate(it),2); }
 function itemMeasQty(it){ return round(paySum(actualMeasOfItem(it.ItemID), measQty),3); }
 function itemMeasAmt(it){ return round(itemMeasQty(it)*itemRate(it),2); }
 function itemPaidQty(it){ return round(paySum(detailsOf('ItemID',it.ItemID), d=>d.Qty),3); }
@@ -803,10 +813,11 @@ function itemPaidAmt(it){ return round(paySum(detailsOf('ItemID',it.ItemID), d=>
 
 function totals(){
   const its=items();
+  const presanc = round(paySum(its,itemPresancAmt),2);
   const sanc = round(paySum(its,itemSancAmt),2);
   const measV= round(paySum(its,itemMeasAmt),2);
   const paid = round(paySum(D().payments, p=>p.TotalAmount),2);
-  return { sanc, measV, paid, balSanc:round(sanc-paid,2), unbilled:round(measV-paid,2) };
+  return { presanc, sanc, measV, paid, balSanc:round(sanc-paid,2), unbilled:round(measV-paid,2) };
 }
 
 /* ===================================================================
@@ -1001,6 +1012,11 @@ function render(){
   else if(state.tab==='report')v.innerHTML=viewReport();
   else if(state.tab==='settings')v.innerHTML=viewSettings();
   bindView();
+  // पूर्व निर्धारित बटन केवल "नाप" टैब पर दिखें; टॉगल-बटन का लेबल वर्तमान स्थिति अनुसार
+  const pb=document.getElementById('presancBar');
+  if(pb) pb.style.display = (state.tab==='meas' && !state.data.noProject) ? 'inline-flex' : 'none';
+  const ptb=document.getElementById('presancToggleBtn');
+  if(ptb) ptb.innerHTML = state.presancVisible ? `<span class="ic">🙈</span> पूर्व निर्धारित छिपाएँ` : `<span class="ic">👁</span> पूर्व निर्धारित दिखाएँ`;
 }
 
 /* ===================================================================
@@ -1198,7 +1214,9 @@ function viewDashboard(){
     '<button class="btn btn-ink" onclick="switchTab(\'items\')"><span class="ic">＋</span> आइटम जोड़ें</button>');
   const stat=(cls,ic,label,val,meta)=>`<div class="stat card ${cls}"><div class="bar-ic">${ic}</div>
     <div class="label">${label}</div><div class="val num">${val}</div><div class="meta">${meta}</div></div>`;
+  const presItems=its.filter(it=>presancMeasOfItem(it.ItemID).length).length;
   const stats=`<div class="stats">
+    ${stat('s-pre','🗂️','पूर्व निर्धारित राशि', inr(t.presanc), presItems?(presItems+' आइटम में पूर्व निर्धारित'):'अभी सहेजा नहीं गया')}
     ${stat('s-sanc','▦','कुल स्वीकृत राशि', inr(t.sanc), its.length+' आइटम स्वीकृत')}
     ${stat('s-done','📏','कुल नापा गया कार्य', inr(t.measV), pct(t.measV,t.sanc)+'% स्वीकृत का')}
     ${stat('s-paid','✓','कुल भुगतान', inr(t.paid), D().payments.length+' बिल में भुगतान')}
@@ -1324,7 +1342,7 @@ function viewMeas(){
     <div class="field" style="min-width:210px"><label>🧱 कार्य (Work)</label>
       <select class="inp" onchange="state.measWork=this.value; render()">${wkOpts}</select></div>
     <div class="field" style="min-width:210px"><label>अनुभाग (block)</label>
-      <select class="inp" onchange="state.measBlock=this.value; render()">${bOpt('all','सभी')}${bOpt('sanc','① निर्धारित नाप')}${bOpt('paid','② भुगतान हो चुका')}${bOpt('rem','③ Record हो गया, भुगतान शेष')}</select></div>
+      <select class="inp" onchange="state.measBlock=this.value; render()">${bOpt('all','सभी')}${state.presancVisible?bOpt('presanc','🗂️ पूर्व निर्धारित'):''}${bOpt('sanc','① निर्धारित नाप')}${bOpt('paid','② भुगतान हो चुका')}${bOpt('rem','③ Record हो गया, भुगतान शेष')}</select></div>
     <div class="field" style="min-width:200px"><label>🏷 Remark श्रेणी</label>
       <select class="inp" onchange="state.measRemark=this.value; render()">${rmkOpts}</select></div>
     ${engs.length?`<div class="field" style="min-width:190px"><label>अवर अभियंता</label>
@@ -1578,10 +1596,46 @@ function itemMeasCard(it){
       </div></td></tr>`;
   }).join('');
   const sancSearch=sanc.length>1?`<input id="${sancTbId}-q" class="inp" style="width:140px;font-size:13px;padding:4px 8px;margin-right:4px" placeholder="🔍 पंक्ति खोजें..." value="${esc(sTerm)}" onkeydown='if(event.key==="Enter"){event.preventDefault();filterSancRows(${JSON.stringify(sancTbId)},${iid})}'> <button class="btn btn-ghost btn-sm" style="margin-right:6px" onclick='filterSancRows(${JSON.stringify(sancTbId)},${iid})'>Search</button><button class="btn btn-ghost btn-sm" style="margin-right:6px" onclick='clearSancFilter(${JSON.stringify(sancTbId)},${iid})'>Clear</button>`:'';
-  const sancBtn=`${sancSearch}${sanc.length>1?`<button class="btn btn-ghost btn-sm" title="मैनुअल क्रम हटाकर पक्ष→चैनेज अनुसार स्वतः क्रम" onclick='autoArrangeSanc(${iid})'>↕ Auto Arrange</button> `:''}<button class="btn btn-primary btn-sm" onclick='openSancBuilder(${iid})'><span class="ic">＋</span> निर्धारित नाप (builder)</button>`;
+  const sancBtn=`${sancSearch}${sanc.length?`<button class="btn btn-ghost btn-sm" title="अभी के ① निर्धारित नाप की एक अलग 'पूर्व निर्धारित' कॉपी बनाएँ — यह ऊपर अलग सेक्शन में दिखेगी (केवल देखने/तुलना हेतु)" onclick='savePresanc(${iid})'>📌 पूर्व निर्धारित सहेजें</button> `:''}${sanc.length>1?`<button class="btn btn-ghost btn-sm" title="मैनुअल क्रम हटाकर पक्ष→चैनेज अनुसार स्वतः क्रम" onclick='autoArrangeSanc(${iid})'>↕ Auto Arrange</button> `:''}<button class="btn btn-primary btn-sm" onclick='openSancBuilder(${iid})'><span class="ic">＋</span> निर्धारित नाप (builder)</button>`;
   const block1=blockTable('① निर्धारित नाप (स्वीकृति के अनुसार)', `स्वीकृत योग: ${nf2(sQ)} ${unit} · इन्हीं के सापेक्ष साइट-नाप होती है`,
     `<th class="r">निर्धारित</th><th class="r">नापी गई</th><th class="r">शेष नाप</th><th class="c">इकाई</th><th class="c">स्थिति</th><th>अभियंता</th><th></th>`,
     sancRows, 15, sancBtn, sancTbId);
+
+  // ---- भाग 0: पूर्व निर्धारित नाप (स्नैपशॉट — केवल देखने/तुलना हेतु; ① निर्धारित नाप की एक अलग कॉपी) ----
+  // हर पूर्व निर्धारित पंक्ति अपने स्रोत निर्धारित (SancRef) से जुड़ी रहती है → पूर्व निर्धारित → वर्तमान निर्धारित → नापी/शेष की तुलना दिखती है।
+  const presanc = presancMeasOfItem(it.ItemID);
+  if(fBlk==='presanc' && !presanc.length) return '';   // केवल पूर्व निर्धारित फ़िल्टर पर जिन आइटम में यह नहीं, वे छिपें
+  // block0 दिखे जब: पूर्व निर्धारित फ़िल्टर चुना हो, या (सभी/① फ़िल्टर पर) Hide/Show से दिखाना चालू हो
+  const showPre = presanc.length && !fRemark && (fBlk==='presanc' || ((fBlk==='all'||fBlk==='sanc') && !!state.presancVisible));
+  let block0='';
+  if(showPre){
+    const preRows = presanc.map(function(m){
+      const preQ=measQty(m);
+      const s=sancById(m.SancRef);
+      const curQ = s? measQty(s) : null;
+      const meas = s? sancMeasuredQty(s.MeasID) : 0;
+      const rem  = s? round(curQ-meas,3) : null;
+      const diff = (curQ!=null)? round(curQ-preQ,3) : null;
+      const diffHtml = (diff==null)? '<span class="faint">—</span>'
+        : (Math.abs(diff)<0.0005? '<span class="faint">0</span>'
+          : `<span style="color:${diff>0?'var(--accent)':'var(--red-2)'}">${diff>0?'+':''}${nf2(diff)}</span>`);
+      const curHtml = (curQ==null)? '<span class="badge b-red" style="font-size:10px">निर्धारित नहीं</span>' : `<b>${nf2(curQ)}</b>`;
+      return `<tr>${leadCells(m)}
+        <td class="r num"><b>${nf2(preQ)}</b></td>
+        <td class="r num">${curHtml}</td>
+        <td class="r num">${diffHtml}</td>
+        <td class="r num" style="color:var(--accent)">${curQ==null?'—':nf2(meas)}</td>
+        <td class="r num" style="color:var(--red-2)">${rem==null?'—':nf2(rem)}</td>
+        <td class="c muted">${unit}</td>
+        <td class="faint" style="white-space:nowrap">${esc(measEngineer(m))||'—'}</td></tr>`;
+    }).join('');
+    const preQtot=round(paySum(presanc,measQty),3);
+    const preBtn=`<button class="btn btn-ghost btn-sm" title="इस आइटम का पूर्व निर्धारित फिर से सहेजें (मौजूदा ① निर्धारित नाप की नई कॉपी से बदलें)" onclick='savePresanc(${iid})'>🔄 पुनः सहेजें</button> <button class="icon-btn danger" title="पूर्व निर्धारित हटाएँ" onclick='clearPresanc(${iid})'>🗑</button>`;
+    block0=blockTable('🗂️ पूर्व निर्धारित नाप (केवल देखने/तुलना हेतु)',
+      `पूर्व निर्धारित योग: ${nf2(preQtot)} ${unit} · वर्तमान निर्धारित योग: ${nf2(sQ)} ${unit} · अंतर: ${nf2(round(sQ-preQtot,3))} ${unit}`,
+      `<th class="r">पूर्व निर्धारित</th><th class="r">वर्तमान निर्धारित</th><th class="r">अंतर</th><th class="r">नापी गई</th><th class="r">शेष</th><th class="c">इकाई</th><th>अभियंता</th>`,
+      preRows, 15, preBtn);
+  }
 
   // ---- भाग 2: भुगतान हो चुका (वास्तविक नाप × बिल) ----
   let paidRows='', paidCount=0;
@@ -1670,7 +1724,7 @@ function itemMeasCard(it){
       <span class="item-no">${esc(it.ItemNo)}</span>
       <h2 style="font-size:16px">${esc(it.Description)}</h2>
       <span class="sub">इकाई ${unit} · दर ${inr(itemRate(it))}</span></div>
-    ${badges}${warnBanner}${showBlk1?block1:''}${(fBlk==='all'||fBlk==='paid')?block2:''}${(fBlk==='all'||fBlk==='rem')?block3:''}</div>`;
+    ${badges}${warnBanner}${block0}${showBlk1?block1:''}${(fBlk==='all'||fBlk==='paid')?block2:''}${(fBlk==='all'||fBlk==='rem')?block3:''}</div>`;
 }
 
 /* 🏷 नाप-लाइन पर Remark श्रेणी सेट/बदलें (मौजूदा श्रेणियों में से चुनें या नई लिखें) */
@@ -1700,6 +1754,67 @@ function saveMeasRemark(measId){
     })
     .catch(function(e){ loader(false); toast('त्रुटि: '+(e.message||e), true); });
 }
+
+/* 🗂️ पूर्व निर्धारित नाप — अभी के ① निर्धारित नाप का एक अलग स्नैपशॉट (Kind='presanctioned')।
+   केवल देखने/तुलना हेतु: हर पंक्ति अपने स्रोत निर्धारित (SancRef) से जुड़ी रहती है।
+   पुनः सहेजने पर इस आइटम का पुराना पूर्व निर्धारित हटाकर नई कॉपी बनती है। */
+function savePresanc(itemId){
+  const sanc=sancMeasOfItem(itemId);
+  if(!sanc.length){ toast('पहले ① निर्धारित नाप जोड़ें — तभी पूर्व निर्धारित सहेजा जा सकता है',true); return; }
+  const existing=presancMeasOfItem(itemId);
+  const go=function(){
+    const deletes=existing.map(p=>p.MeasID);
+    const saves=sanc.map(s=>({ MeasID:'', ItemID:itemId, Kind:'presanctioned', SancRef:s.MeasID,
+      Description:s.Description, ChFrom:s.ChFrom, ChTo:s.ChTo, Side:s.Side,
+      Nos1:s.Nos1, Nos2:s.Nos2, Length:s.Length,
+      Breadth:s.Breadth, BreadthExpr:s.BreadthExpr, Depth:s.Depth, DepthExpr:s.DepthExpr,
+      Quantity:s.Quantity, Engineer:s.Engineer, WorkName:s.WorkName, Ord:s.Ord }));
+    loader(true);
+    api('saveMeasurementsBatch',{saves:saves, deletes:deletes}).then(function(ids){
+      state.data.measurements = state.data.measurements.filter(x=>deletes.indexOf(x.MeasID)===-1);
+      saves.forEach(function(m,i){ if(!m.MeasID) m.MeasID=(ids&&ids[i])||m.MeasID; upsertLocal(state.data.measurements,'MeasID',m); });
+      loader(false); render(); toast('पूर्व निर्धारित सहेजा गया ('+saves.length+' पंक्ति)');
+    }).catch(function(e){ loader(false); toast('त्रुटि: '+(e.message||e),true); });
+  };
+  if(existing.length) confirmModal('📌 पूर्व निर्धारित फिर से सहेजें?','इस आइटम का पूर्व निर्धारित पहले से मौजूद है ('+existing.length+' पंक्ति)। इसे मौजूदा ① निर्धारित नाप की नई कॉपी से बदल दिया जाएगा। जारी रखें?', go, 'हाँ, बदलें');
+  else go();
+}
+function clearPresanc(itemId){
+  const existing=presancMeasOfItem(itemId);
+  if(!existing.length){ toast('इस आइटम में कोई पूर्व निर्धारित नहीं है',true); return; }
+  confirmModal('🗑 पूर्व निर्धारित हटाएँ?','इस आइटम का पूर्व निर्धारित स्नैपशॉट ('+existing.length+' पंक्ति) हटा दिया जाएगा। ① निर्धारित नाप, भुगतान आदि पर कोई असर नहीं पड़ेगा।', function(){
+    const deletes=existing.map(p=>p.MeasID);
+    loader(true);
+    api('saveMeasurementsBatch',{saves:[], deletes:deletes}).then(function(){
+      state.data.measurements = state.data.measurements.filter(x=>deletes.indexOf(x.MeasID)===-1);
+      loader(false); render(); toast('पूर्व निर्धारित हटाया गया');
+    }).catch(function(e){ loader(false); toast('त्रुटि: '+(e.message||e),true); });
+  }, 'हाँ, हटाएँ');
+}
+/* 📌 सभी आइटम का पूर्व निर्धारित एक साथ सहेजें (एक ही round-trip में) */
+function savePresancAll(){
+  const its=items().filter(it=>sancMeasOfItem(it.ItemID).length);
+  if(!its.length){ toast('किसी भी आइटम में ① निर्धारित नाप नहीं है',true); return; }
+  confirmModal('📌 सभी आइटम का पूर्व निर्धारित सहेजें?','सभी '+its.length+' आइटम के मौजूदा ① निर्धारित नाप की "पूर्व निर्धारित" कॉपी बनेगी। जिनमें पहले से पूर्व निर्धारित है, वह नई कॉपी से बदल जाएगी। जारी रखें?', function(){
+    const saves=[], deletes=[];
+    its.forEach(function(it){
+      presancMeasOfItem(it.ItemID).forEach(p=>deletes.push(p.MeasID));
+      sancMeasOfItem(it.ItemID).forEach(function(s){ saves.push({ MeasID:'', ItemID:it.ItemID, Kind:'presanctioned', SancRef:s.MeasID,
+        Description:s.Description, ChFrom:s.ChFrom, ChTo:s.ChTo, Side:s.Side,
+        Nos1:s.Nos1, Nos2:s.Nos2, Length:s.Length, Breadth:s.Breadth, BreadthExpr:s.BreadthExpr, Depth:s.Depth, DepthExpr:s.DepthExpr,
+        Quantity:s.Quantity, Engineer:s.Engineer, WorkName:s.WorkName, Ord:s.Ord }); });
+    });
+    loader(true);
+    api('saveMeasurementsBatch',{saves:saves, deletes:deletes}).then(function(ids){
+      state.data.measurements=state.data.measurements.filter(x=>deletes.indexOf(x.MeasID)===-1);
+      saves.forEach(function(m,i){ if(!m.MeasID) m.MeasID=(ids&&ids[i])||m.MeasID; upsertLocal(state.data.measurements,'MeasID',m); });
+      state.presancVisible=true;
+      loader(false); render(); toast('सभी आइटम का पूर्व निर्धारित सहेजा गया ('+its.length+' आइटम)');
+    }).catch(function(e){ loader(false); toast('त्रुटि: '+(e.message||e),true); });
+  }, 'हाँ, सभी सहेजें');
+}
+/* 👁 पूर्व निर्धारित सेक्शन दिखाएँ/छिपाएँ */
+function togglePresancView(){ state.presancVisible=!state.presancVisible; if(!state.presancVisible && state.measBlock==='presanc') state.measBlock='all'; if(state.tab!=='meas') switchTab('meas'); else render(); toast(state.presancVisible?'पूर्व निर्धारित दिख रहा है':'पूर्व निर्धारित छिपाया गया'); }
 
 /* 🧱 निर्धारित नाप-लाइन पर "कार्य का नाम" सेट/बदलें (पुलिया-1, मार्ग भाग-1 आदि) */
 function openMeasWork(measId){

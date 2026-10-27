@@ -1596,7 +1596,7 @@ function itemMeasCard(it){
       </div></td></tr>`;
   }).join('');
   const sancSearch=sanc.length>1?`<input id="${sancTbId}-q" class="inp" style="width:140px;font-size:13px;padding:4px 8px;margin-right:4px" placeholder="🔍 पंक्ति खोजें..." value="${esc(sTerm)}" onkeydown='if(event.key==="Enter"){event.preventDefault();filterSancRows(${JSON.stringify(sancTbId)},${iid})}'> <button class="btn btn-ghost btn-sm" style="margin-right:6px" onclick='filterSancRows(${JSON.stringify(sancTbId)},${iid})'>Search</button><button class="btn btn-ghost btn-sm" style="margin-right:6px" onclick='clearSancFilter(${JSON.stringify(sancTbId)},${iid})'>Clear</button>`:'';
-  const sancBtn=`${sancSearch}${sanc.length?`<button class="btn btn-ghost btn-sm" title="अभी के ① निर्धारित नाप की एक अलग 'पूर्व निर्धारित' कॉपी बनाएँ — यह ऊपर अलग सेक्शन में दिखेगी (केवल देखने/तुलना हेतु)" onclick='savePresanc(${iid})'>📌 पूर्व निर्धारित सहेजें</button> `:''}${sanc.length>1?`<button class="btn btn-ghost btn-sm" title="मैनुअल क्रम हटाकर पक्ष→चैनेज अनुसार स्वतः क्रम" onclick='autoArrangeSanc(${iid})'>↕ Auto Arrange</button> `:''}<button class="btn btn-primary btn-sm" onclick='openSancBuilder(${iid})'><span class="ic">＋</span> निर्धारित नाप (builder)</button>`;
+  const sancBtn=`<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex-basis:100%;margin-top:2px">${sancSearch}${sanc.length?`<button class="btn btn-ghost btn-sm" title="अभी के ① निर्धारित नाप की एक अलग 'पूर्व निर्धारित' कॉपी बनाएँ — यह ऊपर अलग सेक्शन में दिखेगी (केवल देखने/तुलना हेतु)" onclick='savePresanc(${iid})'>📌 पूर्व निर्धारित सहेजें</button>`:''}${sanc.length>1?`<button class="btn btn-ghost btn-sm" title="मैनुअल क्रम हटाकर पक्ष→चैनेज अनुसार स्वतः क्रम" onclick='autoArrangeSanc(${iid})'>↕ Auto Arrange</button>`:''}<button class="btn btn-primary btn-sm" onclick='openSancBuilder(${iid})'><span class="ic">＋</span> निर्धारित नाप (builder)</button></div>`;
   const block1=blockTable('① निर्धारित नाप (स्वीकृति के अनुसार)', `स्वीकृत योग: ${nf2(sQ)} ${unit} · इन्हीं के सापेक्ष साइट-नाप होती है`,
     `<th class="r">निर्धारित</th><th class="r">नापी गई</th><th class="r">शेष नाप</th><th class="c">इकाई</th><th class="c">स्थिति</th><th>अभियंता</th><th></th>`,
     sancRows, 15, sancBtn, sancTbId);
@@ -1770,7 +1770,7 @@ function savePresanc(itemId){
       Breadth:s.Breadth, BreadthExpr:s.BreadthExpr, Depth:s.Depth, DepthExpr:s.DepthExpr,
       Quantity:s.Quantity, Engineer:s.Engineer, WorkName:s.WorkName, Ord:s.Ord }));
     loader(true);
-    api('saveMeasurementsBatch',{saves:saves, deletes:deletes}).then(function(ids){
+    api('saveMeasurementsBatch',{saves:saves, deletes:deletes, noSanc:true}).then(function(ids){
       state.data.measurements = state.data.measurements.filter(x=>deletes.indexOf(x.MeasID)===-1);
       saves.forEach(function(m,i){ if(!m.MeasID) m.MeasID=(ids&&ids[i])||m.MeasID; upsertLocal(state.data.measurements,'MeasID',m); });
       loader(false); render(); toast('पूर्व निर्धारित सहेजा गया ('+saves.length+' पंक्ति)');
@@ -1785,7 +1785,7 @@ function clearPresanc(itemId){
   confirmModal('🗑 पूर्व निर्धारित हटाएँ?','इस आइटम का पूर्व निर्धारित स्नैपशॉट ('+existing.length+' पंक्ति) हटा दिया जाएगा। ① निर्धारित नाप, भुगतान आदि पर कोई असर नहीं पड़ेगा।', function(){
     const deletes=existing.map(p=>p.MeasID);
     loader(true);
-    api('saveMeasurementsBatch',{saves:[], deletes:deletes}).then(function(){
+    api('saveMeasurementsBatch',{saves:[], deletes:deletes, noSanc:true}).then(function(){
       state.data.measurements = state.data.measurements.filter(x=>deletes.indexOf(x.MeasID)===-1);
       loader(false); render(); toast('पूर्व निर्धारित हटाया गया');
     }).catch(function(e){ loader(false); toast('त्रुटि: '+(e.message||e),true); });
@@ -1805,7 +1805,7 @@ function savePresancAll(){
         Quantity:s.Quantity, Engineer:s.Engineer, WorkName:s.WorkName, Ord:s.Ord }); });
     });
     loader(true);
-    api('saveMeasurementsBatch',{saves:saves, deletes:deletes}).then(function(ids){
+    api('saveMeasurementsBatch',{saves:saves, deletes:deletes, noSanc:true}).then(function(ids){
       state.data.measurements=state.data.measurements.filter(x=>deletes.indexOf(x.MeasID)===-1);
       saves.forEach(function(m,i){ if(!m.MeasID) m.MeasID=(ids&&ids[i])||m.MeasID; upsertLocal(state.data.measurements,'MeasID',m); });
       state.presancVisible=true;

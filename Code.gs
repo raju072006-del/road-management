@@ -5302,7 +5302,12 @@ function pay_saveMeasurementsBatch(payload){
   // यदि पहले से कम पंक्तियाँ बचीं (net हटाव), तो बची अतिरिक्त पुरानी पंक्तियाँ हटाओ
   for (var k = oldRows.length; k > newRows.length; k--) sh.deleteRow(newRows.length + 2);
 
-  Object.keys(touchedItems).forEach(function(itemId){ paySyncSanc_(itemId); });
+  // sanctioned-योग सिंक — केवल जब ज़रूरी हो। पूर्व निर्धारित (presanctioned) जोड़/हटाव से sanctioned योग
+  // नहीं बदलता, इसलिए noSanc=true पर यह महँगा per-item पूरा-शीट पठन छोड़ दें (वरना हर आइटम पर एक
+  // सिंक्रोनस पठन → बड़ी सूची/सभी-आइटम पर ब्राउज़र "wait" करने लगता है)।
+  if (!(payload && payload.noSanc)) {
+    Object.keys(touchedItems).forEach(function(itemId){ paySyncSanc_(itemId); });
+  }
   payInvalidateCache_();
   return ids;
 }

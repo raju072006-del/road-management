@@ -41,6 +41,7 @@ a{color:var(--ink-2)}
 
 /* ============ App shell ============ */
 .app{max-width:1320px; margin:0 auto; padding:0 18px 60px}
+.app.wide-meas{max-width:98vw}   /* नाप टैब — चौड़ी तालिकाओं के लिए पूरी चौड़ाई, horizontal scroll कम */
 .topbar{display:flex; align-items:center; gap:16px; padding:18px 4px 14px; flex-wrap:wrap;
   position:sticky; top:0; z-index:50;
   background:rgba(242,244,250,.8);
@@ -96,6 +97,18 @@ a{color:var(--ink-2)}
 .stat.s-bal  .bar-ic{background:var(--red-bg); color:var(--red-2)}
 .stat.s-paid .val{color:var(--green)}
 .stat.s-bal  .val{color:var(--red-2)}
+
+/* Variation statement */
+.var-in{border:1px solid var(--line); border-radius:4px; padding:2px 5px; font-size:12px; font-family:inherit; background:var(--card); color:var(--ink)}
+.var-in.num{text-align:right}
+.var-tbl{border-collapse:collapse; width:100%; font-size:12px}
+.var-tbl th,.var-tbl td{border:1px solid #999; padding:3px 5px; vertical-align:top}
+.var-tbl th{background:var(--line-2); text-align:center; font-weight:600}
+.var-tbl td.r{text-align:right}
+.var-tbl td.c{text-align:center}
+.var-head-field{display:flex; gap:6px; align-items:flex-start; margin-bottom:6px; font-size:13px}
+.var-head-field label{font-weight:600; white-space:nowrap; padding-top:3px}
+.var-head-field .var-in{flex:1}
 
 /* progress bars */
 .pbar{height:9px; border-radius:6px; background:var(--line-2); overflow:hidden; display:flex}
@@ -300,7 +313,7 @@ select.inp{appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmln
 .pb-card-head .btn-sm{flex:none}
 
 /* ---- सेटिंग टैब ---- */
-.settings-wrap{display:flex; flex-direction:column; gap:20px; max-width:680px; margin:0 auto}
+.settings-wrap{display:flex; flex-direction:column; gap:20px; margin:0 auto}
 .settings-card .pb-card-head{background:var(--ink); border-bottom:none}
 .settings-card .pb-card-head b{color:#fff}
 .settings-card .pb-card-head .pb-ic{background:rgba(255,255,255,.18)}
@@ -425,6 +438,7 @@ select.inp{appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmln
     <button data-tab="items"><span class="ic">▤</span> आइटम (BOQ)</button>
     <button data-tab="meas"><span class="ic">📏</span> नाप (Measurement)</button>
     <button data-tab="pay"><span class="ic">₹</span> भुगतान / RA Bill</button>
+    <button data-tab="variation"><span class="ic">📋</span> Variation</button>
     <button data-tab="report"><span class="ic">⚖</span> तुलना / रिपोर्ट</button>
     <button data-tab="settings"><span class="ic">⚙</span> सेटिंग</button>
   </div>
@@ -848,7 +862,7 @@ function switchTab(tab){
   render();
 }
 
-function tabName(){ return ({dashboard:'डैशबोर्ड', items:'आइटम-BOQ', meas:'नाप', pay:'भुगतान', report:'रिपोर्ट'})[state.tab] || 'export'; }
+function tabName(){ return ({dashboard:'डैशबोर्ड', items:'आइटम-BOQ', meas:'नाप', pay:'भुगतान', variation:'Variation', report:'रिपोर्ट'})[state.tab] || 'export'; }
 /* जो सामने दिख रहा है (वर्तमान सेक्शन की तालिकाएँ) उसी का Excel निर्यात */
 function exportExcel(){
   if(typeof XLSX==='undefined'){ toast('Excel लाइब्रेरी लोड नहीं हुई — इंटरनेट जाँचें',true); return; }
@@ -1009,12 +1023,15 @@ function render(){
   else if(state.tab==='items') v.innerHTML=viewItems();
   else if(state.tab==='meas')  v.innerHTML=viewMeas();
   else if(state.tab==='pay')   v.innerHTML=viewPay();
+  else if(state.tab==='variation') v.innerHTML=viewVariation();
   else if(state.tab==='report')v.innerHTML=viewReport();
   else if(state.tab==='settings')v.innerHTML=viewSettings();
   bindView();
   // पूर्व निर्धारित बटन केवल "नाप" टैब पर दिखें; टॉगल-बटन का लेबल वर्तमान स्थिति अनुसार
   const pb=document.getElementById('presancBar');
   if(pb) pb.style.display = (state.tab==='meas' && !state.data.noProject) ? 'inline-flex' : 'none';
+  // सभी सेक्शन में कार्ड/तालिकाएँ एक-सी चौड़ी (पूरी चौड़ाई) — horizontal scrolling कम/समाप्त
+  const appEl=document.querySelector('.app'); if(appEl) appEl.classList.add('wide-meas');
   const ptb=document.getElementById('presancToggleBtn');
   if(ptb) ptb.innerHTML = state.presancVisible ? `<span class="ic">🙈</span> पूर्व निर्धारित छिपाएँ` : `<span class="ic">👁</span> पूर्व निर्धारित दिखाएँ`;
 }
@@ -1270,6 +1287,259 @@ function viewDashboard(){
 function pct(a,b){ b=toNum(b); if(!b) return 0; return round(a/b*100,1); }   // वास्तविक % (100% पर नहीं रुकता; bar की चौड़ाई अलग से सीमित)
 
 /* ===================================================================
+   Variation Statement (Tentative Variation Statement)
+   — सभी आइटम भुगतान प्रबंधन से; तीन स्तर: स्वीकृत आगणन (पूर्व निर्धारित) · अनुबंध (निर्धारित) · वास्तविक (नापा)।
+   — बाकी विवरण default रहते हैं, जिन्हें मैनुअल भरा/बदला जा सकता है; project.variation (JSON) में सहेजे जाते हैं।
+=================================================================== */
+const VAR_REMARK_DEF='कार्य स्थल पर आवश्यकतानुसार कार्य कराये जाने के कारण विचलन हुआ है।';
+const VAR_CERT_DEF=[
+ 'प्रस्तावित विचलन/घटबढ़ स्थल की तकनीकी आवश्यकता के दृष्टिगत कराया जाना अपरिहार्य है।',
+ 'प्रस्तावित विचलन/घटबढ़ पर सृजित होने वाले व्यय-भार स्वीकृत आगणन में प्राविधानित जिन मदों की बचत की धनराशि से समायोजित किया जाना प्रस्तावित है उसका विवरण सुस्पष्ट अंकित कर दिया गया है।',
+ 'प्रस्तावित विचलन/घटबढ़ पर सृजित होने वाले व्यय-भार से स्वीकृत आगणन की धनराशि से व्ययाधिक्य नहीं होगा।',
+ 'प्रस्तावित विचलन/घटबढ़ पर सृजित होने वाले व्यय-भार से स्वीकृत निविदा की वर्तमान प्रतिशतता अपरिवर्तित रहेगी।',
+ 'प्रस्तावित विचलन/घटबढ़ का निष्पादन लो0नि0वि0 की अनुमन्य विशिष्टियों के अनुसार स्थल पर कराया जायेगा।'
+].join('\n');
+const VAR_RIGHT_DEF='सम्बन्धित सहायक अभियन्ता द्वारा स्थल की दर्शायी गयी तकनीकी आवश्यकता के दृष्टिगत एवं उपरोक्तानुसार दिये गये प्रमाण पत्रों तथा स्वीकृति हेतु की गई संस्तुति के आधार पर प्रश्नगत विचलन/घटबढ़ की संस्तुति की जाती है।';
+function varStore(){ try{ return JSON.parse((state.data.project&&state.data.project.variation)||'{}')||{}; }catch(e){ return {}; } }
+function money2(n){ n=Math.round((Number(n)||0)*100)/100; return n.toFixed(2); }
+function viewVariation(){
+  const panel=projectPanel();
+  if(state.data.noProject) return panel+emptyState('📋','कोई परियोजना लोड नहीं','मुख्य पेज पर किसी परियोजना में जाकर "💰 भुगतान प्रबंधन" खोलें।','');
+  const its=items();
+  if(!its.length) return panel+emptyState('📋','कोई आइटम नहीं','पहले BOQ आइटम जोड़ें — फिर Variation Statement बनेगा।','');
+  const p=state.data.project||{}, vs=varStore(), H=vs.header||{}, F=vs.footer||{}, R=vs.rows||{};
+  const g=(o,k,d)=> (o&&o[k]!=null&&o[k]!=='')?o[k]:d;
+  const hf=(id,label,v,ph)=>`<div class="var-head-field"><label>${label}</label><input id="${id}" class="var-in" value="${esc(v)}" placeholder="${esc(ph||'')}"></div>`;
+  const header=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 24px">
+    <div>
+      ${hf('vh_division','Name of Division:-', g(H,'division',''),'P.D. P.W.D. ...')}
+      ${hf('vh_work','1. Name of Work:-', g(H,'nameWork',p.name||''))}
+      ${hf('vh_go','3. G.O. No. (Admin/Fin. Sanction):-', g(H,'goNo',''))}
+      ${hf('vh_tech','5. Ref. Letter No. (Tech. Sanction):-', g(H,'techSanc',''))}
+      ${hf('vh_bond','7. Contract Bond No.:-', g(H,'bondNo',p.workOrder||''))}
+      ${hf('vh_sb','8. Date of Start (Contract Bond):-', g(H,'startBond',(p.startDate||'').slice(0,10)))}
+      ${hf('vh_sa','10. Date of Start (Actual):-', g(H,'startActual',(p.startDate||'').slice(0,10)))}
+    </div>
+    <div>
+      ${hf('vh_above','Above/Below (label):-', g(H,'aboveLabel','Above/Below '+(p.abovePct||'')+'%'))}
+      ${hf('vh_scheme','2. Name Of Scheme:-', g(H,'scheme',''))}
+      ${hf('vh_head','4. Head Of Account:-', g(H,'headAcct',''))}
+      ${hf('vh_con','6. Name of Contractor:-', g(H,'contractor',p.contractor||''))}
+      ${hf('vh_eb','9. Date of completion (Contract Bond):-', g(H,'endBond',(p.endDate||'').slice(0,10)))}
+      ${hf('vh_ea','11. Date of completion (Actual):-', g(H,'endActual',(p.endDate||'').slice(0,10)))}
+      ${hf('vh_cb','C.B. Above/Below % (−Below, +Above):-', g(H,'cbPct',(p.abovePct!=null?p.abovePct:'')),'जैसे -1.11')}
+    </div></div>`;
+
+  const rows=its.map(function(it,i){
+    const r=R[it.ItemID]||{};
+    const estQ=g(r,'estQty', (itemPresancQty(it)||itemSancQty(it))), estR=g(r,'estRate', itemRate(it));
+    const bondQ=g(r,'bondQty', itemSancQty(it)), bondR=g(r,'bondRate', itemRate(it));
+    const actQ=g(r,'actQty', itemMeasQty(it)), actR=g(r,'actRate', itemRate(it));
+    const desc=g(r,'desc', it.Description||''), un=g(r,'unit', it.Unit||''), rem=g(r,'remark', VAR_REMARK_DEF);
+    const iid=esc(it.ItemID);
+    const nIn=(f,v,w)=>`<input class="var-in num" type="number" step="any" data-iid="${iid}" data-f="${f}" value="${esc(v)}" oninput="varRecalc()" style="width:${w||70}px">`;
+    return `<tr data-iid="${iid}">
+      <td class="c">${i+1}</td>
+      <td class="c"><input class="var-in" data-iid="${iid}" data-f="unit" value="${esc(un)}" style="width:46px"></td>
+      <td><textarea class="var-in" data-iid="${iid}" data-f="desc" rows="3" style="width:300px;resize:vertical">${esc(desc)}</textarea></td>
+      <td class="r">${nIn('estQty',estQ)}</td><td class="r">${nIn('estRate',estR,60)}</td><td class="r"><span data-c="estA">0</span></td>
+      <td class="r">${nIn('bondQty',bondQ)}</td><td class="r">${nIn('bondRate',bondR,60)}</td><td class="r"><span data-c="bondA">0</span></td>
+      <td class="r">${nIn('actQty',actQ)}</td><td class="r">${nIn('actRate',actR,60)}</td><td class="r"><span data-c="actA">0</span></td>
+      <td class="r"><span data-c="exc">0</span></td><td class="r"><span data-c="sav">0</span></td><td class="r"><span data-c="pc">0</span></td>
+      <td><textarea class="var-in" data-iid="${iid}" data-f="remark" rows="3" style="width:160px;resize:vertical">${esc(rem)}</textarea></td>
+    </tr>`;
+  }).join('');
+
+  const thead=`<thead>
+    <tr><th rowspan="2">Sl</th><th rowspan="2">Unit</th><th rowspan="2">Item of Work</th>
+      <th colspan="3">As per Sanctioned Estimate</th><th colspan="3">As per Contract Bond</th>
+      <th colspan="3">As per Actual Work Done</th><th colspan="3">Variation over Contract Bond</th><th rowspan="2">Remark</th></tr>
+    <tr><th>Qty</th><th>Rate</th><th>Amount</th><th>Qty</th><th>Rate</th><th>Amount</th><th>Qty</th><th>Rate</th><th>Amount</th><th>Exces</th><th>Saving</th><th>%</th></tr></thead>`;
+
+  const totals=`<tfoot>
+    <tr style="font-weight:700"><td colspan="5" class="r">Total</td><td class="r"><span id="vt_est">0</span></td>
+      <td colspan="2" class="r">—</td><td class="r"><span id="vt_bond">0</span></td>
+      <td colspan="2" class="r">—</td><td class="r"><span id="vt_act">0</span></td>
+      <td class="r"><span id="vt_exc">0</span></td><td class="r"><span id="vt_sav">0</span></td><td></td><td></td></tr>
+    <tr><td colspan="5" class="r"><span id="vt_cblabel">Add As per C.B. Condition</span></td><td></td>
+      <td colspan="2"></td><td class="r"><span id="vt_bondadj">0</span></td>
+      <td colspan="2"></td><td class="r"><span id="vt_actadj">0</span></td>
+      <td class="r"></td><td class="r"><span id="vt_savadj">0</span></td><td></td><td></td></tr>
+    <tr style="font-weight:700"><td colspan="5" class="r">Net</td><td></td>
+      <td colspan="2"></td><td class="r"><span id="vt_bondnet">0</span></td>
+      <td colspan="2"></td><td class="r"><span id="vt_actnet">0</span></td>
+      <td class="r"></td><td class="r"><span id="vt_savnet">0</span></td><td></td><td></td></tr>
+    <tr style="font-weight:700"><td colspan="5" class="r">Say</td><td></td>
+      <td colspan="2"></td><td class="r"><span id="vt_bondsay">0</span></td>
+      <td colspan="2"></td><td class="r"><span id="vt_actsay">0</span></td>
+      <td class="r"></td><td class="r"></td><td></td><td></td></tr></tfoot>`;
+
+  const savingLine=`<div style="text-align:right;font-weight:700;margin:10px 2px 0">Saving = <span id="vt_savfinal">0</span> &nbsp; ( <span id="vt_savpct">0</span>% )</div>`;
+
+  const footer=`<div style="margin-top:18px;display:grid;grid-template-columns:1fr 1fr;gap:18px">
+    <div><div style="font-weight:600;margin-bottom:4px">प्रमाणित किया जाता है कि —</div>
+      <textarea id="vf_cert" class="var-in" rows="8" style="width:100%">${esc(g(F,'cert',VAR_CERT_DEF))}</textarea></div>
+    <div><div style="font-weight:600;margin-bottom:4px">संस्तुति —</div>
+      <textarea id="vf_right" class="var-in" rows="8" style="width:100%">${esc(g(F,'right',VAR_RIGHT_DEF))}</textarea></div></div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:16px;text-align:center">
+      <div><input id="vf_contractor" class="var-in" value="${esc(g(F,'contractor',''))}" style="width:100%;text-align:center" placeholder="नाम"><div style="font-weight:700;margin-top:4px">Contractor</div></div>
+      <div><input id="vf_je" class="var-in" value="${esc(g(F,'je',''))}" style="width:100%;text-align:center" placeholder="नाम"><input id="vf_jed" class="var-in" value="${esc(g(F,'jed','Junior Engineer'))}" style="width:100%;text-align:center;margin-top:3px"></div>
+      <div><input id="vf_ae" class="var-in" value="${esc(g(F,'ae',''))}" style="width:100%;text-align:center" placeholder="नाम"><input id="vf_aed" class="var-in" value="${esc(g(F,'aed','Assistant Engineer'))}" style="width:100%;text-align:center;margin-top:3px"></div>
+      <div><input id="vf_ee" class="var-in" value="${esc(g(F,'ee',''))}" style="width:100%;text-align:center" placeholder="नाम"><input id="vf_eed" class="var-in" value="${esc(g(F,'eed','Executive Engineer'))}" style="width:100%;text-align:center;margin-top:3px"></div>
+    </div>`;
+
+  setTimeout(varRecalc, 0);
+  return `
+    <div class="section-head" style="margin-bottom:12px"><h2>📋 Tentative Variation Statement</h2>
+      <span class="sub">सभी आइटम भुगतान प्रबंधन से · विवरण मैनुअल भरें/बदलें</span><div class="spacer"></div>
+      <button class="btn btn-primary btn-sm" onclick="saveVariation()"><span class="ic">💾</span> सहेजें</button>
+      <button class="btn btn-ghost btn-sm" onclick="varPrint()"><span class="ic">🖨</span> प्रिंट (A4 Landscape)</button>
+      <button class="btn btn-ghost btn-sm" title="सभी मान हटाकर भुगतान प्रबंधन से डिफ़ॉल्ट दोबारा भरें" onclick="varReset()">↺ डिफ़ॉल्ट</button></div>
+    <div class="card" style="padding:14px 16px;margin-bottom:16px">${header}</div>
+    <div class="card tbl-wrap" style="margin-bottom:6px;overflow-x:auto"><table class="var-tbl" id="varTable">${thead}<tbody id="varTbody">${rows}</tbody>${totals}</table></div>
+    ${savingLine}
+    <div class="card" style="padding:14px 16px;margin-top:16px">${footer}</div>`;
+}
+function varRecalc(){
+  const setT=(el,t)=>{ if(el) el.textContent=t; };
+  let tEst=0,tBond=0,tAct=0,tExc=0,tSav=0;
+  document.querySelectorAll('#varTbody tr[data-iid]').forEach(function(tr){
+    const n=f=>toNum((tr.querySelector('[data-f="'+f+'"]')||{}).value);
+    const estA=round(n('estQty')*n('estRate'),2), bondA=round(n('bondQty')*n('bondRate'),2), actA=round(n('actQty')*n('actRate'),2);
+    const exc=actA>bondA?round(actA-bondA,2):0, sav=bondA>actA?round(bondA-actA,2):0;
+    const pc=bondA?round(Math.abs(actA-bondA)/bondA*100,2):0;
+    setT(tr.querySelector('[data-c="estA"]'),money2(estA)); setT(tr.querySelector('[data-c="bondA"]'),money2(bondA)); setT(tr.querySelector('[data-c="actA"]'),money2(actA));
+    setT(tr.querySelector('[data-c="exc"]'),exc?money2(exc):'—'); setT(tr.querySelector('[data-c="sav"]'),money2(sav)); setT(tr.querySelector('[data-c="pc"]'),pc.toFixed(2));
+    tEst+=estA; tBond+=bondA; tAct+=actA; tExc+=exc; tSav+=sav;
+  });
+  const pctv=toNum(val('vh_cb')), adj=x=>round(x*pctv/100,2);
+  const bondAdj=adj(tBond), actAdj=adj(tAct), savAdj=adj(tSav);
+  const bondNet=round(tBond+bondAdj,2), actNet=round(tAct+actAdj,2), savNet=round(tSav+savAdj,2);
+  const savFinal=round(bondNet-actNet,2), savPct=bondNet?round(savFinal/bondNet*100,2):0;
+  setT(document.getElementById('vt_est'),money2(tEst)); setT(document.getElementById('vt_bond'),money2(tBond)); setT(document.getElementById('vt_act'),money2(tAct));
+  setT(document.getElementById('vt_exc'),money2(tExc)); setT(document.getElementById('vt_sav'),money2(tSav));
+  setT(document.getElementById('vt_cblabel'),'Add '+(pctv<0?'(-)':'(+)')+' '+Math.abs(pctv)+'% '+(pctv<0?'Below':'Above')+' As per C.B. Condition');
+  setT(document.getElementById('vt_bondadj'),money2(bondAdj)); setT(document.getElementById('vt_actadj'),money2(actAdj)); setT(document.getElementById('vt_savadj'),money2(savAdj));
+  setT(document.getElementById('vt_bondnet'),money2(bondNet)); setT(document.getElementById('vt_actnet'),money2(actNet)); setT(document.getElementById('vt_savnet'),money2(savNet));
+  setT(document.getElementById('vt_bondsay'),money2(Math.round(bondNet))); setT(document.getElementById('vt_actsay'),money2(Math.round(actNet)));
+  setT(document.getElementById('vt_savfinal'),money2(Math.round(savFinal))); setT(document.getElementById('vt_savpct'),savPct.toFixed(2));
+}
+function varCollect(){
+  const header={ division:val('vh_division'), scheme:val('vh_scheme'), headAcct:val('vh_head'), aboveLabel:val('vh_above'),
+    nameWork:val('vh_work'), goNo:val('vh_go'), techSanc:val('vh_tech'), contractor:val('vh_con'), bondNo:val('vh_bond'),
+    startBond:val('vh_sb'), endBond:val('vh_eb'), startActual:val('vh_sa'), endActual:val('vh_ea'), cbPct:val('vh_cb') };
+  const rows={};
+  document.querySelectorAll('#varTbody tr[data-iid]').forEach(function(tr){
+    const iid=tr.getAttribute('data-iid'), o={};
+    tr.querySelectorAll('[data-f]').forEach(function(el){ o[el.getAttribute('data-f')]=el.value; });
+    rows[iid]=o;
+  });
+  const footer={ cert:val('vf_cert'), right:val('vf_right'), contractor:val('vf_contractor'),
+    je:val('vf_je'), jed:val('vf_jed'), ae:val('vf_ae'), aed:val('vf_aed'), ee:val('vf_ee'), eed:val('vf_eed') };
+  return { header, rows, footer };
+}
+function saveVariation(){
+  const vs=varCollect();
+  const o=Object.assign({}, state.data.project, { variation: JSON.stringify(vs) });
+  loader(true);
+  api('saveProject', o).then(function(){ state.data.project=o; loader(false); toast('Variation Statement सहेजा गया'); })
+    .catch(function(e){ loader(false); toast('त्रुटि: '+(e.message||e),true); });
+}
+function varReset(){
+  confirmModal('↺ डिफ़ॉल्ट से भरें?','सभी मैनुअल बदलाव हटाकर Variation को भुगतान प्रबंधन के मौजूदा डेटा से दोबारा भरा जाएगा। जारी रखें?', function(){
+    const o=Object.assign({}, state.data.project); delete o.variation;
+    loader(true);
+    api('saveProject', o).then(function(){ state.data.project=o; loader(false); render(); toast('डिफ़ॉल्ट से भर दिया'); })
+      .catch(function(e){ loader(false); toast('त्रुटि: '+(e.message||e),true); });
+  }, 'हाँ');
+}
+function varPrint(){
+  varRecalc();
+  const V=varCollect(), p=state.data.project||{};
+  const gv=id=>{ const e=document.getElementById(id); return e?e.value:''; };
+  const its=items();
+  const pctv=toNum(V.header.cbPct), adj=x=>Math.round(x*pctv/100*100)/100;
+  let tEst=0,tBond=0,tAct=0,tExc=0,tSav=0, body='';
+  its.forEach(function(it,i){
+    const r=V.rows[it.ItemID]||{};
+    const eQ=toNum(r.estQty),eR=toNum(r.estRate),bQ=toNum(r.bondQty),bR=toNum(r.bondRate),aQ=toNum(r.actQty),aR=toNum(r.actRate);
+    const eA=Math.round(eQ*eR*100)/100,bA=Math.round(bQ*bR*100)/100,aA=Math.round(aQ*aR*100)/100;
+    const exc=aA>bA?Math.round((aA-bA)*100)/100:0, sav=bA>aA?Math.round((bA-aA)*100)/100:0, pc=bA?(Math.abs(aA-bA)/bA*100):0;
+    tEst+=eA;tBond+=bA;tAct+=aA;tExc+=exc;tSav+=sav;
+    body+=`<tr><td class="c">${i+1}</td><td class="c">${esc(r.unit||'')}</td><td class="d">${esc(r.desc||'')}</td>
+      <td class="r">${eQ?money2(eQ):''}</td><td class="r">${eR?money2(eR):''}</td><td class="r">${eA?money2(eA):''}</td>
+      <td class="r">${bQ?money2(bQ):''}</td><td class="r">${bR?money2(bR):''}</td><td class="r">${bA?money2(bA):''}</td>
+      <td class="r">${aQ?money2(aQ):''}</td><td class="r">${aR?money2(aR):''}</td><td class="r">${aA?money2(aA):''}</td>
+      <td class="r">${exc?money2(exc):'-'}</td><td class="r">${money2(sav)}</td><td class="r">${pc.toFixed(2)}</td>
+      <td class="d">${esc(r.remark||'')}</td></tr>`;
+  });
+  const bondAdj=adj(tBond),actAdj=adj(tAct),savAdj=adj(tSav);
+  const bondNet=Math.round((tBond+bondAdj)*100)/100, actNet=Math.round((tAct+actAdj)*100)/100, savNet=Math.round((tSav+savAdj)*100)/100;
+  const savFinal=Math.round((bondNet-actNet)*100)/100, savPct=bondNet?(savFinal/bondNet*100):0;
+  const cbLabel='Add '+(pctv<0?'(-)':'(+)')+' '+Math.abs(pctv)+'% '+(pctv<0?'Below':'Above')+' As per C.B. Condition';
+  const certLines=String(V.footer.cert||'').split('\n').filter(x=>x.trim()).map((l,i)=>`<div style="margin-bottom:3px">${i+1}. ${esc(l)}</div>`).join('');
+  const hdr=(lbl,v)=>`<b>${lbl}</b> ${esc(v)}`;
+  const doc=`<!doctype html><html><head><meta charset="utf-8"><title>Variation Statement</title>
+    <style>
+      @page{ size:A4 landscape; margin:8mm }
+      *{font-family:'Noto Sans Devanagari','Nirmala UI',Arial,sans-serif}
+      body{font-size:11px;color:#000;margin:0}
+      h1{text-align:center;font-size:16px;text-decoration:underline;margin:4px 0 10px}
+      .toprow{display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px}
+      .hgrid{display:grid;grid-template-columns:1fr 1fr;gap:1px 24px;font-size:11.5px;margin-bottom:8px}
+      table{border-collapse:collapse;width:100%}
+      th,td{border:1px solid #000;padding:2px 4px;font-size:10.5px;vertical-align:top}
+      th{text-align:center;font-weight:700}
+      td.r{text-align:right} td.c{text-align:center} td.d{text-align:left}
+      tfoot td{font-weight:700}
+      .sign{display:flex;justify-content:space-between;margin-top:34px;text-align:center;font-size:12px}
+      .sign div{width:23%}
+      .certs{display:flex;justify-content:space-between;gap:24px;margin-top:10px;font-size:11px}
+      .certs>div{width:48%}
+    </style></head><body>
+    <h1>TENTATIVE VARIATION STATEMENT</h1>
+    <div class="toprow"><div>${hdr('Name of Division:-',V.header.division)}</div><div>${esc(V.header.aboveLabel||'')}</div></div>
+    <div class="hgrid">
+      <div>${hdr('1. Name of Work:-',V.header.nameWork)}</div><div>${hdr('2. Name Of Scheme:-',V.header.scheme)}</div>
+      <div>${hdr('3. G.O. No. (Admin/Fin.):-',V.header.goNo)}</div><div>${hdr('4. Head Of Account:-',V.header.headAcct)}</div>
+      <div>${hdr('5. Tech. Sanction Ref.:-',V.header.techSanc)}</div><div>${hdr('6. Contractor:-',V.header.contractor)}</div>
+      <div>${hdr('7. Contract Bond No.:-',V.header.bondNo)}</div><div></div>
+      <div>${hdr('8. Start (Bond):-',V.header.startBond)}</div><div>${hdr('9. Completion (Bond):-',V.header.endBond)}</div>
+      <div>${hdr('10. Start (Actual):-',V.header.startActual)}</div><div>${hdr('11. Completion (Actual):-',V.header.endActual)}</div>
+    </div>
+    <table>
+      <thead>
+        <tr><th rowspan="2">Sl</th><th rowspan="2">Unit</th><th rowspan="2" style="width:22%">Item of Work</th>
+          <th colspan="3">As per Sanctioned Estimate</th><th colspan="3">As per Contract Bond</th>
+          <th colspan="3">As per Actual Work Done</th><th colspan="3">Variation over Contract Bond</th><th rowspan="2">Remark</th></tr>
+        <tr><th>Qty</th><th>Rate</th><th>Amount</th><th>Qty</th><th>Rate</th><th>Amount</th><th>Qty</th><th>Rate</th><th>Amount</th><th>Exces</th><th>Saving</th><th>%</th></tr>
+      </thead>
+      <tbody>${body}</tbody>
+      <tfoot>
+        <tr><td colspan="5" class="r">Total</td><td class="r">${money2(tEst)}</td><td colspan="2"></td><td class="r">${money2(tBond)}</td><td colspan="2"></td><td class="r">${money2(tAct)}</td><td class="r">${money2(tExc)}</td><td class="r">${money2(tSav)}</td><td></td><td></td></tr>
+        <tr><td colspan="5" class="r">${esc(cbLabel)}</td><td></td><td colspan="2"></td><td class="r">${money2(bondAdj)}</td><td colspan="2"></td><td class="r">${money2(actAdj)}</td><td></td><td class="r">${money2(savAdj)}</td><td></td><td></td></tr>
+        <tr><td colspan="5" class="r">Net</td><td></td><td colspan="2"></td><td class="r">${money2(bondNet)}</td><td colspan="2"></td><td class="r">${money2(actNet)}</td><td></td><td class="r">${money2(savNet)}</td><td></td><td></td></tr>
+        <tr><td colspan="5" class="r">Say</td><td></td><td colspan="2"></td><td class="r">${money2(Math.round(bondNet))}</td><td colspan="2"></td><td class="r">${money2(Math.round(actNet))}</td><td></td><td></td><td></td><td></td></tr>
+      </tfoot>
+    </table>
+    <div style="text-align:right;font-weight:700;margin-top:6px">Saving = ${money2(Math.round(savFinal))} &nbsp; ( ${savPct.toFixed(2)}% )</div>
+    <div class="certs"><div><b>प्रमाणित किया जाता है कि —</b>${certLines}</div><div>${esc(V.footer.right||'')}</div></div>
+    <div class="sign">
+      <div><br><br><b>${esc(V.footer.contractor||'')}</b><br><b>Contractor</b></div>
+      <div><br><br>${esc(V.footer.je||'')}<br>${esc(V.footer.jed||'')}</div>
+      <div><br><br>${esc(V.footer.ae||'')}<br>${esc(V.footer.aed||'')}</div>
+      <div><br><br>${esc(V.footer.ee||'')}<br>${esc(V.footer.eed||'')}</div>
+    </div>
+  </body></html>`;
+  const ifr=document.createElement('iframe');
+  ifr.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+  document.body.appendChild(ifr);
+  const d=ifr.contentWindow.document; d.open(); d.write(doc); d.close();
+  ifr.onload=function(){ try{ ifr.contentWindow.focus(); ifr.contentWindow.print(); }catch(e){} setTimeout(function(){ ifr.remove(); }, 1000); };
+  setTimeout(function(){ try{ ifr.contentWindow.focus(); ifr.contentWindow.print(); }catch(e){} }, 300);
+}
+
+/* ===================================================================
    Items (BOQ)
 =================================================================== */
 function snip(s,n){ s=String(s||'').trim(); return s.length<=n?s:(s.slice(0,n).trim()+'…'); }
@@ -1407,8 +1677,8 @@ function measWorkOf(m){
 /* किसी नाप-लाइन का Remark सेल (श्रेणी badge + 🏷 सेट/बदलें बटन) */
 function remarkTd(m){
   const r=String((m&&m.Remark)||'').trim();
-  const badge = r ? `<span class="badge b-grey" style="font-size:10px;white-space:normal">🏷 ${esc(r)}</span>` : '<span class="faint">—</span>';
-  return `<td style="min-width:90px">${badge} <button class="icon-btn" title="Remark श्रेणी लगाएँ/बदलें" onclick='openMeasRemark(${JSON.stringify(m.MeasID)})'>🏷</button></td>`;
+  const badge = r ? `<span class="badge b-grey" style="font-size:10px;white-space:normal;word-break:break-word">🏷 ${esc(r)}</span>` : '<span class="faint">—</span>';
+  return `<td style="min-width:64px;max-width:110px;white-space:normal">${badge} <button class="icon-btn" title="Remark श्रेणी लगाएँ/बदलें" onclick='openMeasRemark(${JSON.stringify(m.MeasID)})'>🏷</button></td>`;
 }
 const LEAD_TH = `<th>विवरण</th><th>चैनेज (से–तक)</th><th class="c">पक्ष</th><th class="c">नग 1</th><th class="c">नग 2</th><th class="c">लंबाई</th><th class="c">चौड़ाई</th><th class="c">ऊँचाई</th>`;
 const UNIT_OPTIONS_FALLBACK = ['घन मीटर','वर्ग मीटर','मीटर','संख्या'];
